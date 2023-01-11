@@ -27,7 +27,7 @@ RUN mkdir -p /build/app /build/tokens /build/img \
 COPY . /build/app/
 
 FROM base
-ENV PYTHONUNBUFFERED=1 RTSP_PROTOCOLS=tcp RTSP_READTIMEOUT=20s RTSP_LOGLEVEL=warn SDK_KEY= FLASK_APP=frontend
+ENV PYTHONUNBUFFERED=1 RTSP_PROTOCOLS=tcp RTSP_READTIMEOUT=20s RTSP_LOGLEVEL=warn RTSP_WEBRTCICEUDPMUXADDRESS=:8189 SDK_KEY= FLASK_APP=frontend
 COPY --from=builder /build /
 WORKDIR /app
 CMD [ "flask", "run", "--host=0.0.0.0"]
