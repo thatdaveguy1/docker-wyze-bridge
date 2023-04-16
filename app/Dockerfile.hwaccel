@@ -26,7 +26,7 @@ RUN mkdir -p /build/app /build/tokens /build/img \
     && rm -rf /tmp/*
 COPY . /build/app/
 FROM base
-ENV PYTHONUNBUFFERED=1 MTX_PROTOCOLS=tcp MTX_READTIMEOUT=20s MTX_LOGLEVEL=warn MTX_WEBRTCICEUDPMUXADDRESS=:8189 SDK_KEY= FLASK_APP=frontend
+ENV PYTHONUNBUFFERED=1 MTX_HLSVARIANT=fmp4 MTX_PROTOCOLS=tcp MTX_READTIMEOUT=20s MTX_LOGLEVEL=warn MTX_WEBRTCICEUDPMUXADDRESS=:8189 SDK_KEY= FLASK_APP=frontend
 COPY --from=builder /build /
 WORKDIR /app
 CMD [ "flask", "run", "--host=0.0.0.0"]
