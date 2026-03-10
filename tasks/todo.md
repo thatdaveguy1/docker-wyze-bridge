@@ -1,0 +1,29 @@
+# Todo
+
+- [completed] Fix process crash and validate on Home Assistant OS
+- [completed] Fix session/audio lifetime regression and validate V3/V3 Pro stream stability
+- [completed] Add regression tests for timeout propagation, retry behavior, and connect watchdog timing
+- [completed] Stand up isolated `north-yard`-only V4 lab add-on for high-signal experiments
+- [completed] Add connect/auth instrumentation for `HL_CAM4` and capture clean stage-by-stage failure evidence
+- [completed] Re-baseline `north-yard` on DTLS/Ex path with fresh auth data and masked auth-key evidence
+- [completed] Run `NET_MODE` matrix (`LAN`, `P2P`, `ANY`) for `north-yard`
+- [completed] Strengthen firmware gate with upstream `4.52.9.5332` reports and stock/fork control review
+- [completed] Run `ENABLE_AUDIO=false` control for isolated `north-yard` V4 lab
+- [completed] Call firmware decision gate from HA evidence and upstream `4.52.9.5332` reports
+- [completed] Document proposed upstream PRs in `proposedPRs.md`
+- [pending] Attempt non-HA Linux control if local bridged VM tooling can be restored safely
+- [pending] Capture packet-level evidence if tcpdump-capable tooling becomes available on HA host
+- [completed] Promote only validated V4 fixes into the live local patched add-on
+- [completed] Stand up isolated HA add-on trial using KVS/WHEP fork image for V4 bypass validation
+- [completed] Add HA automation script for trial install/start/log capture (`scripts/run_v4kvs_trial.sh`)
+- [completed] Execute HA install/start/log capture for `docker_wyze_bridge_v4kvs_trial` via SSH on Home Assistant host
+- [completed] Validate forced `HL_CAM4` KVS/WHEP path in trial add-on and confirm RTSP stream availability
+- [completed] Replace forced `HL_CAM4` KVS routing with env-gated `ENABLE_V4_KVS_TRIAL` toggle and re-verify on HA
+- [completed] Measure RTC/WebRTC versus RTSP behavior for `garage` (V3) and `hamster` (V3 Pro)
+- [completed] Re-run V3/V3 Pro RTC vs RTSP benchmark with restored HA SSH access and host-side addon inspection
+- [completed] Run backend-only RTC soak and benchmarks without Playwright
+- [completed] Promote live HA deployment to `Docker Wyze Bridge (Local Patched)` with RTC-first backend and clean port map
+- [completed] Remove temporary HA lab addons and move local experiment artifacts to Trash
+- [completed] Create `LIVE-DEPLOYMENT.md` handoff for the current production state
+- [completed] Create a git commit for the promoted `local patched` deployment state
+- [completed] Audit and update repo-tracked downstream consumers to the new live ports, leaving Frigate untouched
