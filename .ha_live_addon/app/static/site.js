@@ -289,6 +289,51 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("refresh-menu").classList.toggle("is-active");
     });
 
+  async function copyToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
+        // fall back to legacy method
+      }
+    }
+    const helper = document.createElement("textarea");
+    helper.value = text;
+    helper.style.position = "fixed";
+    helper.style.left = "-9999px";
+    helper.setAttribute("aria-hidden", "true");
+    document.body.appendChild(helper);
+    helper.focus();
+    helper.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(helper);
+    return copied;
+  }
+
+  document.querySelectorAll(".copy-stream-url[data-copy-text]").forEach((button) => {
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const copyText = button.dataset.copyText;
+      const label = button.dataset.copyLabel || "Stream URL";
+      if (!copyText) {
+        sendNotification("Copy failed", `${label} is empty`, "danger");
+        return;
+      }
+      try {
+        const copied = await copyToClipboard(copyText);
+        if (!copied) {
+          throw new Error("Clipboard denied");
+        }
+        sendNotification("Copied", `${label} copied`, "success");
+      } catch (error) {
+        sendNotification("Copy failed", "Copy your stream URL manually:", "warning");
+        window.prompt(`${label} (copy manually)`, copyText);
+      }
+    });
+  });
+
   // Check for version update
   const checkAPI = document.getElementById("checkUpdate");
   checkAPI.addEventListener("click", () => {
@@ -372,8 +417,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Update status icon based on connection status
-  const sse = new EventSource("api/sse_status");
-  sse.addEventListener("open", () => {
+  let statusPoll = null;
+
+  function onStatusOpen() {
     document.getElementById("connection-lost").style.display = "none";
     document.querySelectorAll(".cam-overlay button.offline").forEach((btn) => {
       btn.disabled = false;
@@ -384,8 +430,9 @@ document.addEventListener("DOMContentLoaded", () => {
     })
     autoplay();
     applyPreferences();
-  });
-  sse.addEventListener("error", () => {
+  }
+
+  function onStatusError() {
     refresh_period = -1;
     clearInterval(refresh_interval);
     document.getElementById("connection-lost").style.display = "block";
@@ -405,9 +452,10 @@ document.addEventListener("DOMContentLoaded", () => {
       icon.classList.remove("fa-arrows-rotate", "fa-spin");
       icon.classList.add("fa-plug-circle-exclamation");
     })
-  });
-  sse.addEventListener("message", (event) => {
-    const data = JSON.parse(event.data);
+  }
+
+  function applyStatusData(data) {
+    onStatusOpen();
 
     for (const [cam, messageData] of Object.entries(data)) {
       const card = document.getElementById(cam);
@@ -486,7 +534,23 @@ document.addEventListener("DOMContentLoaded", () => {
           break;
       }
     }
-  });
+  }
+
+  async function pollStatus() {
+    try {
+      const response = await fetch("api/status", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`status ${response.status}`);
+      }
+      applyStatusData(await response.json());
+    } catch {
+      onStatusError();
+    }
+  }
+
+  pollStatus();
+  clearInterval(statusPoll);
+  statusPoll = setInterval(pollStatus, 5000);
 
   // Toggle Camera details
   function toggleDetails() {
