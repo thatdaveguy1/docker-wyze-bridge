@@ -1,5 +1,6 @@
 import contextlib
 from datetime import datetime
+import math
 import os
 from pathlib import Path
 from signal import SIGTERM
@@ -8,12 +9,30 @@ from typing import Optional
 
 import yaml
 from wyzebridge.build_config import MTX_TAG
-from wyzebridge.config import MTX_HLSVARIANT, MTX_READTIMEOUT, MTX_WRITEQUEUESIZE, RECORD_KEEP, RECORD_LENGTH, RECORD_PATTERN, STUN_SERVER, SUBJECT_ALT_NAME
+from wyzebridge.config import (
+    CONNECT_TIMEOUT,
+    MTX_HLSVARIANT,
+    MTX_READTIMEOUT,
+    MTX_WRITEQUEUESIZE,
+    RECORD_KEEP,
+    RECORD_LENGTH,
+    RECORD_PATTERN,
+    STUN_SERVER,
+    SUBJECT_ALT_NAME,
+)
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 
 MTX_CONFIG: str = "/app/mediamtx.yml"
 MTX_PATH: str = "%path"
+
+
+def run_on_demand_start_timeout() -> str:
+    retries = max(int(os.getenv("CONNECT_RETRIES", 3)), 1)
+    retry_delay = max(float(os.getenv("CONNECT_RETRY_DELAY", 2.0)), 0.0)
+    total_seconds = CONNECT_TIMEOUT * retries + retry_delay * max(retries - 1, 0) + 6
+    return f"{math.ceil(total_seconds)}s"
+
 
 class MtxInterface:
     __slots__ = "data", "_modified"
@@ -70,6 +89,7 @@ class MtxInterface:
             self.data[path] = value
         self._modified = True
 
+
 class MtxServer:
     """Setup and interact with the backend mediamtx."""
 
@@ -88,12 +108,14 @@ class MtxServer:
             for event in {"Read", "Unread", "Ready", "NotReady", "Init"}:
                 bash_cmd = f"echo $MTX_PATH,{event}! > /tmp/mtx_event;"
                 mtx.set(f"pathDefaults.runOn{event}", f"bash -c '{bash_cmd}'")
-            mtx.set("pathDefaults.runOnDemandStartTimeout", "30s")
+            mtx.set(
+                "pathDefaults.runOnDemandStartTimeout", run_on_demand_start_timeout()
+            )
             mtx.set("pathDefaults.runOnDemandCloseAfter", "60s")
             mtx.set("pathDefaults.recordPath", record_path)
             mtx.set("pathDefaults.recordSegmentDuration", RECORD_LENGTH)
             mtx.set("pathDefaults.recordDeleteAfter", RECORD_KEEP)
-            
+
             # explicitly defaults these because we used to force them in the config.yml enviroment
             mtx.set("hlsVariant", MTX_HLSVARIANT)
             mtx.set("readTimeout", MTX_READTIMEOUT)
@@ -107,32 +129,38 @@ class MtxServer:
 
     def setup_auth(self, api: Optional[str], stream: Optional[str]):
         administrator: dict = {
-                "user": "any",
-                "ips": ["127.0.0.1", "::1"],
-                "permissions": [{"action": "api"}, {"action": "metrics"}, {"action": "pprof"}]
-            }
+            "user": "any",
+            "ips": ["127.0.0.1", "::1"],
+            "permissions": [
+                {"action": "api"},
+                {"action": "metrics"},
+                {"action": "pprof"},
+            ],
+        }
         publisher: dict = {
-                "user": "any",
-                "ips": ["127.0.0.1", "::1"],
-                "permissions": [{"action": "publish"}]
-            }
+            "user": "any",
+            "ips": ["127.0.0.1", "::1"],
+            "permissions": [{"action": "publish"}],
+        }
         player: dict = {
-                "user": "any",
-                "permissions": [{"action": "read"}, {"action": "playback"}]
-            }
+            "user": "any",
+            "permissions": [{"action": "read"}, {"action": "playback"}],
+        }
 
         with MtxInterface() as mtx:
             mtx.set("authInternalUsers", [])
             mtx.add("authInternalUsers", administrator)
             mtx.add("authInternalUsers", publisher)
             mtx.add("authInternalUsers", player)
-            if (api or not stream):
-                client: dict = { }
+            if api or not stream:
+                client: dict = {}
                 if api:
                     client.update({"user": "wb", "pass": api})
                 else:
                     client.update({"user": "any"})
-                client.update({"permissions": [{"action": "read"}, {"action": "playback"}]})
+                client.update(
+                    {"permissions": [{"action": "read"}, {"action": "playback"}]}
+                )
                 mtx.add("authInternalUsers", client)
             if stream:
                 logger.info("[MTX] Custom stream auth enabled")
@@ -160,11 +188,13 @@ class MtxServer:
 
     def record(self, uri: str):
         logger.info(f"[MTX] Starting record for {uri}")
-        
+
         base = ensure_record_path()
         record_path = base.format(cam_name=MTX_PATH, CAM_NAME=MTX_PATH)
-        logger.info(f"[MTX] 📹 Will record {RECORD_LENGTH} clips for {uri} to {record_path} where {MTX_PATH} will be {uri}")
-        
+        logger.info(
+            f"[MTX] 📹 Will record {RECORD_LENGTH} clips for {uri} to {record_path} where {MTX_PATH} will be {uri}"
+        )
+
         file = datetime.now().strftime(base)
         recording = file.format(cam_name=uri, CAM_NAME=uri.upper())
         os.makedirs(os.path.dirname(recording), exist_ok=True)
@@ -181,7 +211,9 @@ class MtxServer:
     def start(self) -> bool:
         if not self.sub_process_alive():
             logger.info(f"[MTX] starting MediaMTX {MTX_TAG}")
-            self.sub_process = Popen(["./mediamtx", "./mediamtx.yml"], stdout=None, stderr=None) # None means inherit from parent process
+            self.sub_process = Popen(
+                ["./mediamtx", "./mediamtx.yml"], stdout=None, stderr=None
+            )  # None means inherit from parent process
         return self.sub_process_alive()
 
     def stop(self):
@@ -206,7 +238,7 @@ class MtxServer:
         return self.sub_process_alive()
 
     def sub_process_alive(self) -> bool:
-         return self.sub_process is not None and self.sub_process.poll() is None
+        return self.sub_process is not None and self.sub_process.poll() is None
 
     def setup_webrtc(self, bridge_ip: Optional[str]):
         if not bridge_ip:
@@ -243,16 +275,22 @@ class MtxServer:
             mtx.set("hlsServerCert", f"{cert_path}.crt")
             mtx.save_config()
 
+
 def ensure_record_path() -> str:
     record_path = RECORD_PATTERN
 
-    if "%s" in record_path or all(x in record_path for x in ["%Y", "%m", "%d", "%H", "%M", "%S"]):
+    if "%s" in record_path or all(
+        x in record_path for x in ["%Y", "%m", "%d", "%H", "%M", "%S"]
+    ):
         logger.info(f"[MTX] The computed record_path: '{record_path}' IS VALID")
     else:
-        logger.warning(f"[MTX] The computed record_path: '{record_path}' IS NOT VALID, appending the %%s to the pattern")
+        logger.warning(
+            f"[MTX] The computed record_path: '{record_path}' IS NOT VALID, appending the %%s to the pattern"
+        )
         record_path += "_%s"
 
     return record_path
+
 
 def mtx_version() -> str:
     try:
@@ -261,12 +299,14 @@ def mtx_version() -> str:
     except FileNotFoundError:
         return ""
 
+
 def generate_certificates(cert_path):
     if not Path(f"{cert_path}.key").is_file():
         logger.info("[MTX] 🔐 Generating key for LL-HLS")
         Popen(
             ["openssl", "genrsa", "-out", f"{cert_path}.key", "2048"],
-            stdout=None, stderr=None   # None means inherit from parent process
+            stdout=None,
+            stderr=None,  # None means inherit from parent process
         ).wait()
     if not Path(f"{cert_path}.crt").is_file():
         logger.info("[MTX] 🔏 Generating certificate for LL-HLS")
@@ -278,8 +318,10 @@ def generate_certificates(cert_path):
             + (["-addext", f"subjectAltName = DNS:{dns}"] if dns else [])
             + ["-out", f"{cert_path}.crt"]
             + ["-days", "3650"],
-            stdout=None, stderr=None   # None means inherit from parent process
+            stdout=None,
+            stderr=None,  # None means inherit from parent process
         ).wait()
+
 
 def parse_auth(auth: str) -> list[dict[str, str]]:
     entries = []
@@ -290,7 +332,12 @@ def parse_auth(auth: str) -> list[dict[str, str]]:
         user, password, *ips = creds.split(":", 2)
         if ips:
             ips = ips[0].split(",")
-        data: dict = {"user": user or "any", "pass": password, "ips": ips, "permissions": []}
+        data: dict = {
+            "user": user or "any",
+            "pass": password,
+            "ips": ips,
+            "permissions": [],
+        }
         if endpoints:
             paths = []
             for endpoint in endpoints[0].split(","):

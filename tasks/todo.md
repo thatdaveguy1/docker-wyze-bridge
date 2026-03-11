@@ -28,7 +28,7 @@
 - [completed] Create a git commit for the promoted `local patched` deployment state
 - [completed] Audit and update repo-tracked downstream consumers to the new live ports, leaving Frigate untouched
 - [completed] Verify preview/stream metadata regression tests still pass after latest HA stream menu updates
-- [pending] Decide whether to commit latest uncommitted HA preview/stream/ingress fixes as a new repo commit
+- [completed] Decide whether to commit latest uncommitted HA preview/stream/ingress fixes as a new repo commit
 - [pending] Optional deep-dive: validate direct HLS playlist path/auth in MediaMTX if direct HLS links must be exposed
 - [completed] Add one-click copy buttons for stream URLs and preserve protocol-prefixed copy values
 - [completed] Persist Home Assistant SSH target locally via `scripts/.ha_ssh.env` and `scripts/ha_ssh.sh`
@@ -42,10 +42,14 @@
 - [completed] Task 4: Replace build_stream_entries with the refined availability policy, reason precedence, and credential-aware entries.
 - [completed] Task 5: Harden the dropdown copy handler to delegate, guard data-copy-text, and keep notifications/alerts intact.
 - [completed] Task 6: Run pytest and scripts/deploy_ha_local_addon.sh, then verify the HA ingress JS despite a 401 response.
-- [in_progress] Task 7: Confirm disabled streams, copy buttons, console/network health, and ffprobe; live UI now shows `RTMP`/`RTSP` as `offline` instead of `not configured`, but RTSP ffprobe and browser console cleanup still remain.
+- [completed] Task 7: Confirm disabled streams, copy buttons, console/network health, and ffprobe; live UI now shows `RTMP`/`RTSP` as `offline` instead of `not configured`, but RTSP ffprobe and browser console cleanup still remain.
 - [completed] Write SSH-first Wyze→Scrypted MQTT motion runbook (`docs/runbooks/wyze-scrypted-mqtt-runbook.md`)
 - [completed] Enable MQTT publishing on live HA Wyze Bridge add-on and verify retained `wyzebridge/#` topics on broker
 - [completed] Add regression tests for smart local RTSP/RTMP/FW_RTSP stream availability
 - [completed] Update stream availability logic so active cameras keep local RTSP and RTMP enabled
 - [completed] Mirror smart stream availability logic into `.ha_live_addon`
 - [completed] Fix local loopback auth for `/kvs-config/<camera>` so on-demand RTSP can refresh KVS config internally
+- [completed] Audit working tree, redact secret-bearing samples, and prepare a safe final commit for provenance tracking
+- [completed] Build a file-by-file provenance inventory against `origin/main` with credit for `idisposable`, `akeslo`, and local work
+- [completed] Add a clear attribution changelog entry and supporting provenance appendix
+- [completed] Commit the sanitized final state and verify the committed-only change list

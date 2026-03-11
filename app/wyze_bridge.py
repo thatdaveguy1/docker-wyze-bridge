@@ -1,3 +1,4 @@
+import os
 from os import makedirs
 import signal
 import sys
@@ -5,7 +6,15 @@ from dataclasses import replace
 from threading import Thread
 
 from wyzebridge.build_config import BUILD_STR, VERSION
-from wyzebridge.config import BRIDGE_IP, HASS_TOKEN, IMG_PATH, LLHLS, ON_DEMAND, STREAM_AUTH, TOKEN_PATH
+from wyzebridge.config import (
+    BRIDGE_IP,
+    HASS_TOKEN,
+    IMG_PATH,
+    LLHLS,
+    ON_DEMAND,
+    STREAM_AUTH,
+    TOKEN_PATH,
+)
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream, migrate_path
 from wyzebridge.hass import setup_hass
@@ -24,11 +33,13 @@ makedirs(IMG_PATH, exist_ok=True)
 if HASS_TOKEN:
     migrate_path("/config/wyze-bridge/", "/config/")
 
+
 class WyzeBridge(Thread):
-    __slots__ = "api", "streams", "mtx"
+    __slots__ = "api", "streams", "mtx", "main_pid"
 
     def __init__(self) -> None:
         Thread.__init__(self)
+        self.main_pid = os.getpid()  # Store main process PID
 
         for sig in ["SIGTERM", "SIGINT"]:
             signal.signal(getattr(signal, sig), self.clean_up)
@@ -44,8 +55,14 @@ class WyzeBridge(Thread):
     def health(self):
         mtx_alive = self.mtx.sub_process_alive()
         active_streams = len(self.streams.active_streams())
-        wyze_authed = self.api.auth is not None and self.api.auth.access_token is not None
-        return { "mtx_alive": mtx_alive , "wyze_authed": wyze_authed, "active_streams": active_streams }
+        wyze_authed = (
+            self.api.auth is not None and self.api.auth.access_token is not None
+        )
+        return {
+            "mtx_alive": mtx_alive,
+            "wyze_authed": wyze_authed,
+            "active_streams": active_streams,
+        }
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)
@@ -57,10 +74,10 @@ class WyzeBridge(Thread):
         self.setup_streams()
         if self.streams.total < 1:
             return signal.raise_signal(signal.SIGINT)
-        
-        if logger.getEffectiveLevel() == 10: #if we're at debug level
+
+        if logger.getEffectiveLevel() == 10:  # if we're at debug level
             logger.debug(f"[BRIDGE] MTX config:\n{self.mtx.dump_config()}")
-            
+
         self.mtx.start()
         self.streams.monitor_streams(self.mtx.health_check)
 
@@ -80,7 +97,9 @@ class WyzeBridge(Thread):
         user = self.api.get_user()
 
         for cam in self.api.filtered_cams():
-            logger.info(f"[+] Adding {cam.nickname} [{cam.product_model}] at {cam.name_uri}")
+            logger.info(
+                f"[+] Adding {cam.nickname} [{cam.product_model}] at {cam.name_uri}"
+            )
 
             options = WyzeStreamOptions(
                 quality=env_cam("quality", cam.name_uri),
@@ -108,7 +127,13 @@ class WyzeBridge(Thread):
                 return True
         return False
 
-    def add_substream(self, user: WyzeAccount, api: WyzeApi, cam: WyzeCamera, options: WyzeStreamOptions):
+    def add_substream(
+        self,
+        user: WyzeAccount,
+        api: WyzeApi,
+        cam: WyzeCamera,
+        options: WyzeStreamOptions,
+    ):
         """Setup and add substream if enabled for camera."""
         if env_bool(f"SUBSTREAM_{cam.name_uri}") or (
             env_bool("SUBSTREAM") and cam.can_substream
@@ -116,13 +141,18 @@ class WyzeBridge(Thread):
             quality = env_cam("sub_quality", cam.name_uri, "sd30")
             record = bool(env_cam("sub_record", cam.name_uri))
             sub_opt = replace(options, substream=True, quality=quality, record=record)
-            logger.info(f"[++] Adding {cam.name_uri} substream quality: {quality} record: {record}")
+            logger.info(
+                f"[++] Adding {cam.name_uri} substream quality: {quality} record: {record}"
+            )
             sub = WyzeStream(user, api, cam, sub_opt)
             self.mtx.add_path(sub.uri, not options.reconnect)
             self.streams.add(sub)
 
     def clean_up(self, *_):
         """Stop all streams and clean up before shutdown."""
+        # Only run cleanup in the main process, not in child processes
+        if os.getpid() != self.main_pid:
+            return
         if self.streams.stop_flag:
             sys.exit(0)
         if self.streams:
@@ -130,6 +160,7 @@ class WyzeBridge(Thread):
         self.mtx.stop()
         logger.info("👋 goodbye!")
         sys.exit(0)
+
 
 if __name__ == "__main__":
     wb = WyzeBridge()

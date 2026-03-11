@@ -40,6 +40,7 @@
   - WebRTC `58889`
   - MediaMTX API `59997`
   - internal Flask control path `5001`
+- Added a resilient `/kvs-config/<name>` endpoint + configurable `KVS_CONFIG_HOST/PORT` helper in `whep_proxy` so every camera now refreshes its KVS metadata from the same port the Flask server really binds to (5000), and the HA copy buttons now fall back to a manual prompt when clipboard APIs are blocked.
 - Removed temporary HA lab add-ons and moved local experiment artifacts to Trash.
 - Verified repeated backend-only RTC soak results:
   - `garage`: `10/10` successful reconnect probes, median about `2.994s`

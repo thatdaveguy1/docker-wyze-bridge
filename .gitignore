@@ -6,7 +6,9 @@
 **/tokens/
 *.pickle
 *.env
+*.env.local
 *.pyc
+**/__pycache__/
 !/app/.env
 build/
 
@@ -16,3 +18,23 @@ test_env.list
 mediamtx.yml
 
 media/
+scripts/.ha_ssh.env
+worktrees/
+
+# Local debugging and runtime artifacts
+.live_local_info.json
+.orig_addon_info.json
+.ha_live_addon/tasks_todo_snapshot.md
+console-errors-header-auth.txt
+console-errors.txt
+network-requests.txt
+playwright-console-errors.txt
+playwright-network-requests.txt
+garage-stream-menu.png
+live-direct-wyzebridge-copy-buttons.png
+wyzebridge-garage-menu-open.png
+wyzebridge-live-ui.png
+deploy_to_ha.sh
+lima-bridged.yaml
+lima-simple.yaml
+utm-vm/

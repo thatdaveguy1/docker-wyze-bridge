@@ -66,6 +66,30 @@ section {
   margin-left: auto;
 }
 
+.stream-lan {
+  padding-left: 2.25rem;
+  opacity: 0.9;
+}
+
+.stream-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.stream-open {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.copy-stream-url {
+  flex-shrink: 0;
+}
+
 
 a {
   color: #1abc9c;
