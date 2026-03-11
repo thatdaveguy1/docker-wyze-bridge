@@ -2,12 +2,12 @@
 
 ## What's Changed in v3.12.3-local
 
-Local patched release built on top of `idisposable/docker-wyze-bridge` `v3.12.3`, with KVS/WebRTC migration ideas adapted from `akeslo/docker-wyze-bridge` and a larger set of repo-local reliability, HA integration, and UI work.
+Local patched release built on top of `idisposable/docker-wyze-bridge` `v3.12.3`, with KVS/WebRTC migration ideas likely influenced by `akeslo/docker-wyze-bridge` and a larger set of repo-local reliability, HA integration, and UI work.
 
 ### Credit and provenance
 
 - Base fork and release line: `idisposable/docker-wyze-bridge`
-- KVS/WebRTC direction for newer cameras, including signaling behavior such as `recipientClientId`: adapted from `akeslo/docker-wyze-bridge`
+- KVS/WebRTC direction for newer cameras, including signaling behavior such as `recipientClientId`: likely influenced by `akeslo/docker-wyze-bridge`
 - HA-local packaging, WHEP proxy integration, V4/RTC trial routing, deployment tooling, UI changes, regression tests, and operational docs: original local work in this repo
 - Detailed file-by-file attribution: `docs/provenance-2026-03-11-local-patched-attribution.md`
 

@@ -13,7 +13,7 @@
 ## Attribution Rules Used Here
 
 - `idisposable`: credited for the fork baseline, release line, Home Assistant packaging lineage, and any unchanged inherited behavior we built on.
-- `akeslo`: credited where the KVS/WebRTC architectural direction, signaling behavior, or camera-routing approach clearly aligns with the `akeslo/docker-wyze-bridge` branch, especially the move away from TUTK for newer cameras and use of `recipientClientId` in signaling.
+- `akeslo`: credited where the KVS/WebRTC architectural direction, signaling behavior, or camera-routing approach appears to align with the `akeslo/docker-wyze-bridge` branch, especially the move away from TUTK for newer cameras and use of `recipientClientId` in signaling.
 - `Local work`: credited for all repo-specific adaptation, HA-local packaging, V4 trial toggles, WHEP proxy integration, deployment tooling, regression tests, UI changes, docs, and reliability fixes developed in this repo.
 - If a file reflects multiple sources, credit is written as `base from idisposable`, `adapted from akeslo`, or `original local extension` rather than pretending it came from one source only.
 
@@ -47,7 +47,7 @@ Credit: base packaging lineage from `idisposable`, original local patched-add-on
 
 ### 4. V4 bypass, RTC routing, and WHEP proxy path
 
-Credit: base from `idisposable`, KVS/WebRTC direction adapted from `akeslo`, implementation and HA integration done locally.
+Credit: base from `idisposable`, KVS/WebRTC direction likely influenced by or adapted from `akeslo`, implementation and HA integration done locally.
 
 - Proxy and signaling implementation: `.ha_live_addon/whep_proxy/go.mod`, `.ha_live_addon/whep_proxy/go.sum`, `.ha_live_addon/whep_proxy/main.go`, `.ha_live_addon/whep_proxy/main_test.go`
 - V4/RTC add-on configuration and samples: `.ha_live_addon/options_payload.json`, `.ha_live_addon/options_payload2.json`, `.ha_live_addon/options_payload_garage.json`, `.ha_live_addon/options_payload_northyard.json`, `.orig_addon_options_payload.json`, `.orig_addon_options_payload_timeout.json`, `.v4lab_options_payload.json`, `scripts/run_v4kvs_trial.sh`
@@ -55,7 +55,7 @@ Credit: base from `idisposable`, KVS/WebRTC direction adapted from `akeslo`, imp
 - Evidence for `akeslo` credit:
   - `akeslo/docker-wyze-bridge` explicitly moved newer cameras such as V4 away from the legacy TUTK/LAN path toward cloud-signaled KVS WebRTC.
   - `akeslo` includes KVS signaling code that sends `recipientClientId` on `SDP_OFFER` and `ICE_CANDIDATE`.
-  - Our local implementation does not directly mirror `akeslo` file-for-file, but it follows the same signaling direction while replacing the bridge implementation with a local WHEP proxy and HA-specific control endpoints.
+  - Our local implementation does not directly mirror `akeslo` file-for-file, so the safest phrasing is influence/adaptation at the architectural level rather than a claim of direct file import.
 
 ### 5. Operational notes, changelog support, and process tracking
 
@@ -78,5 +78,5 @@ These were intentionally not part of the safe commit because they are machine-lo
 ## Notes on Confidence
 
 - Confidence is high for `idisposable` as the base fork and release line.
-- Confidence is medium-high that the KVS/WebRTC migration direction and signaling shape should credit `akeslo`.
+- Confidence is medium that the KVS/WebRTC migration direction and signaling shape should credit `akeslo` as an influence or adaptation source.
 - Confidence is high that the HA-local packaging, WHEP proxy integration, V4/RTC toggles, deployment scripts, UI changes, tests, and operational docs are local work from this repo.
