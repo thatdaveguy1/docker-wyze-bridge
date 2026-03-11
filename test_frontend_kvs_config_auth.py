@@ -4,6 +4,7 @@ import pathlib
 import sys
 import types
 import unittest
+import importlib
 from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "app"))
@@ -34,13 +35,15 @@ class FakeBridge:
 
 fake_wyze_bridge = types.ModuleType("wyze_bridge")
 fake_wyze_bridge.WyzeBridge = FakeBridge
-sys.modules.setdefault("wyze_bridge", fake_wyze_bridge)
+sys.modules["wyze_bridge"] = fake_wyze_bridge
 
 import frontend
 
 
 class TestFrontendKVSConfigAuth(unittest.TestCase):
     def create_client(self):
+        sys.modules["wyze_bridge"] = fake_wyze_bridge
+        importlib.reload(frontend)
         app = frontend.create_app()
         app.testing = True
         return app.test_client()

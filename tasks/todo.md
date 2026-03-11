@@ -53,3 +53,6 @@
 - [completed] Build a file-by-file provenance inventory against `origin/main` with credit for `idisposable`, `akeslo`, and local work
 - [completed] Add a clear attribution changelog entry and supporting provenance appendix
 - [completed] Commit the sanitized final state and verify the committed-only change list
+- [completed] Add a regression test and fix for RTC/KVS stream metadata requests missing `cam_cmd`, then deploy and validate the live HA add-on
+- [completed] Patch `scripts/deploy_ha_local_addon.sh` to copy `app/wyzebridge/wyze_stream.py` so the live HA add-on receives the RTC/KVS metadata fix
+- [completed] Add an ingress base-URL fix and deploy-script copy step for `app/templates/base.html` so the HA panel resolves static/API paths even without a trailing slash

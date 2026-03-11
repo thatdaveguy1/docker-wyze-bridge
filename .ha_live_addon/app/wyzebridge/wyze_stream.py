@@ -315,6 +315,8 @@ class WyzeStream(Stream):
     def update_cam_info(self) -> None:
         if not self.connected:
             return
+        if not hasattr(self, "cam_cmd") or not hasattr(self, "cam_resp"):
+            return
 
         if (resp := self.send_cmd("caminfo")) and ("response" not in resp):
             self.camera.set_camera_info(resp)
