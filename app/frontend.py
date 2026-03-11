@@ -55,6 +55,7 @@ def create_app():
             return render_template(
                 "login.html",
                 api=WbAuth.api,
+                base_href=url_for("wyze_login").rstrip("/") + "/",
                 version=VERSION,
             )
 
@@ -112,6 +113,7 @@ def create_app():
                 number_of_columns=number_of_columns,
                 refresh_period=refresh_period,
                 api=WbAuth.api,
+                base_href=url_for("index").rstrip("/") + "/",
                 version=VERSION,
                 webrtc=bool(config.BRIDGE_IP),
                 show_video=show_video,

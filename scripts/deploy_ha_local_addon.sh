@@ -39,9 +39,11 @@ copy_file() {
 }
 
 copy_file "app/templates/index.html" "$REMOTE_ROOT/app/templates"
+copy_file "app/templates/base.html" "$REMOTE_ROOT/app/templates"
 copy_file "app/static/site.js" "$REMOTE_ROOT/app/static"
 copy_file "app/static/site.css" "$REMOTE_ROOT/app/static"
 copy_file "app/wyzebridge/web_ui.py" "$REMOTE_ROOT/app/wyzebridge"
+copy_file "app/wyzebridge/wyze_stream.py" "$REMOTE_ROOT/app/wyzebridge"
 copy_file "app/frontend.py" "$REMOTE_ROOT/app"
 copy_file ".ha_live_addon/whep_proxy/main.go" "$REMOTE_ROOT/whep_proxy"
 
