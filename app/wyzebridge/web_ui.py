@@ -2,7 +2,7 @@ import json
 import os
 from time import sleep
 from typing import Callable, Generator, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from flask import request
 from flask import url_for as _url_for
@@ -129,91 +129,243 @@ def preview_refresh_route(snapshot_type: str) -> str:
     return "thumb" if snapshot_type == "api" else "snapshot"
 
 
+def _with_basic_auth(url: Optional[str]) -> Optional[str]:
+    if not url or not WbAuth.api:
+        return url
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc or "@" in parsed.netloc:
+        return url
+    return urlunparse(parsed._replace(netloc=f"wb:{WbAuth.api}@{parsed.netloc}"))
+
+
+def _with_scheme(url: Optional[str], scheme: str) -> Optional[str]:
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return url
+    return urlunparse(parsed._replace(scheme=scheme))
+
+
+def _normalized_hls(url: Optional[str]) -> Optional[str]:
+    return (
+        _with_scheme(url, "https" if LLHLS else urlparse(url).scheme or "http")
+        if url
+        else url
+    )
+
+
+def _lan_base_from_request(default_scheme: str) -> str:
+    hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
+    return f"{default_scheme}://{hostname}"
+
+
+def _stream_entry(
+    stream_id: str,
+    label: str,
+    external_url: Optional[str],
+    lan_url: Optional[str],
+    available: bool,
+    reason: str,
+) -> dict:
+    url = _with_basic_auth(external_url)
+    lan = _with_basic_auth(lan_url)
+    return {
+        "id": stream_id,
+        "label": label,
+        "url": url,
+        "lan_url": lan if lan and lan != url else None,
+        "available": bool(available and url),
+        "reason": "" if available and url else reason,
+        "auth_required": bool(WbAuth.api),
+        "copy_text": url,
+        "lan_copy_text": lan if lan and lan != url else None,
+    }
+
+
+def _evaluate_stream(requirements: list[tuple[bool, str]]) -> tuple[bool, str]:
+    for condition, reason in requirements:
+        if not condition:
+            return False, reason
+    return True, ""
+
+
+def _prefer_stream_urls(
+    external_url: Optional[str], lan_url: Optional[str]
+) -> tuple[Optional[str], Optional[str]]:
+    if external_url:
+        return external_url, lan_url if lan_url and lan_url != external_url else None
+    return lan_url, None
+
+
+def _evaluate_on_demand_stream(
+    enabled: bool, primary_url: Optional[str], offline_reason: str = ""
+) -> tuple[bool, str]:
+    if not enabled:
+        return False, "disabled"
+    if not primary_url:
+        return False, "not available"
+    return True, offline_reason if False else ""
+
+
 def build_stream_entries(camera: dict, data: dict) -> list[dict]:
-    auth_required = bool(WbAuth.api)
-
-    def entry(
-        stream_id: str,
-        label: str,
-        url: Optional[str],
-        available: bool,
-        reason: str = "",
-    ) -> dict:
-        return {
-            "id": stream_id,
-            "label": label,
-            "url": url,
-            "available": bool(available and url),
-            "reason": "" if available and url else reason,
-            "auth_required": auth_required,
-        }
-
     enabled = camera.get("enabled", False)
     connected = camera.get("connected", False)
     active_reason = "disabled" if not enabled else "offline"
+    lan_base = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
 
-    streams = [
-        entry(
+    hls_base = data.get("hls_url")
+    webrtc_base = data.get("webrtc_url")
+    external_hls = _normalized_hls(f"{hls_base}stream.m3u8") if hls_base else None
+    external_webrtc = f"{webrtc_base}whep" if webrtc_base else None
+    external_rtmp = data.get("rtmp_url")
+    external_rtsp = data.get("rtsp_url")
+    external_fw_rtsp = (
+        f"{external_rtsp}fw"
+        if camera.get("rtsp_fw_enabled") and external_rtsp
+        else None
+    )
+
+    lan_webrtc = f"http://{lan_base}:58889/{camera['uri']}/whep"
+    lan_hls = f"https://{lan_base}:58888/{camera['uri']}/stream.m3u8"
+    lan_rtmp = f"rtmp://{lan_base}:51935/{camera['uri']}"
+    lan_rtsp = f"rtsp://{lan_base}:58554/{camera['uri']}"
+    lan_fw_rtsp = f"{lan_rtsp}fw" if camera.get("rtsp_fw_enabled") else None
+
+    streams = []
+
+    external_webrtc_url, lan_webrtc_url = _prefer_stream_urls(
+        external_webrtc, lan_webrtc
+    )
+    webrtc_available, webrtc_reason = _evaluate_stream(
+        [
+            (bool(camera.get("webrtc")), "not supported"),
+            (bool(external_webrtc), "not configured"),
+            (enabled, active_reason),
+            (connected, active_reason),
+        ]
+    )
+    streams.append(
+        _stream_entry(
             "webrtc",
             "WebRTC",
-            data.get("webrtc_url"),
-            bool(camera.get("webrtc"))
-            and bool(BRIDGE_IP)
-            and bool(data.get("webrtc_url")),
-            "not supported" if not camera.get("webrtc") else "not configured",
-        ),
-        entry(
+            external_webrtc_url,
+            lan_webrtc_url,
+            webrtc_available,
+            webrtc_reason,
+        )
+    )
+
+    streams.append(
+        _stream_entry(
             "hls",
             "HLS",
-            data.get("hls_url"),
-            enabled and bool(HLS_URL),
-            active_reason if HLS_URL else "not configured",
-        ),
-        entry(
+            external_hls,
+            lan_hls,
+            False,
+            "direct playlist unavailable" if HLS_URL else "not configured",
+        )
+    )
+
+    external_rtmp_url, lan_rtmp_url = _prefer_stream_urls(external_rtmp, lan_rtmp)
+    rtmp_available, rtmp_reason = _evaluate_on_demand_stream(enabled, external_rtmp_url)
+    streams.append(
+        _stream_entry(
             "rtmp",
             "RTMP",
-            data.get("rtmp_url"),
-            enabled and bool(RTMP_URL),
-            active_reason if RTMP_URL else "not configured",
-        ),
-        entry(
+            external_rtmp_url,
+            lan_rtmp_url,
+            rtmp_available,
+            rtmp_reason,
+        )
+    )
+
+    external_rtsp_url, lan_rtsp_url = _prefer_stream_urls(external_rtsp, lan_rtsp)
+    rtsp_available, rtsp_reason = _evaluate_on_demand_stream(enabled, external_rtsp_url)
+    streams.append(
+        _stream_entry(
             "rtsp",
             "RTSP",
-            data.get("rtsp_url"),
-            enabled and bool(RTSP_URL),
-            active_reason if RTSP_URL else "not configured",
-        ),
-        entry(
+            external_rtsp_url,
+            lan_rtsp_url,
+            rtsp_available,
+            rtsp_reason,
+        )
+    )
+
+    external_fw_rtsp_url, lan_fw_rtsp_url = _prefer_stream_urls(
+        external_fw_rtsp, lan_fw_rtsp
+    )
+    fw_rtsp_available, fw_rtsp_reason = _evaluate_stream(
+        [
+            (bool(camera.get("rtsp_fw_enabled")), "not supported"),
+            (enabled, active_reason),
+            (connected, active_reason),
+            (bool(external_fw_rtsp_url), "not available"),
+        ]
+    )
+    streams.append(
+        _stream_entry(
             "fw_rtsp",
             "FW_RTSP",
-            f"{data['rtsp_url']}fw"
-            if camera.get("rtsp_fw_enabled") and data.get("rtsp_url")
-            else None,
-            bool(camera.get("rtsp_fw_enabled")) and connected,
-            "not supported" if not camera.get("rtsp_fw_enabled") else active_reason,
-        ),
-        entry(
+            external_fw_rtsp_url,
+            lan_fw_rtsp_url,
+            fw_rtsp_available,
+            fw_rtsp_reason,
+        )
+    )
+
+    sd_card_available, sd_card_reason = _evaluate_stream(
+        [
+            (bool(camera.get("boa_url")), "not supported"),
+            (enabled, active_reason),
+            (connected, active_reason),
+        ]
+    )
+    streams.append(
+        _stream_entry(
             "sd_card",
             "SD Card",
             camera.get("boa_url"),
-            bool(camera.get("boa_url")) and connected,
-            "not supported" if not camera.get("boa_url") else active_reason,
-        ),
-        entry(
+            None,
+            sd_card_available,
+            sd_card_reason,
+        )
+    )
+
+    rtsp_snapshot_available, rtsp_snapshot_reason = _evaluate_stream(
+        [
+            (SNAPSHOT_TYPE != "api", "disabled in api mode"),
+            (enabled, active_reason),
+            (connected, active_reason),
+        ]
+    )
+    streams.append(
+        _stream_entry(
             "rtsp_snapshot",
             "RTSP Snapshot",
             data.get("snapshot_url"),
-            SNAPSHOT_TYPE != "api" and enabled,
-            "disabled in api mode" if SNAPSHOT_TYPE == "api" else active_reason,
-        ),
-        entry(
+            None,
+            rtsp_snapshot_available,
+            rtsp_snapshot_reason,
+        )
+    )
+
+    api_thumbnail_available, api_thumbnail_reason = _evaluate_stream(
+        [
+            (SNAPSHOT_TYPE == "api", "disabled"),
+        ]
+    )
+    streams.append(
+        _stream_entry(
             "api_thumbnail",
             "API Thumbnail",
             data.get("thumbnail_url"),
-            SNAPSHOT_TYPE == "api",
-            "disabled" if SNAPSHOT_TYPE != "api" else "",
-        ),
-    ]
+            None,
+            api_thumbnail_available,
+            api_thumbnail_reason,
+        )
+    )
     return streams
 
 
@@ -238,6 +390,7 @@ def format_stream(name_uri: str) -> dict:
     preview_kind = "api" if SNAPSHOT_TYPE == "api" else "rtsp"
     preview_url = f"img/{img}"
     data = {
+        "uri": name_uri,
         "hls_url": (HLS_URL or f"http://{hostname}:8888") + f"/{name_uri}/",
         "webrtc_url": webrtc_url if BRIDGE_IP else None,
         "rtmp_url": (RTMP_URL or f"rtmp://{hostname}:1935") + f"/{name_uri}",

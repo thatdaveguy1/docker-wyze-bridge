@@ -64,11 +64,130 @@ class TestWebUIPreviewStreams(unittest.TestCase):
         streams = {item["id"]: item for item in data["streams"]}
         self.assertFalse(streams["webrtc"]["available"])
         self.assertEqual(streams["webrtc"]["reason"], "not supported")
-        self.assertFalse(streams["rtmp"]["available"])
-        self.assertEqual(streams["rtmp"]["reason"], "not configured")
+        self.assertTrue(streams["rtmp"]["available"])
+        self.assertEqual(streams["rtmp"]["reason"], "")
         self.assertTrue(streams["api_thumbnail"]["available"])
         self.assertFalse(streams["rtsp_snapshot"]["available"])
         self.assertEqual(streams["rtsp_snapshot"]["reason"], "disabled in api mode")
+
+    def test_active_camera_keeps_rtsp_and_rtmp_available_without_explicit_config(self):
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui.os.path, "getmtime", return_value=1234),
+            ):
+                data = web_ui.format_streams(
+                    {
+                        "garage": {
+                            "enabled": True,
+                            "connected": True,
+                            "rtsp_fw_enabled": True,
+                            "boa_url": None,
+                            "webrtc": False,
+                        }
+                    }
+                )["garage"]
+
+        streams = {item["id"]: item for item in data["streams"]}
+        self.assertTrue(streams["rtsp"]["available"])
+        self.assertTrue(streams["rtmp"]["available"])
+        self.assertTrue(streams["fw_rtsp"]["available"])
+
+    def test_rtsp_disables_for_disabled_camera_even_with_local_fallback(self):
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui.os.path, "getmtime", return_value=1234),
+            ):
+                data = web_ui.format_streams(
+                    {
+                        "garage": {
+                            "enabled": False,
+                            "connected": True,
+                            "rtsp_fw_enabled": True,
+                            "boa_url": None,
+                            "webrtc": False,
+                        }
+                    }
+                )["garage"]
+
+        streams = {item["id"]: item for item in data["streams"]}
+        self.assertFalse(streams["rtsp"]["available"])
+        self.assertEqual(streams["rtsp"]["reason"], "disabled")
+
+    def test_rtsp_stays_available_for_on_demand_camera_without_reader(self):
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui.os.path, "getmtime", return_value=1234),
+            ):
+                data = web_ui.format_streams(
+                    {
+                        "garage": {
+                            "enabled": True,
+                            "connected": False,
+                            "rtsp_fw_enabled": True,
+                            "boa_url": None,
+                            "webrtc": False,
+                        }
+                    }
+                )["garage"]
+
+        streams = {item["id"]: item for item in data["streams"]}
+        self.assertTrue(streams["rtsp"]["available"])
+        self.assertEqual(streams["rtsp"]["reason"], "")
+
+    def test_on_demand_rtsp_and_rtmp_are_available_without_disabled_tag(self):
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui.os.path, "getmtime", return_value=1234),
+            ):
+                data = web_ui.format_streams(
+                    {
+                        "dog-run": {
+                            "enabled": True,
+                            "connected": False,
+                            "rtsp_fw_enabled": False,
+                            "boa_url": None,
+                            "webrtc": False,
+                        }
+                    }
+                )["dog-run"]
+
+        streams = {item["id"]: item for item in data["streams"]}
+        self.assertTrue(streams["rtsp"]["available"])
+        self.assertEqual(streams["rtsp"]["reason"], "")
+        self.assertTrue(streams["rtmp"]["available"])
+        self.assertEqual(streams["rtmp"]["reason"], "")
 
     def test_preview_refresh_route_uses_api_mode(self):
         self.assertEqual(web_ui.preview_refresh_route("api"), "thumb")
