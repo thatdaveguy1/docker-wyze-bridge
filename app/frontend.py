@@ -38,6 +38,11 @@ def create_app():
         def wrapped_view(*args, **kwargs):
             if not wb.api.auth:
                 return redirect(url_for("wyze_login"))
+            if request.path.startswith("/kvs-config/") and request.remote_addr in {
+                "127.0.0.1",
+                "::1",
+            }:
+                return view(*args, **kwargs)
             return web_ui.auth.login_required(view)(*args, **kwargs)
 
         return wrapped_view
@@ -142,6 +147,21 @@ def create_app():
             web_ui.sse_generator(wb.streams.get_sse_status),
             mimetype="text/event-stream",
         )
+
+    @app.route("/api/status")
+    @auth_required
+    def api_status():
+        return wb.streams.get_sse_status()
+
+    @app.route("/kvs-config/<string:cam_name>")
+    @auth_required
+    def kvs_config(cam_name: str):
+        if not (cam := wb.streams.get(cam_name)):
+            return {"error": f"camera [{cam_name}] not found"}, 404
+        config = wb.api.get_kvs_proxy_config(cam_name)
+        if not config:
+            return {"error": f"KVS config not ready for {cam_name}"}, 503
+        return config
 
     @app.route("/api")
     @auth_required
