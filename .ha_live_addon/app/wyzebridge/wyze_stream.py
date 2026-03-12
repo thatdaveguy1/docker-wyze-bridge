@@ -33,6 +33,14 @@ NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 
 StreamTuple = namedtuple("stream", ["user", "camera", "options"])
 QueueTuple = namedtuple("queue", ["cam_resp", "cam_cmd"])
+KVS_ONLY_CMDS = {
+    "state",
+    "power",
+    "notifications",
+    "update_snapshot",
+    "motion",
+    "motion_ts",
+}
 
 
 def connect_watchdog_timeout() -> int:
@@ -161,57 +169,25 @@ class WyzeStream(Stream):
         return True
 
     def start(self) -> bool:
-        if self.camera.is_kvs:
-            if not self.api.setup_mtx_proxy(self.camera.name_uri, self.uri):
-                return False
-            self.state = StreamStatus.CONNECTED
-            return True
+        if not self.camera.is_kvs:
+            logger.warning(
+                f"Skipping {self.camera.nickname}: model {self.camera.product_model} does not support KVS-only mode."
+            )
+            self.state = StreamStatus.DISABLED
+            return False
         if self.health_check(False) != StreamStatus.STOPPED:
             return False
-        self.state = StreamStatus.CONNECTING
-        logger.info(
-            f"🎉 Connecting to WyzeCam {self.camera.model_name} - {self.camera.nickname} on {self.camera.ip}"
-        )
         self.start_time = time()
-        self.cam_resp = mp.Queue(1)
-        self.cam_cmd = mp.Queue(1)
-        self.tutk_stream_process = mp.Process(
-            target=start_tutk_stream,
-            args=(
-                self.uri,
-                StreamTuple(self.user, self.camera, self.options),
-                QueueTuple(self.cam_resp, self.cam_cmd),
-                self._state,
-            ),
-            name=self.uri,
-        )
-        self.tutk_stream_process.start()
+        self.state = StreamStatus.CONNECTING
+        if not self.api.setup_mtx_proxy(self.camera.name_uri, self.uri):
+            self.state = StreamStatus.STOPPED
+            self.start_time = 0
+            return False
+        self.state = StreamStatus.CONNECTED
         return True
 
     def stop(self) -> bool:
-        if self.camera.is_kvs:
-            self.start_time = 0
-            self.state = StreamStatus.STOPPED
-            return True
-        self._clear_mp_queue()
         self.start_time = 0
-        self.state = StreamStatus.STOPPING
-
-        # Safely check if process is alive - may fail if called from wrong process
-        try:
-            is_running = (
-                self.tutk_stream_process and self.tutk_stream_process.is_alive()
-            )
-        except AssertionError:
-            # Process object accessed from different process (e.g., signal handler in child)
-            is_running = False
-
-        if is_running and self.tutk_stream_process:
-            with contextlib.suppress(ValueError, AttributeError, RuntimeError):
-                self.tutk_stream_process.terminate()
-                self.tutk_stream_process.join(5)
-
-        self.tutk_stream_process = None
         self.state = StreamStatus.STOPPED
         return True
 
@@ -238,11 +214,7 @@ class WyzeStream(Stream):
                 self.disable()
                 return self.state
             logger.info(f"👻 {self.camera.nickname} is offline.")
-        if (
-            self.state in {-13, -19, -68}
-        ):  # IOTC_ER_TIMEOUT, IOTC_ER_CAN_NOT_FIND_DEVICE, IOTC_ER_DEVICE_REJECT_BY_WRONG_AUTH_KEY
-            self.refresh_camera()
-        elif self.state < StreamStatus.DISABLED:
+        if self.state < StreamStatus.DISABLED:
             state = self.state
             self.stop()
             if state < StreamStatus.STOPPING:
@@ -404,6 +376,9 @@ class WyzeStream(Stream):
 
         if DISABLE_CONTROL:
             return {"response": "control disabled"}
+
+        if self.camera.is_kvs and cmd not in KVS_ONLY_CMDS:
+            return {"response": f"{cmd} unsupported in KVS-only mode"}
 
         if cmd == "time_zone" and payload and isinstance(payload, str):
             return self.tz_control(payload)

@@ -169,9 +169,16 @@ class MtxServer:
 
             mtx.save_config()
 
-    def add_path(self, uri: str, on_demand: bool = True):
+    def add_path(self, uri: str, on_demand: bool = True, is_kvs: bool = False):
         with MtxInterface() as mtx:
-            if on_demand:
+            if is_kvs:
+                on_demand = True
+                mtx.set(f"paths.{uri}.source", f"whep://localhost:8080/whep/{uri}")
+                mtx.set(f"paths.{uri}.sourceOnDemand", on_demand)
+                if on_demand:
+                    mtx.set(f"paths.{uri}.sourceOnDemandStartTimeout", "30s")
+                    mtx.set(f"paths.{uri}.sourceOnDemandCloseAfter", "15s")
+            elif on_demand:
                 bash_cmd = "bash -c 'echo $MTX_PATH,{}! > /tmp/mtx_event'"
                 mtx.set(f"paths.{uri}.runOnDemand", bash_cmd.format("start"))
                 mtx.set(f"paths.{uri}.runOnUnDemand", bash_cmd.format("stop"))
