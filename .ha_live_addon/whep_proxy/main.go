@@ -157,7 +157,9 @@ func (stream *WebRTCStream) requestVideoKeyframe(reason string) error {
 	}
 
 	if videoSource == nil || peerConnection == nil {
-		log.Printf("[WHEP_PROXY] Skipping keyframe request (%s): video source unavailable", reason)
+		if whepDebugEnabled() {
+			log.Printf("[WHEP_PROXY] Skipping keyframe request (%s): video source unavailable", reason)
+		}
 		return nil
 	}
 
@@ -168,7 +170,7 @@ func (stream *WebRTCStream) requestVideoKeyframe(reason string) error {
 		return err
 	}
 
-	if reason != "downstream rtcp feedback" {
+	if whepDebugEnabled() && reason != "downstream rtcp feedback" && reason != "periodic downstream refresh" {
 		log.Printf("[WHEP_PROXY] Requested keyframe (%s) for SSRC=%d", reason, videoSource.SSRC())
 	}
 	return nil
@@ -396,7 +398,7 @@ func (stream *WebRTCStream) replayVideoParameterSets(
 			return false
 		}
 		stream.videoPrimed.Store(true)
-		if stream.videoReplayLogged.CompareAndSwap(false, true) {
+		if whepDebugEnabled() && stream.videoReplayLogged.CompareAndSwap(false, true) {
 			log.Printf("[WHEP_PROXY] Replayed SPS (%d bytes) + PPS (%d bytes) before IDR for %s", spsBytes, ppsBytes, streamID)
 		}
 		stream.videoParamsMissed.Store(false)
@@ -422,7 +424,7 @@ func (stream *WebRTCStream) replayVideoParameterSets(
 	}
 
 	stream.videoPrimed.Store(true)
-	if stream.videoReplayLogged.CompareAndSwap(false, true) {
+	if whepDebugEnabled() && stream.videoReplayLogged.CompareAndSwap(false, true) {
 		log.Printf("[WHEP_PROXY] Replayed SPS (%d bytes) + PPS (%d bytes) before IDR for %s", spsBytes, ppsBytes, streamID)
 	}
 	stream.videoParamsMissed.Store(false)
@@ -524,7 +526,7 @@ func forwardTrack(
 					droppedCount++
 					continue
 				}
-				if stream.videoIDRLogged.CompareAndSwap(false, true) {
+				if whepDebugEnabled() && stream.videoIDRLogged.CompareAndSwap(false, true) {
 					log.Printf(
 						"[WHEP_PROXY] First IDR for %s: seq=%d marker=%t bytes=%d desc=%s",
 						streamID,
@@ -553,7 +555,7 @@ func forwardTrack(
 			}
 		}
 
-		if readCount%5000 == 0 {
+		if whepDebugEnabled() && readCount%20000 == 0 {
 			log.Printf(
 				"[WHEP_PROXY] RTP stats for %s (%s): read=%d written=%d dropped=%d clients=%d",
 				streamID,
@@ -578,7 +580,9 @@ func readReceiverRTCP(streamID string, track *webrtc.TrackRemote, receiver *webr
 		for _, pkt := range pkts {
 			switch pkt.(type) {
 			case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
-				log.Printf("[WHEP_PROXY] Upstream RTCP feedback for %s (%s): %T", streamID, track.Kind().String(), pkt)
+				if whepDebugEnabled() {
+					log.Printf("[WHEP_PROXY] Upstream RTCP feedback for %s (%s): %T", streamID, track.Kind().String(), pkt)
+				}
 			}
 		}
 	}
@@ -869,7 +873,9 @@ func handleRemoteAnswer(streamID string, session *UpstreamSession, msg map[strin
 		return fmt.Errorf("unmarshal SDP_ANSWER: %w", err)
 	}
 
-	fmt.Println("[WHEP_PROXY] Received SDP_ANSWER for", streamID)
+	if whepDebugEnabled() {
+		fmt.Println("[WHEP_PROXY] Received SDP_ANSWER for", streamID)
+	}
 	answer.SDP = strings.ReplaceAll(answer.SDP, "\\r\\n", "\r\n")
 	if err := session.peerConnection.SetRemoteDescription(answer); err != nil {
 		return fmt.Errorf("set remote description: %w", err)
@@ -948,15 +954,17 @@ func createAndSendOffer(streamID string, session *UpstreamSession) error {
 		"type": "offer",
 		"sdp":  rewriteSessionLine(localDescription.SDP, session.correlationID),
 	}
-	if decoded, err := json.Marshal(envelope); err == nil {
-		fmt.Println("[WHEP_PROXY] SDP_OFFER payload for", streamID, string(decoded))
-	}
-	if payload, err := json.Marshal(map[string]interface{}{
-		"action":         "SDP_OFFER",
-		"messagePayload": base64.StdEncoding.EncodeToString(mustJSON(envelope)),
-		"correlationId":  session.correlationID,
-	}); err == nil {
-		fmt.Println("[WHEP_PROXY] Sending envelope for", streamID, string(payload))
+	if whepDebugEnabled() {
+		if decoded, err := json.Marshal(envelope); err == nil {
+			fmt.Println("[WHEP_PROXY] SDP_OFFER payload for", streamID, string(decoded))
+		}
+		if payload, err := json.Marshal(map[string]interface{}{
+			"action":         "SDP_OFFER",
+			"messagePayload": base64.StdEncoding.EncodeToString(mustJSON(envelope)),
+			"correlationId":  session.correlationID,
+		}); err == nil {
+			fmt.Println("[WHEP_PROXY] Sending envelope for", streamID, string(payload))
+		}
 	}
 	return sendSignalingMessage(session, "SDP_OFFER", envelope, session.correlationID)
 }
@@ -968,7 +976,9 @@ func establishUpstream(stream *WebRTCStream) error {
 		return fmt.Errorf("decode signaling URL: %w", err)
 	}
 
-	fmt.Println("[WHEP_PROXY] Connecting websocket:", redactURL(decodedURL))
+	if whepDebugEnabled() {
+		fmt.Println("[WHEP_PROXY] Connecting websocket:", redactURL(decodedURL))
+	}
 
 	dialer := *websocket.DefaultDialer
 	dialer.HandshakeTimeout = 20 * time.Second
@@ -1025,10 +1035,14 @@ func establishUpstream(stream *WebRTCStream) error {
 	}
 
 	peerConnection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		log.Printf("[WHEP_PROXY] ICE connection state for %s: %s", stream.streamID, state.String())
+		if whepDebugEnabled() || state == webrtc.ICEConnectionStateFailed || state == webrtc.ICEConnectionStateDisconnected {
+			log.Printf("[WHEP_PROXY] ICE connection state for %s: %s", stream.streamID, state.String())
+		}
 	})
 	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		log.Printf("[WHEP_PROXY] Peer connection state for %s: %s", stream.streamID, state.String())
+		if whepDebugEnabled() || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateClosed {
+			log.Printf("[WHEP_PROXY] Peer connection state for %s: %s", stream.streamID, state.String())
+		}
 		switch state {
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
 			stream.handleUpstreamDisconnect(session, fmt.Sprintf("peer connection state=%s", state.String()))
@@ -1050,14 +1064,16 @@ func establishUpstream(stream *WebRTCStream) error {
 			return
 		}
 
-		log.Printf("[WHEP_PROXY] Received track for %s: codec=%s", stream.streamID, track.Codec().MimeType)
-		fmt.Printf(
-			"[WHEP_PROXY] Received remote track for %s: kind=%s codec=%s payloadType=%d\n",
-			stream.streamID,
-			track.Kind().String(),
-			track.Codec().MimeType,
-			track.PayloadType(),
-		)
+		if whepDebugEnabled() {
+			log.Printf("[WHEP_PROXY] Received track for %s: codec=%s", stream.streamID, track.Codec().MimeType)
+			fmt.Printf(
+				"[WHEP_PROXY] Received remote track for %s: kind=%s codec=%s payloadType=%d\n",
+				stream.streamID,
+				track.Kind().String(),
+				track.Codec().MimeType,
+				track.PayloadType(),
+			)
+		}
 
 		var localTrack *webrtc.TrackLocalStaticRTP
 		switch track.Kind() {
@@ -1118,32 +1134,36 @@ func establishUpstream(stream *WebRTCStream) error {
 			}
 
 			if len(data) == 0 {
-				log.Println("[WHEP_PROXY] Skipping empty keepalive frame")
+				if whepDebugEnabled() {
+					log.Println("[WHEP_PROXY] Skipping empty keepalive frame")
+				}
 				continue
 			}
 
-			const rawLogLen = 200
-			msgTypeStr := "other"
-			switch messageType {
-			case websocket.TextMessage:
-				msgTypeStr = "text"
-			case websocket.BinaryMessage:
-				msgTypeStr = "binary"
-			}
-			sampleLen := len(data)
-			if sampleLen > rawLogLen {
-				sampleLen = rawLogLen
-			}
-			if messageType == websocket.BinaryMessage && sampleLen > 0 {
-				fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d_hex=%s\n", msgTypeStr, len(data), sampleLen, hex.EncodeToString(data[:sampleLen]))
-			} else if sampleLen > 0 {
-				payload := string(data[:sampleLen])
-				if strings.ContainsAny(payload, "\r\n") {
-					payload = strings.ReplaceAll(strings.ReplaceAll(payload, "\r", "\\r"), "\n", "\\n")
+			if whepDebugEnabled() {
+				const rawLogLen = 200
+				msgTypeStr := "other"
+				switch messageType {
+				case websocket.TextMessage:
+					msgTypeStr = "text"
+				case websocket.BinaryMessage:
+					msgTypeStr = "binary"
 				}
-				fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d=%s\n", msgTypeStr, len(data), sampleLen, payload)
-			} else {
-				fmt.Printf("[WHEP_PROXY] raw message type=%s len=0\n", msgTypeStr)
+				sampleLen := len(data)
+				if sampleLen > rawLogLen {
+					sampleLen = rawLogLen
+				}
+				if messageType == websocket.BinaryMessage && sampleLen > 0 {
+					fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d_hex=%s\n", msgTypeStr, len(data), sampleLen, hex.EncodeToString(data[:sampleLen]))
+				} else if sampleLen > 0 {
+					payload := string(data[:sampleLen])
+					if strings.ContainsAny(payload, "\r\n") {
+						payload = strings.ReplaceAll(strings.ReplaceAll(payload, "\r", "\\r"), "\n", "\\n")
+					}
+					fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d=%s\n", msgTypeStr, len(data), sampleLen, payload)
+				} else {
+					fmt.Printf("[WHEP_PROXY] raw message type=%s len=0\n", msgTypeStr)
+				}
 			}
 
 			var jsonData []byte
@@ -1328,6 +1348,11 @@ func mustJSON(v interface{}) []byte {
 	return data
 }
 
+func whepDebugEnabled() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("WHEP_DEBUG")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
 func sdpHasMediaLine(sdp, media string) bool {
 	return strings.Contains(sdp, "\nm="+media+" ") || strings.HasPrefix(sdp, "m="+media+" ")
 }
@@ -1383,8 +1408,9 @@ func whepHandler(w http.ResponseWriter, r *http.Request) {
 
 		var countedClient atomic.Bool
 		peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-			log.Printf("[WHEP_PROXY] Downstream WHEP peer for %s: state=%s", streamID, state.String())
-			log.Printf("[WHEP_PROXY] WHEP client state for %s: %s", streamID, state.String())
+			if whepDebugEnabled() || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateClosed {
+				log.Printf("[WHEP_PROXY] Downstream WHEP peer for %s: state=%s", streamID, state.String())
+			}
 			switch state {
 			case webrtc.PeerConnectionStateConnected:
 				if countedClient.CompareAndSwap(false, true) {
@@ -1455,7 +1481,9 @@ func whepHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}(rtpSender)
 		}
-		log.Printf("[WHEP_PROXY] WHEP tracks added for %s: video=%v audio=%v", streamID, videoAdded, audioAdded)
+		if whepDebugEnabled() {
+			log.Printf("[WHEP_PROXY] WHEP tracks added for %s: video=%v audio=%v", streamID, videoAdded, audioAdded)
+		}
 
 		gatherComplete := webrtc.GatheringCompletePromise(peerConnection)
 		answer, err := peerConnection.CreateAnswer(&webrtc.AnswerOptions{})

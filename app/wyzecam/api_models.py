@@ -190,11 +190,7 @@ class WyzeCamera(BaseModel):
 
     @property
     def is_kvs(self) -> bool:
-        return (
-            self.product_model in KVS_CAMS
-            or (self.product_model == "HL_CAM4" and v4_kvs_trial_enabled())
-            or (self.webrtc_support and all_rtc_trial_enabled())
-        )
+        return self.product_model in KVS_CAMS or self.webrtc_support
 
     @property
     def is_floodlight(self) -> bool:

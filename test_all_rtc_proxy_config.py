@@ -51,7 +51,6 @@ class TestAllRTCProxyConfig(unittest.TestCase):
         with (
             patch.object(WyzeApi, "get_camera", return_value=cam),
             patch("wyzebridge.wyze_api.get_cam_webrtc", return_value=signal),
-            patch.dict("os.environ", {"ENABLE_ALL_RTC_TRIAL": "true"}, clear=False),
         ):
             config = self.api.get_kvs_proxy_config(cam.name_uri)
 
@@ -62,10 +61,7 @@ class TestAllRTCProxyConfig(unittest.TestCase):
 
     def test_non_webrtc_camera_does_not_use_proxy(self):
         cam = make_camera("WYZEC1", "Old Cam")
-        with (
-            patch.object(WyzeApi, "get_camera", return_value=cam),
-            patch.dict("os.environ", {"ENABLE_ALL_RTC_TRIAL": "true"}, clear=False),
-        ):
+        with patch.object(WyzeApi, "get_camera", return_value=cam):
             config = self.api.get_kvs_proxy_config(cam.name_uri)
 
         self.assertIsNone(config)

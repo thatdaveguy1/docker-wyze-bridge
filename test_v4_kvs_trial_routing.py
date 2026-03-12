@@ -3,7 +3,6 @@
 import pathlib
 import sys
 import unittest
-from unittest.mock import patch
 
 sys.path.insert(
     0, str(pathlib.Path(__file__).resolve().parent / ".ha_v4kvs_trial_addon" / "app")
@@ -32,17 +31,14 @@ def make_camera(model: str = "HL_CAM4") -> WyzeCamera:
 
 
 class TestV4KVSTrialRouting(unittest.TestCase):
-    def test_hl_cam4_is_not_kvs_by_default(self):
-        with patch.dict("os.environ", {}, clear=False):
-            self.assertFalse(make_camera("HL_CAM4").is_kvs)
+    def test_hl_cam4_is_kvs_by_default(self):
+        self.assertTrue(make_camera("HL_CAM4").is_kvs)
 
-    def test_hl_cam4_can_enable_kvs_trial_with_env(self):
-        with patch.dict("os.environ", {"ENABLE_V4_KVS_TRIAL": "true"}, clear=False):
-            self.assertTrue(make_camera("HL_CAM4").is_kvs)
+    def test_non_webrtc_camera_is_not_kvs(self):
+        self.assertFalse(make_camera("WYZEC1").is_kvs)
 
     def test_existing_kvs_camera_stays_kvs_without_env(self):
-        with patch.dict("os.environ", {}, clear=False):
-            self.assertTrue(make_camera("LD_CFP").is_kvs)
+        self.assertTrue(make_camera("LD_CFP").is_kvs)
 
 
 if __name__ == "__main__":

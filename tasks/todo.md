@@ -56,3 +56,6 @@
 - [completed] Add a regression test and fix for RTC/KVS stream metadata requests missing `cam_cmd`, then deploy and validate the live HA add-on
 - [completed] Patch `scripts/deploy_ha_local_addon.sh` to copy `app/wyzebridge/wyze_stream.py` so the live HA add-on receives the RTC/KVS metadata fix
 - [completed] Add an ingress base-URL fix and deploy-script copy step for `app/templates/base.html` so the HA panel resolves static/API paths even without a trailing slash
+- [completed] Make KVS the default routing path for supported cameras, disable active TUTK startup, reduce WHEP proxy log spam, and redeploy to Home Assistant
+- [completed] Fix KVS WHEP first-read readiness by seeding the live proxy from `app/wyze_bridge.py` and forcing KVS MediaMTX sources on-demand
+- [completed] Downgrade transient Wyze cloud thumbnail `404` pull failures from error-level noise to warning-level unavailability

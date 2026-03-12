@@ -290,7 +290,17 @@ class WyzeApi:
 
             return True
         except Exception as ex:
-            logger.error(f"[API] Error pulling thumbnail: [{type(ex).__name__}] {ex}")
+            if (
+                isinstance(ex, requests.HTTPError)
+                and getattr(ex.response, "status_code", None) == 404
+            ):
+                logger.warning(
+                    f"[API] Thumbnail unavailable for {uri}: [{type(ex).__name__}] {ex}"
+                )
+            else:
+                logger.error(
+                    f"[API] Error pulling thumbnail: [{type(ex).__name__}] {ex}"
+                )
             return False
 
     @authenticated
@@ -409,20 +419,11 @@ class WyzeApi:
                         timeout=10,
                     )
                     response.raise_for_status()
-                    deadline = time() + 20
-                    while time() < deadline:
-                        status = requests.get(
-                            f"http://localhost:8080/status/{uri}", timeout=2
-                        )
-                        status.raise_for_status()
-                        if status.json().get("video_ready"):
-                            last_error = None
-                            break
-                        sleep(0.25)
-                    else:
-                        raise TimeoutError(
-                            f"timed out waiting for KVS video track for {uri}"
-                        )
+                    status = requests.get(
+                        f"http://localhost:8080/status/{uri}", timeout=2
+                    )
+                    status.raise_for_status()
+                    last_error = None
                     break
                 except (requests.RequestException, TimeoutError, ValueError) as ex:
                     last_error = ex
