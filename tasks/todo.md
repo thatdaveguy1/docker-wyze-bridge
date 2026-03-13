@@ -59,3 +59,13 @@
 - [completed] Make KVS the default routing path for supported cameras, disable active TUTK startup, reduce WHEP proxy log spam, and redeploy to Home Assistant
 - [completed] Fix KVS WHEP first-read readiness by seeding the live proxy from `app/wyze_bridge.py` and forcing KVS MediaMTX sources on-demand
 - [completed] Downgrade transient Wyze cloud thumbnail `404` pull failures from error-level noise to warning-level unavailability
+- [completed] Collapse expected WHEP normal-close log spam into one operator-facing rollover line
+- [completed] Redact thumbnail URL query strings and reduce repetitive camera cache chatter
+- [completed] Re-tune KVS MediaMTX close-after timing and validate `processing errors` on live HA logs; rollover noise dropped, but `garage`/`north-yard` warnings still correlate with WebRTC track-readiness misses rather than close-after churn
+- [completed] Run targeted Python tests, redeploy, and soak-validate the updated logging behavior; local Go tests were blocked by missing local `go` and an unavailable Docker daemon, so live HA runtime validation was used instead
+- [completed] Test a minimal KVS WHEP gather-time tuning path; the live `MediaMTX v1.12.3` binary rejects `whepTrackGatherTimeout` as an unknown field, so the change was reverted immediately and the add-on was redeployed back to a supported config
+- [completed] Add scoped `dog-run` WHEP tracing and validate the remaining failure mode; live traces show `dog-run` tracks arriving about 6.5s after connect, after MediaMTX v1.12.3 already emits `deadline exceeded while waiting tracks`, so the current issue is a real startup-timing mismatch rather than only generic Wi-Fi churn
+- [completed] Upgrade the local HA add-on from MediaMTX `1.12.3` to `1.16.3`, update the hot-deploy script to propagate `app/.env`, and validate that the upgraded runtime boots cleanly before any new tuning
+- [completed] Re-enable `whepTrackGatherTimeout=8s` on MediaMTX `1.16.3` and validate live startup; `dog-run` now reaches `stream is available and online` without the earlier `deadline exceeded while waiting tracks` failure during the short post-upgrade validation window
+- [completed] Run a longer post-upgrade soak and compare noisy paths; `dog-run`, `garage`, `deck`, and `north-yard` all reached `stream is available and online` cleanly on `MediaMTX 1.16.3`, and `dog-run` no longer showed the earlier startup-timeout failure in the observed window
+- [completed] Investigate and mitigate `invalid FU-A packet (non-starting)` bursts by tightening H264 FU-A forwarding in the WHEP proxy so non-starting fragments are dropped until a valid fragment start is seen; the immediate post-fix soak did not reproduce the earlier FU-A bursts in the observed startup/read window
