@@ -1,6 +1,7 @@
 import contextlib
 import json
 import pickle
+from urllib.parse import urlsplit
 from datetime import datetime
 from functools import wraps
 from os import environ, utime
@@ -52,17 +53,20 @@ def cached(func: Callable[..., Any]) -> Callable[..., Any]:
                         raise OSError
                 if name == "user" and not self.creds.same_email(data.email):
                     raise ValueError("🕵️ Cached email doesn't match 'WYZE_EMAIL'")
-                logger.info(f"📚 Using '{name}' from local cache...")
+                cache_logger = logger.debug if name == "cameras" else logger.info
+                cache_logger(f"📚 Using '{name}' from local cache...")
                 setattr(self, name, data)
                 return data
             except OSError:
-                logger.info(f"🔍 Could not find local cache for '{name}'")
+                cache_logger = logger.debug if name == "cameras" else logger.info
+                cache_logger(f"🔍 Could not find local cache for '{name}'")
             except Exception as ex:
                 logger.warning(
                     f"Error restoring data for '{name}': [{type(ex).__name__}] {ex}"
                 )
                 self.clear_cache()
-        logger.info(f"☁️ Fetching '{name}' from the Wyze API...")
+        fetch_logger = logger.debug if name == "cameras" else logger.info
+        fetch_logger(f"☁️ Fetching '{name}' from the Wyze API...")
         result = func(self, *args, **kwargs)
         if result and (data := getattr(self, name, None)):
             pickle_dump(name, data)
@@ -89,6 +93,15 @@ def authenticated(func: Callable[..., Any]) -> Callable[..., Any]:
             logger.error(f"[API] [{type(ex).__name__}] {ex}")
 
     return wrapper
+
+
+def sanitize_url(url: str) -> str:
+    parts = urlsplit(url)
+    return (
+        f"{parts.scheme}://{parts.netloc}{parts.path}"
+        if parts.scheme and parts.netloc
+        else parts.path or "<redacted>"
+    )
 
 
 class WyzeCredentials:
@@ -228,7 +241,7 @@ class WyzeApi:
 
         self.cameras = get_camera_list(self.auth)
         self._last_pull = time()
-        logger.info(f"[API] Fetched [{len(self.cameras)}] cameras")
+        logger.debug(f"[API] Fetched [{len(self.cameras)}] cameras")
         logger.debug(f"[API] cameras={[c.nickname for c in self.cameras]}")
 
         return self.cameras
@@ -295,11 +308,11 @@ class WyzeApi:
                 and getattr(ex.response, "status_code", None) == 404
             ):
                 logger.warning(
-                    f"[API] Thumbnail unavailable for {uri}: [{type(ex).__name__}] {ex}"
+                    f"[API] Thumbnail unavailable for {uri}: status=404 url={sanitize_url(thumb)}"
                 )
             else:
                 logger.error(
-                    f"[API] Error pulling thumbnail: [{type(ex).__name__}] {ex}"
+                    f"[API] Error pulling thumbnail for {uri}: [{type(ex).__name__}]"
                 )
             return False
 
@@ -651,7 +664,8 @@ def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
 
 def pickle_dump(name: str, data: object):
     with open(TOKEN_PATH + name + ".pickle", "wb") as f:
-        logger.info(f"💾 Saving '{name}' to local cache...")
+        save_logger = logger.debug if name == "cameras" else logger.info
+        save_logger(f"💾 Saving '{name}' to local cache...")
         pickle.dump(data, f)
 
 

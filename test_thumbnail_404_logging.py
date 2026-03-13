@@ -33,6 +33,11 @@ class TestThumbnail404Logging(unittest.TestCase):
         self.assertFalse(result)
         warning.assert_called_once()
         err.assert_not_called()
+        warning_message = warning.call_args.args[0]
+        self.assertIn("Thumbnail unavailable for hamster", warning_message)
+        self.assertIn("https://example.test/thumb.jpg", warning_message)
+        self.assertNotIn("X-Amz-Date=1", warning_message)
+        self.assertNotIn("404 Client Error", warning_message)
 
 
 if __name__ == "__main__":

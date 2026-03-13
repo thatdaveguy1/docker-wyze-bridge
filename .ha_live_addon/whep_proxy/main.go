@@ -70,6 +70,16 @@ type UpstreamSession struct {
 	remoteDescription *webrtc.SessionDescription
 	correlationID     string
 	recipientClientID string
+	startedAt         time.Time
+	normalCloseLogged atomic.Bool
+	videoTrackLogged  atomic.Bool
+	audioTrackLogged  atomic.Bool
+}
+
+type wsCloseInfo struct {
+	code   int
+	reason string
+	normal bool
 }
 
 type ICEServer struct {
@@ -174,6 +184,37 @@ func (stream *WebRTCStream) requestVideoKeyframe(reason string) error {
 		log.Printf("[WHEP_PROXY] Requested keyframe (%s) for SSRC=%d", reason, videoSource.SSRC())
 	}
 	return nil
+}
+
+func classifyWSReadError(err error) wsCloseInfo {
+	var closeErr *websocket.CloseError
+	if errors.As(err, &closeErr) {
+		reason := strings.TrimSpace(closeErr.Text)
+		return wsCloseInfo{code: closeErr.Code, reason: reason, normal: closeErr.Code == websocket.CloseNormalClosure || closeErr.Code == websocket.CloseGoingAway}
+	}
+	if errors.Is(err, io.EOF) {
+		return wsCloseInfo{reason: "EOF"}
+	}
+	return wsCloseInfo{}
+}
+
+func shouldLogTrackEnd(err error) bool {
+	return !errors.Is(err, io.EOF)
+}
+
+func shouldLogRTCPEnd(err error) bool {
+	return !errors.Is(err, io.EOF)
+}
+
+func logNormalClose(session *UpstreamSession, streamID string, closeInfo wsCloseInfo) {
+	if session == nil || !session.normalCloseLogged.CompareAndSwap(false, true) {
+		return
+	}
+	reason := closeInfo.reason
+	if reason == "" {
+		reason = "normal closure"
+	}
+	log.Printf("[WHEP_PROXY] Upstream session rotated for %s: websocket close code=%d reason=%q", streamID, closeInfo.code, reason)
 }
 
 func (stream *WebRTCStream) currentUpstream() *UpstreamSession {
@@ -291,6 +332,16 @@ func h264PacketInfo(payload []byte) (isIDR bool, desc string) {
 	default:
 		return false, fmt.Sprintf("nalu-%d", naluType)
 	}
+}
+
+func h264FUAState(payload []byte) (isFUA bool, start bool, end bool) {
+	if len(payload) < 2 {
+		return false, false, false
+	}
+	if payload[0]&0x1F != 28 {
+		return false, false, false
+	}
+	return true, payload[1]&0x80 != 0, payload[1]&0x40 != 0
 }
 
 func cloneRTPPacket(pkt *rtp.Packet) *rtp.Packet {
@@ -500,27 +551,53 @@ func forwardTrack(
 	var readCount uint64
 	var writtenCount uint64
 	var droppedCount uint64
+	var lastVideoSeq uint16
+	var haveLastVideoSeq bool
+	var fuActive bool
 
 	for {
 		pkt, _, err := track.ReadRTP()
 		if err != nil {
-			log.Printf(
-				"[WHEP_PROXY] Track ended for %s (%s): read=%d written=%d dropped=%d err=%v",
-				streamID,
-				track.Kind().String(),
-				readCount,
-				writtenCount,
-				droppedCount,
-				err,
-			)
+			if whepDebugEnabled() || shouldLogTrackEnd(err) {
+				log.Printf(
+					"[WHEP_PROXY] Track ended for %s (%s): read=%d written=%d dropped=%d err=%v",
+					streamID,
+					track.Kind().String(),
+					readCount,
+					writtenCount,
+					droppedCount,
+					err,
+				)
+			}
 			stream.handleUpstreamDisconnect(session, fmt.Sprintf("%s track ended: %v", track.Kind().String(), err))
 			return
 		}
 
 		readCount++
+		videoFUAEnded := false
 		if track.Kind() == webrtc.RTPCodecTypeVideo {
 			stream.bufferVideoParameterSet(pkt)
 			isIDR, packetDesc := h264PacketInfo(pkt.Payload)
+			isFUA, fuaStart, fuaEnd := h264FUAState(pkt.Payload)
+			if isFUA {
+				if haveLastVideoSeq && fuActive && pkt.SequenceNumber != lastVideoSeq+1 {
+					fuActive = false
+					if whepDebugEnabled() {
+						log.Printf("[WHEP_PROXY] Dropping broken FU-A sequence for %s: expected seq=%d got=%d", streamID, lastVideoSeq+1, pkt.SequenceNumber)
+					}
+				}
+				if fuaStart {
+					fuActive = true
+				} else if !fuActive {
+					haveLastVideoSeq = true
+					lastVideoSeq = pkt.SequenceNumber
+					droppedCount++
+					continue
+				}
+			} else {
+				fuActive = false
+			}
+			videoFUAEnded = isFUA && fuaEnd
 			if isIDR {
 				if !stream.replayVideoParameterSets(localTrack, streamID, pkt.Timestamp) {
 					droppedCount++
@@ -540,6 +617,8 @@ func forwardTrack(
 				droppedCount++
 				continue
 			}
+			haveLastVideoSeq = true
+			lastVideoSeq = pkt.SequenceNumber
 		}
 		if stream.whepClients.Load() == 0 {
 			droppedCount++
@@ -552,6 +631,9 @@ func forwardTrack(
 					log.Printf("[WHEP_PROXY] Failed to request keyframe for %s after first write: %v", streamID, pliErr)
 					stream.videoPLIRequested.Store(true)
 				}
+			}
+			if track.Kind() == webrtc.RTPCodecTypeVideo && videoFUAEnded {
+				fuActive = false
 			}
 		}
 
@@ -573,7 +655,9 @@ func readReceiverRTCP(streamID string, track *webrtc.TrackRemote, receiver *webr
 	for {
 		pkts, _, err := receiver.ReadRTCP()
 		if err != nil {
-			log.Printf("[WHEP_PROXY] Receiver RTCP ended for %s (%s): %v", streamID, track.Kind().String(), err)
+			if whepDebugEnabled() || shouldLogRTCPEnd(err) {
+				log.Printf("[WHEP_PROXY] Receiver RTCP ended for %s (%s): %v", streamID, track.Kind().String(), err)
+			}
 			return
 		}
 
@@ -645,13 +729,7 @@ func (stream *WebRTCStream) scheduleReconnect(reason string) {
 			if delay > 30*time.Second {
 				delay = 30 * time.Second
 			}
-			log.Printf(
-				"[WHEP_PROXY] Reconnecting upstream for %s (%s), attempt %d in %s",
-				stream.streamID,
-				reason,
-				attempt,
-				delay,
-			)
+			log.Printf("[WHEP_PROXY] Reconnecting upstream for %s, attempt %d in %s (reason=%s)", stream.streamID, attempt, delay, reason)
 			time.Sleep(delay)
 
 			config, err := fetchKVSConfig(stream.streamID)
@@ -680,7 +758,9 @@ func (stream *WebRTCStream) handleUpstreamDisconnect(session *UpstreamSession, r
 	if !cleanupUpstreamIfCurrent(stream, session) {
 		return
 	}
-	log.Printf("[WHEP_PROXY] Upstream session ended for %s: %s", stream.streamID, reason)
+	if whepDebugEnabled() || !strings.Contains(reason, "websocket closed: websocket: close 1001") {
+		log.Printf("[WHEP_PROXY] Upstream session ended for %s: %s", stream.streamID, reason)
+	}
 	stream.scheduleReconnect(reason)
 }
 
@@ -698,7 +778,9 @@ func kvsConfigURL(streamID string) string {
 
 func fetchKVSConfig(streamID string) (WebRTCConfig, error) {
 	var config WebRTCConfig
-	log.Printf("[WHEP_PROXY] Fetching KVS config from %s", kvsConfigURL(streamID))
+	if whepDebugEnabled() {
+		log.Printf("[WHEP_PROXY] Fetching KVS config from %s", kvsConfigURL(streamID))
+	}
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Get(kvsConfigURL(streamID))
@@ -1015,8 +1097,10 @@ func establishUpstream(stream *WebRTCStream) error {
 		wsConn:         conn,
 		correlationID:  generateCorrelationID(config.PhoneID),
 		recipientClientID: config.PhoneID,
+		startedAt:      time.Now(),
 	}
 	stream.setUpstream(session)
+	traceLogf(stream.streamID, "upstream connect start signaling=%s", sanitizeLogURL(config.SignalingURL))
 
 	if _, err = peerConnection.AddTransceiverFromKind(
 		webrtc.RTPCodecTypeVideo,
@@ -1038,11 +1122,13 @@ func establishUpstream(stream *WebRTCStream) error {
 		if whepDebugEnabled() || state == webrtc.ICEConnectionStateFailed || state == webrtc.ICEConnectionStateDisconnected {
 			log.Printf("[WHEP_PROXY] ICE connection state for %s: %s", stream.streamID, state.String())
 		}
+		traceLogf(stream.streamID, "upstream ice state=%s after=%s", state.String(), time.Since(session.startedAt).Round(time.Millisecond))
 	})
 	peerConnection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
-		if whepDebugEnabled() || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateClosed {
+		if whepDebugEnabled() || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected {
 			log.Printf("[WHEP_PROXY] Peer connection state for %s: %s", stream.streamID, state.String())
 		}
+		traceLogf(stream.streamID, "upstream peer state=%s after=%s", state.String(), time.Since(session.startedAt).Round(time.Millisecond))
 		switch state {
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
 			stream.handleUpstreamDisconnect(session, fmt.Sprintf("peer connection state=%s", state.String()))
@@ -1080,6 +1166,9 @@ func establishUpstream(stream *WebRTCStream) error {
 		case webrtc.RTPCodecTypeVideo:
 			stream.setVideoSource(track)
 			localTrack = stream.videoTrack
+			if session.videoTrackLogged.CompareAndSwap(false, true) {
+				traceLogf(stream.streamID, "first upstream video track codec=%s payload=%d after=%s", track.Codec().MimeType, track.PayloadType(), time.Since(session.startedAt).Round(time.Millisecond))
+			}
 			if stream.whepClients.Load() > 0 {
 				stream.videoPLIRequested.Store(true)
 				if err := stream.requestVideoKeyframe("upstream track available"); err != nil {
@@ -1089,6 +1178,9 @@ func establishUpstream(stream *WebRTCStream) error {
 		case webrtc.RTPCodecTypeAudio:
 			stream.setAudioReady(true)
 			localTrack = stream.audioTrack
+			if session.audioTrackLogged.CompareAndSwap(false, true) {
+				traceLogf(stream.streamID, "first upstream audio track codec=%s payload=%d after=%s", track.Codec().MimeType, track.PayloadType(), time.Since(session.startedAt).Round(time.Millisecond))
+			}
 		default:
 			return
 		}
@@ -1121,13 +1213,15 @@ func establishUpstream(stream *WebRTCStream) error {
 		for {
 			messageType, data, err := conn.ReadMessage()
 			if err != nil {
-				var closeErr *websocket.CloseError
-				if errors.As(err, &closeErr) {
-					fmt.Printf("[WHEP_PROXY] Websocket closed by peer: code=%d reason=%q\n", closeErr.Code, closeErr.Text)
+				closeInfo := classifyWSReadError(err)
+				if closeInfo.normal {
+					logNormalClose(session, stream.streamID, closeInfo)
+				} else if closeInfo.code != 0 {
+					log.Printf("[WHEP_PROXY] Websocket closed by peer for %s: code=%d reason=%q", stream.streamID, closeInfo.code, closeInfo.reason)
 				} else if !errors.Is(err, io.EOF) {
-					fmt.Println("[WHEP_PROXY] Error reading message:", err)
-				} else {
-					fmt.Println("[WHEP_PROXY] Websocket read EOF (connection closed)")
+					log.Printf("[WHEP_PROXY] Error reading websocket message for %s: %v", stream.streamID, err)
+				} else if whepDebugEnabled() {
+					log.Printf("[WHEP_PROXY] Websocket read EOF for %s", stream.streamID)
 				}
 				stream.handleUpstreamDisconnect(session, fmt.Sprintf("websocket closed: %v", err))
 				return
@@ -1351,6 +1445,30 @@ func mustJSON(v interface{}) []byte {
 func whepDebugEnabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("WHEP_DEBUG")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func whepTraceStream() string {
+	return strings.TrimSpace(strings.ToLower(os.Getenv("WHEP_TRACE_STREAM")))
+}
+
+func whepTraceEnabled(streamID string) bool {
+	traceStream := whepTraceStream()
+	return traceStream != "" && strings.EqualFold(traceStream, streamID)
+}
+
+func traceLogf(streamID, format string, args ...interface{}) {
+	if !whepTraceEnabled(streamID) {
+		return
+	}
+	log.Printf("[WHEP_TRACE] %s: %s", streamID, fmt.Sprintf(format, args...))
+}
+
+func sanitizeLogURL(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "<redacted>"
+	}
+	return fmt.Sprintf("%s://%s%s", parsed.Scheme, parsed.Host, parsed.Path)
 }
 
 func sdpHasMediaLine(sdp, media string) bool {

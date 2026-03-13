@@ -177,7 +177,8 @@ class MtxServer:
                 mtx.set(f"paths.{uri}.sourceOnDemand", on_demand)
                 if on_demand:
                     mtx.set(f"paths.{uri}.sourceOnDemandStartTimeout", "30s")
-                    mtx.set(f"paths.{uri}.sourceOnDemandCloseAfter", "15s")
+                    mtx.set(f"paths.{uri}.sourceOnDemandCloseAfter", "30s")
+                    mtx.set(f"paths.{uri}.whepTrackGatherTimeout", "8s")
             elif on_demand:
                 bash_cmd = "bash -c 'echo $MTX_PATH,{}! > /tmp/mtx_event'"
                 mtx.set(f"paths.{uri}.runOnDemand", bash_cmd.format("start"))

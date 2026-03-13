@@ -33,7 +33,8 @@ class TestKVSMtxOnDemandConfig(unittest.TestCase):
         self.assertEqual(writes["paths.deck.source"], "whep://localhost:8080/whep/deck")
         self.assertTrue(writes["paths.deck.sourceOnDemand"])
         self.assertEqual(writes["paths.deck.sourceOnDemandStartTimeout"], "30s")
-        self.assertEqual(writes["paths.deck.sourceOnDemandCloseAfter"], "15s")
+        self.assertEqual(writes["paths.deck.sourceOnDemandCloseAfter"], "30s")
+        self.assertEqual(writes["paths.deck.whepTrackGatherTimeout"], "8s")
 
 
 if __name__ == "__main__":
