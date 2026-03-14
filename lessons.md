@@ -38,3 +38,5 @@
 - Remove funding/sponsorship links that reference the original author when forking; keep attribution in provenance docs instead of user-facing surfaces.
 - Add `.opencode/` and backup directories to `.gitignore` before the first push to avoid committing local tooling residue.
 - For release docs, sell outcomes rather than hype: stronger defaults, cleaner setup, and better reliability are believable; blanket claims like "It just works" or overspecific UI/config promises should be tied back to validated behavior in the code.
+- A Home Assistant add-on that builds from source during install should avoid BuildKit-only `RUN --mount=type=cache` syntax unless you have explicitly verified the HA builder supports it; local HA installs may fail before runtime even though the same Dockerfile works in CI/buildx.
+- When promoting an add-on from a hidden working tree into the public `home_assistant/` path, also sync `home_assistant/app/.env`; otherwise the add-on can build and display an outdated version even if `home_assistant/config.yml` was updated.

@@ -14,9 +14,7 @@ RUN go build -o /build/whep_proxy/whep_proxy
 FROM base AS builder
 ARG BUILD_DATE=
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    set -eux; \
+RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
         build-essential \
@@ -31,8 +29,7 @@ COPY /app/ /build/app/
 
 RUN chmod +x /build/app/run
 
-RUN --mount=type=cache,target=/root/.cache/pip \
-    set -eux; pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
+RUN set -eux; pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
 
 RUN set -eux; \
     echo "BUILDING IMAGE FOR $(uname -m)";\
