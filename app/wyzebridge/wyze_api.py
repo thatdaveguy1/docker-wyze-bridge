@@ -354,7 +354,7 @@ class WyzeApi:
             logger.info(
                 f"[API] ☁️ Waking KVS camera {cam.nickname} before requesting stream..."
             )
-            if wakeup_kvs_camera:
+            if wakeup_kvs_camera and self.auth:
                 wakeup_kvs_camera(self.auth, cam)
 
     @authenticated
@@ -428,14 +428,14 @@ class WyzeApi:
                             f"failed to build KVS config for {cam.name_uri}"
                         )
                     response = requests.post(
-                        f"http://localhost:8080/websocket/{uri}",
+                        f"http://127.0.0.1:8080/websocket/{uri}",
                         json=kvs_config,
                         headers={"Content-Type": "application/json"},
                         timeout=10,
                     )
                     response.raise_for_status()
                     status = requests.get(
-                        f"http://localhost:8080/status/{uri}", timeout=2
+                        f"http://127.0.0.1:8080/status/{uri}", timeout=2
                     )
                     status.raise_for_status()
                     last_error = None

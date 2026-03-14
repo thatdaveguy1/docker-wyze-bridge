@@ -85,3 +85,15 @@ func TestSanitizeLogURLRedactsQueryString(t *testing.T) {
 		t.Fatalf("expected sanitized URL, got %q", got)
 	}
 }
+
+func TestIsLoopbackRemoteAddr(t *testing.T) {
+	if !isLoopbackRemoteAddr("127.0.0.1:8080") {
+		t.Fatal("expected IPv4 loopback to be allowed")
+	}
+	if !isLoopbackRemoteAddr("[::1]:8080") {
+		t.Fatal("expected IPv6 loopback to be allowed")
+	}
+	if isLoopbackRemoteAddr("10.0.0.5:8080") {
+		t.Fatal("expected non-loopback remote address to be rejected")
+	}
+}

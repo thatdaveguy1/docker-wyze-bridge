@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -804,6 +805,15 @@ func fetchKVSConfig(streamID string) (WebRTCConfig, error) {
 	return config, nil
 }
 
+func isLoopbackRemoteAddr(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	parsed := net.ParseIP(strings.TrimSpace(host))
+	return parsed != nil && parsed.IsLoopback()
+}
+
 func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/whep/{streamID}", whepHandler).Methods("GET", "OPTIONS", "POST")
@@ -811,8 +821,8 @@ func main() {
 	r.HandleFunc("/status/{streamID}", statusHandler).Methods("GET")
 
 	go func() {
-		fmt.Println("[WHEP_PROXY] Listening on :8080")
-		if err := http.ListenAndServe(":8080", r); err != nil {
+		fmt.Println("[WHEP_PROXY] Listening on 127.0.0.1:8080")
+		if err := http.ListenAndServe("127.0.0.1:8080", r); err != nil {
 			panic(err)
 		}
 	}()
@@ -1333,6 +1343,11 @@ func establishUpstream(stream *WebRTCStream) error {
 }
 
 func websocketHandler(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRemoteAddr(r.RemoteAddr) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -1418,6 +1433,11 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRemoteAddr(r.RemoteAddr) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
 	streamID := mux.Vars(r)["streamID"]
 
 	streamsMu.Lock()
@@ -1476,6 +1496,11 @@ func sdpHasMediaLine(sdp, media string) bool {
 }
 
 func whepHandler(w http.ResponseWriter, r *http.Request) {
+	if !isLoopbackRemoteAddr(r.RemoteAddr) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
 	streamID := mux.Vars(r)["streamID"]
 
 	streamsMu.Lock()

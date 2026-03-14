@@ -595,6 +595,26 @@ document.addEventListener("DOMContentLoaded", () => {
   })
   toggleFullscreen()
 
+  function getStreamAuthHeader(url) {
+    let username = "";
+    let password = "";
+    try {
+      const parsedUrl = new URL(url, window.location.origin);
+      username = parsedUrl.username || "";
+      password = parsedUrl.password || "";
+    } catch (_) {
+      // ignore URL parsing issues and fall back to configured auth
+    }
+    if (!username || !password) {
+      username = window.WB_STREAM_AUTH?.username || "";
+      password = window.WB_STREAM_AUTH?.password || "";
+    }
+    if (!username || !password) {
+      return null;
+    }
+    return `Basic ${btoa(`${username}:${password}`)}`;
+  }
+
   function loadHLS(videoElement) {
     if (!videoElement.paused && videoElement.hls && videoElement.hls.media) {
       return;
@@ -608,11 +628,11 @@ document.addEventListener("DOMContentLoaded", () => {
         videoElement.hls.destroy();
       }
       const hls = new Hls(hlsConfig);
-      const parsedUrl = new URL(videoSrc);
+      const authHeader = getStreamAuthHeader(videoSrc);
       videoElement.hls = hls;
-      if (parsedUrl.username && parsedUrl.password) {
+      if (authHeader) {
         hls.config.xhrSetup = (xhr) => {
-          xhr.setRequestHeader('Authorization', `Basic ${btoa(`${parsedUrl.username}:${parsedUrl.password}`)}`);
+          xhr.setRequestHeader('Authorization', authHeader);
         };
       }
       hls.on(Hls.Events.ERROR, (evt, data) => {
@@ -632,7 +652,9 @@ document.addEventListener("DOMContentLoaded", () => {
       hls.attachMedia(videoElement);
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       console.log("loading mpeg")
-      fetch(videoSrc)
+      const authHeader = getStreamAuthHeader(videoSrc);
+      const fetchOptions = authHeader ? { headers: { Authorization: authHeader } } : undefined;
+      fetch(videoSrc, fetchOptions)
         .then(() => { videoElement.src = videoSrc; })
         .catch(() => { loadHLS(videoElement); });
     }

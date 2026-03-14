@@ -173,7 +173,7 @@ class MtxServer:
         with MtxInterface() as mtx:
             if is_kvs:
                 on_demand = True
-                mtx.set(f"paths.{uri}.source", f"whep://localhost:8080/whep/{uri}")
+                mtx.set(f"paths.{uri}.source", f"whep://127.0.0.1:8080/whep/{uri}")
                 mtx.set(f"paths.{uri}.sourceOnDemand", on_demand)
                 if on_demand:
                     mtx.set(f"paths.{uri}.sourceOnDemandStartTimeout", "30s")
