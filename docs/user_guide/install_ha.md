@@ -56,11 +56,11 @@ By default, the add-on uses the following ports for local network access:
 - `58889`: WebRTC / WHEP
 - `59997`: MediaMTX API
 
-You can change these ports in the **Configuration** tab if needed.
+Advanced users can override MediaMTX port behavior through the add-on configuration, but most users should leave the defaults in place.
 
 ## Supported Cameras
 
 The V4.0 release includes specific fixes and improvements for:
-- **Wyze Cam V4:** Fully supported and routed through the default KVS/WebRTC path.
+- **Wyze Cam V4:** Uses the default KVS/WebRTC path and is a major focus of this fork.
 - **Wyze Cam V3 and V3 Pro:** Also use the default KVS/WebRTC path for lower latency and better stability.
 - All other Wyze cameras are supported via the standard bridge path.
