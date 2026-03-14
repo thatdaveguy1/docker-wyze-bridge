@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from flask import Flask
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "app"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from wyzebridge import web_ui
 

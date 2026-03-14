@@ -5,7 +5,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "app"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from wyzebridge import mtx_server
 

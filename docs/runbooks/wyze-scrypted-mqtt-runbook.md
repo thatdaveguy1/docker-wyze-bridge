@@ -1,7 +1,7 @@
 # Wyze Bridge → Scrypted MQTT Motion Runbook
 
 This runbook is written for remote execution over SSH and assumes you already control:
-- the `local_docker_wyze_bridge_local` add-on (see `docs/maintainer/LIVE-DEPLOYMENT.md`).
+- the target Wyze Bridge add-on in Home Assistant.
 - a reachable MQTT broker that both Home Assistant and Scrypted can touch.
 - the SSH helper scripts (`scripts/ha_ssh.sh`, `.ha_ssh.env`).
 
@@ -9,7 +9,7 @@ This runbook is written for remote execution over SSH and assumes you already co
 
 1. Check the add-on options and broker settings safely:
    ```sh
-   scripts/ha_ssh.sh ha apps info local_docker_wyze_bridge_local --raw-json \
+   scripts/ha_ssh.sh ha apps info <addon-slug> --raw-json \
      | python3 -c 'import json,sys
    d=json.load(sys.stdin)["data"]
    o=d.get("options", {})
@@ -34,15 +34,15 @@ This runbook is written for remote execution over SSH and assumes you already co
 ## 2. Configure MQTT motion emission in the Wyze Bridge add-on
 
 1. In the HA UI:
-   - Open the add-on options for `local_docker_wyze_bridge_local`.
+   - Open the add-on options for your Wyze Bridge add-on.
    - Set `MOTION_API: true` and `MQTT: true`.
    - Supply `MQTT_HOST: <broker-host>:1883` and `MQTT_AUTH: <username>:<password>`.
    - Leave `MOTION_WEBHOOKS` blank.
    - Keep `MQTT_TOPIC` as `wyzebridge` unless you need a different namespace.
 2. Apply options → the add-on should auto-restart; confirm with:
    ```sh
-   scripts/ha_ssh.sh ha apps restart local_docker_wyze_bridge_local
-   scripts/ha_ssh.sh ha apps logs local_docker_wyze_bridge_local | grep -E 'MQTT|API Motion'
+    scripts/ha_ssh.sh ha apps restart <addon-slug>
+    scripts/ha_ssh.sh ha apps logs <addon-slug> | grep -E 'MQTT|API Motion'
    ```
    Look for lines like `Connecting to mqtt://…` and `API Motion Events Enabled`.
 
@@ -53,12 +53,12 @@ This runbook is written for remote execution over SSH and assumes you already co
    mosquitto_sub -h <broker> -p 1883 -u '<user>' -P '<pass>' -v \
      -t 'wyzebridge/+/motion' -t 'wyzebridge/+/motion_ts'
    ```
-2. Trigger motion on one camera (e.g., `garage`).
+2. Trigger motion on one camera (for example, `camera-one`).
 3. Validate you see payloads like:
    ```text
-   wyzebridge/garage/motion 1
-   wyzebridge/garage/motion_ts 1705...
-   wyzebridge/garage/motion 2
+   wyzebridge/camera-one/motion 1
+   wyzebridge/camera-one/motion_ts 1705...
+   wyzebridge/camera-one/motion 2
    ```
 4. If you need slug names, refer to `home_assistant/DOCS.md`, `FILTER_NAMES`, or the broker payload for `wyzebridge/<slug>/...`. Slugs follow `lower-case`, spaces → `-`.
 
@@ -91,7 +91,7 @@ This runbook is written for remote execution over SSH and assumes you already co
 
 1. In Scrypted, open the camera details → `Extensions` tab.
 2. Enable `Custom Motion Sensor` extension and click its config tab.
-3. Choose the `motion` device you just created (e.g., `Garage Wyze Motion`).
+3. Choose the `motion` device you just created (for example, `Camera One Wyze Motion`).
 4. Save. Delay a few seconds for Scrypted to apply changes.
 
 ## 6. Final verification
@@ -110,5 +110,5 @@ This runbook is written for remote execution over SSH and assumes you already co
 
 ## Suggested next steps
 
-1. Optionally document the finalized topic-to-camera mapping for reference.
-2. Add this runbook reference to `tasks/todo.md` or a live deployment checklist before handing off.
+1. Optionally document the finalized topic-to-camera mapping for your own operations notes.
+2. Add this runbook to your private deployment checklist if you maintain one.

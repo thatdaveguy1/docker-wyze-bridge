@@ -75,7 +75,7 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 - 🆕 [V4.0 Release Notes](./docs/user_guide/release_notes_v4.md)
 - 🆙 [Upgrade & Migration Guide](./docs/user_guide/upgrade.md)
 - ❓ [Troubleshooting Guide](./docs/user_guide/troubleshooting.md)
-- 🏗 [Maintainer & Provenance Docs](./docs/maintainer/provenance-2026-03-11-local-patched-attribution.md)
+- 📘 [Home Assistant Add-on Docs](./home_assistant/DOCS.md)
 
 ---
 

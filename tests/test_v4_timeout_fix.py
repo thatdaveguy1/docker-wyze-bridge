@@ -6,7 +6,7 @@ import unittest
 from ctypes import c_int
 from unittest.mock import patch
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "app"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from wyzebridge.config import CONNECT_TIMEOUT
 from wyzebridge import mtx_server
