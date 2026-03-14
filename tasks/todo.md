@@ -88,3 +88,4 @@
 - [completed] Push to new upstream fork `thatdaveguy1/docker-wyze-bridge`
 - [completed] Tighten public docs and release wording so claims about KVS routing, ports, and install behavior match the actual code
 - [completed] Commit and push the follow-up doc polish pass with more accurate, slightly stronger release messaging
+- [completed] Add a regression test for Home Assistant source-build compatibility and fix the add-on packaging so local HA installs do not depend on BuildKit-only Dockerfile mounts
