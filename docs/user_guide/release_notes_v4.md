@@ -46,7 +46,4 @@ The V4.0 release builds on the excellent work of:
 - **Legacy Camera Support:** Some older Wyze models (e.g., V1, some doorbells) may still use the original TUTK path.
 
 ## Attribution and Provenance
-For a detailed list of changes and file-by-file attribution, please see:
-- [Maintainer Attribution Docs](../maintainer/provenance-2026-03-11-local-patched-attribution.md)
-- [Proposed Upstream PRs](../maintainer/proposedPRs.md)
-- [Live Deployment Handoff](../maintainer/LIVE-DEPLOYMENT.md)
+Detailed file-by-file attribution and provenance records are maintained internally. For questions about specific changes or upstream contributions, please open an issue.
