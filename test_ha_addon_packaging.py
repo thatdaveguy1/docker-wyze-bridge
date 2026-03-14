@@ -16,9 +16,9 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             "home_assistant/Dockerfile should avoid BuildKit-only cache mounts so HA can build the add-on locally",
         )
 
-    def test_addon_app_env_version_matches_public_addon_version(self):
+    def test_addon_build_env_version_matches_public_addon_version(self):
         config_text = (ADDON_DIR / "config.yml").read_text()
-        env_text = (ADDON_DIR / "app/.env").read_text()
+        env_text = (ADDON_DIR / "app/build.env").read_text()
 
         config_version = re.search(r"^version:\s*(.+)$", config_text, re.MULTILINE)
         env_version = re.search(r"^VERSION=(.+)$", env_text, re.MULTILINE)
@@ -30,7 +30,15 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         self.assertEqual(
             config_version.group(1).strip(),
             env_version.group(1).strip(),
-            "home_assistant/app/.env VERSION should match home_assistant/config.yml version for source-built add-ons",
+            "home_assistant/app/build.env VERSION should match home_assistant/config.yml version for source-built add-ons",
+        )
+
+    def test_addon_dockerfile_does_not_source_hidden_env_file(self):
+        dockerfile = (ADDON_DIR / "Dockerfile").read_text()
+        self.assertNotIn(
+            ". app/.env",
+            dockerfile,
+            "home_assistant/Dockerfile should not depend on a hidden .env file that HA strips from build context",
         )
 
 
