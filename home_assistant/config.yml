@@ -131,8 +131,6 @@ schema:
   CONNECT_RETRIES: int?
   CONNECT_RETRY_DELAY: float?
   FORCE_V4_PARALLEL: bool?
-  ENABLE_V4_KVS_TRIAL: bool?
-  ENABLE_ALL_RTC_TRIAL: bool?
   MEDIAMTX:
     - match(^\w+=.*)?
   DOMAIN: str?

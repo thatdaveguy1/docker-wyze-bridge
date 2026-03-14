@@ -61,6 +61,6 @@ You can change these ports in the **Configuration** tab if needed.
 ## Supported Cameras
 
 The V4.0 release includes specific fixes and improvements for:
-- **Wyze Cam V4:** Fully supported with a new KVS/WebRTC backend.
-- **Wyze Cam V3 and V3 Pro:** Optimized for lower latency and better stability.
+- **Wyze Cam V4:** Fully supported and routed through the default KVS/WebRTC path.
+- **Wyze Cam V3 and V3 Pro:** Also use the default KVS/WebRTC path for lower latency and better stability.
 - All other Wyze cameras are supported via the standard bridge path.

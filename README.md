@@ -35,7 +35,7 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 ## 🆕 What's New in V4.0
 
-- **Wyze Cam V4 Support:** A new cloud-signaled KVS backend for first-class V4 support.
+- **WebRTC-Capable Cameras:** The KVS/WebRTC path is now the default for WebRTC-capable cameras, including V3, V3 Pro, and V4.
 - **Polished Web UI:** One-click copy buttons for stream URLs and improved protocol status reporting.
 - **Home Assistant Optimized:** New `docker_wyze_bridge_v4` slug, ingress-aware base URLs, and conflict-free port mapping.
 - **MediaMTX V1.16.3:** Upgraded backend for lower latency and better stability.

@@ -40,5 +40,4 @@ If you were already using the **Docker Wyze Bridge (Local Patched)** add-on from
 - **Problem:** After upgrading, some cameras stay offline or fail to connect.
 - **Solution:** 
   1.  Check the logs for `Wyze API Pull Error`. You may need to refresh your API credentials or clear the bridge's local cache.
-  2.  Verify `ENABLE_V4_KVS_TRIAL` and `ENABLE_ALL_RTC_TRIAL` are set to `true` (default in V4.0).
-  3.  Restart the bridge to clear any stale session data.
+  2.  Restart the bridge to clear any stale session data.

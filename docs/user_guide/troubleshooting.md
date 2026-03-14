@@ -35,10 +35,10 @@ This guide covers common issues and questions for the **Docker Wyze Bridge V4.0*
   2.  Ensure you have enabled `WB_IP` or `network_mode: host` in your configuration.
   3.  Try decreasing the `QUALITY` setting for that camera in the `CAM_OPTIONS`.
 
-### "V4 Camera Connection Issues"
-- **Problem:** Wyze Cam V4 fails to connect or has frequent disconnects.
+### "V4 or V3 Camera Connection Issues"
+- **Problem:** A Wyze Cam V4, V3, or V3 Pro fails to connect or has frequent disconnects.
 - **Solution:** 
-  1.  The V4.0 release uses a new KVS/WebRTC backend for the V4. Ensure `ENABLE_V4_KVS_TRIAL` is set to `true` (default in V4.0).
+  1.  These cameras default to the KVS/WebRTC path in the current codebase.
   2.  Check for `deadline exceeded while waiting tracks` in the logs. If this appears, your camera's Wi-Fi may be unstable or too far from the bridge.
 
 ## Web UI and Authentication
