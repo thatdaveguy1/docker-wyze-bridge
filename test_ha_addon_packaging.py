@@ -8,6 +8,22 @@ ADDON_DIR = ROOT / "home_assistant"
 
 
 class TestHomeAssistantAddonPackaging(unittest.TestCase):
+    def test_all_ha_dockerfiles_avoid_hidden_env_dependency(self):
+        dockerfiles = [
+            ADDON_DIR / "Dockerfile",
+            ADDON_DIR / "docker/Dockerfile",
+            ADDON_DIR / "docker/Dockerfile.multiarch",
+            ADDON_DIR / "docker/Dockerfile.hwaccel",
+        ]
+        for dockerfile_path in dockerfiles:
+            with self.subTest(dockerfile=str(dockerfile_path.relative_to(ROOT))):
+                dockerfile = dockerfile_path.read_text()
+                self.assertNotIn(
+                    ". app/.env",
+                    dockerfile,
+                    f"{dockerfile_path.relative_to(ROOT)} should not depend on a hidden .env file that HA strips from build context",
+                )
+
     def test_addon_dockerfile_avoids_buildkit_only_mount_syntax(self):
         dockerfile = (ADDON_DIR / "Dockerfile").read_text()
         self.assertNotIn(
@@ -31,14 +47,6 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             config_version.group(1).strip(),
             env_version.group(1).strip(),
             "home_assistant/app/build.env VERSION should match home_assistant/config.yml version for source-built add-ons",
-        )
-
-    def test_addon_dockerfile_does_not_source_hidden_env_file(self):
-        dockerfile = (ADDON_DIR / "Dockerfile").read_text()
-        self.assertNotIn(
-            ". app/.env",
-            dockerfile,
-            "home_assistant/Dockerfile should not depend on a hidden .env file that HA strips from build context",
         )
 
 
