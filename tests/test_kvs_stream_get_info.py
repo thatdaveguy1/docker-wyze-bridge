@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent / ".ha_live_addon" / "app")
+    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
 )
 
 from wyzebridge.wyze_stream import StreamStatus, WyzeStream

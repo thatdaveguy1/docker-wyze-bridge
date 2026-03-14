@@ -3,8 +3,6 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-REMOTE_ROOT="/addons/local/wyze_bridge_local"
-APP_SLUG="local_docker_wyze_bridge_local"
 
 usage() {
   cat <<'EOF'
@@ -16,6 +14,10 @@ and verifies the running app serves the updated JS.
 Requires:
 - scripts/.ha_ssh.env
 - scripts/ha_ssh.sh
+
+Optional values in `scripts/.ha_ssh.env`:
+- `HA_ADDON_ROOT` for the remote add-on source path
+- `HA_ADDON_SLUG` for the Home Assistant add-on slug
 EOF
 }
 
@@ -29,11 +31,15 @@ if [ "$#" -ne 0 ]; then
   exit 1
 fi
 
+. "$SCRIPT_DIR/.ha_ssh.env"
+
+REMOTE_ROOT="${HA_ADDON_ROOT:-/addons/local/wyze_bridge}"
+APP_SLUG="${HA_ADDON_SLUG:-docker_wyze_bridge_v4}"
+
 copy_file() {
   src="$1"
   dest="$2"
   "$SCRIPT_DIR/ha_ssh.sh" mkdir -p "$dest"
-  . "$SCRIPT_DIR/.ha_ssh.env"
   KEY_PATH=$(eval printf '%s' "$HA_SSH_KEY")
   scp -P "$HA_SSH_PORT" -i "$KEY_PATH" "$REPO_DIR/$src" "$HA_SSH_TARGET:$dest/$(basename "$src")"
 }

@@ -43,3 +43,5 @@ utm-vm/
 # Local tooling residue
 .opencode/
 .home_assistant_OLD/
+docs/maintainer/
+tasks.json

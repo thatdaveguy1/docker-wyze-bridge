@@ -1,52 +1,7 @@
 # Lessons
 
-- If a repo-tracked env file accidentally contains a real SDK key, preserve the local workflow by moving the value into git-ignored `*.local` overrides first, then scrub the tracked file and update loaders/builds to prefer the local override.
-
-- When running `desloppify` after a `pip` install on macOS, ensure the Python scripts directory is on `PATH` (for this shell: `/Library/Frameworks/Python.framework/Versions/3.13/bin`) or detectors that rely on executables (like Bandit) may silently report reduced coverage.
-
-- Do not embed `WB_API` or any stream credential into generated stream URLs, copied URLs, or DOM-mutated link targets. Keep URLs credential-free and use request headers for browser playback instead.
-
-- Docker only honors `.dockerignore` from the build-context root, not from the Dockerfile directory. If CI builds from repo root or an add-on subdirectory, put the ignore file at that context root or local secret overrides like `*.env.local` can still enter the image build context.
-
-- When a leaked secret lives in old commit history and the current working repo is dirty, do the rewrite in a separate clean clone, verify the literal secret is gone from `git rev-list --all`, then force-push only the rewritten refs with explicit leases. That avoids mixing irreversible history surgery with in-progress local changes.
-
-- For this repo's Home Assistant local add-on flow, copying files into `/addons/local/wyze_bridge_local/...` plus `ha apps restart` is not enough to prove the running add-on picked up code changes.
-- The reliable deployment boundary is `ha apps rebuild local_docker_wyze_bridge_local --force`, then verify the running HTTP service directly.
-- Do not claim repo and HA are in sync based only on source-file copies or on-disk remote files. Verify the runtime response from the live add-on (`/static/site.js`, `/api`, rendered `/`) before making sync claims.
-- When debugging HA ingress mismatches, distinguish three layers explicitly: local repo files, HA add-on source directory, and the running add-on HTTP responses. Check all three in that order.
-- Persist HA SSH access locally in a git-ignored file (`scripts/.ha_ssh.env`) and use a helper (`scripts/ha_ssh.sh`) so connection details are not lost between steps.
-- Use `scripts/deploy_ha_local_addon.sh` for local HA add-on deployment so copy, rebuild, and runtime verification happen as one repeatable flow.
-- When a user reports "I still don't see it," stop assuming browser cache first. Re-verify the live runtime response and only then narrow to ingress/browser caching or CSS/layout issues.
-- Capture repeatable workflows (MQTT/Scrypted pairings) in runbooks the moment you verify them—then future SSH-only handoffs don't require rediscovery.
-- Before inventing new MQTT credentials, inspect live consumers like Frigate for an already-working broker/user pair; reusing verified LAN credentials removes unnecessary setup and speeds validation.
-- Stream menu availability should not be driven only by `WB_RTSP_URL` or `WB_RTMP_URL`; if the bridge can construct a localhost/LAN URL for an active camera, keep that protocol enabled and preserve `disabled`/`offline` as the first failure reasons.
-- When browser-testing the authenticated HA add-on directly with credentials embedded in the URL, `fetch()` calls for relative image refreshes can fail with `Request cannot be constructed from a URL that includes credentials`; use the live API output plus visible menu state to verify stream reasons, and avoid treating those Playwright-auth URL errors as deployment regressions.
-- The WHEP/KVS proxy refresh path reaches Flask through loopback without Web UI credentials. Keep `/kvs-config/<camera>` accessible from `127.0.0.1`/`::1` even when normal Web UI auth is enabled, or on-demand RTC-backed RTSP can fail despite public UI auth still working.
-- Before creating a provenance or release-summary commit, audit local HA payload snapshots and test helpers for live credentials first; redact representative samples and ignore raw runtime artifacts so the final changelog can safely describe the committed diff.
-- When `ENABLE_ALL_RTC_TRIAL` or other KVS/RTC routing makes a stream report connected without launching the TUTK control process, never call `send_cmd("caminfo")` unless `cam_cmd` and `cam_resp` queues actually exist; metadata endpoints like `/api` and `/api/<camera>` otherwise crash with `AttributeError`.
-- When fixing a live HA add-on bug, also audit `scripts/deploy_ha_local_addon.sh` to ensure it copies every changed runtime file; this outage persisted because `app/wyzebridge/wyze_stream.py` was fixed locally but omitted from the deploy script.
-- Home Assistant ingress can open the panel path without a trailing slash, so relative URLs like `static/site.js` and `api/...` are not safe on their own; keep an explicit `<base href=".../">` in the rendered page and ensure the deploy script copies `app/templates/base.html`.
-- After switching MediaMTX paths to WHEP/KVS-only, a missing or not-yet-ready upstream presents as `bad status code: 404` and `no stream is available on path ...`; this is distinct from the old TUTK timeout spam and should be debugged as source readiness / on-demand path timing, not camera auth.
-- For the live HA add-on, `app/wyze_bridge.py` is the runtime source that must seed `setup_mtx_proxy()` before exposing KVS paths. If `app/wyze_bridge.py` drifts from `.ha_live_addon/app/wyze_bridge.py`, MediaMTX can emit first-read `404` WHEP errors even when the proxy code itself is correct.
-- KVS-backed MediaMTX sources behave more reliably when forced to `sourceOnDemand=true` and when `setup_mtx_proxy()` only verifies local stream registration, not `video_ready`; waiting for media before a reader exists creates false startup failures.
-- Wyze cloud thumbnails can legitimately return transient `404` for expired or not-yet-available images; log those as warning-level thumbnail unavailability, not error-level failures, so stream logs stay readable.
-- `scripts/deploy_ha_local_addon.sh` must copy `app/wyzebridge/wyze_api.py` as well as frontend and stream files; otherwise Python-side log fixes can look "deployed" while the live add-on still runs the old API logging behavior.
-- The remaining MediaMTX `processing errors` in the live HA add-on are not primarily caused by normal WHEP `1001 Going away` rollover noise; after cleanup, rollover logs stayed quiet while `garage` and `north-yard` still showed warnings alongside `ERR [path ...] [WebRTC source] deadline exceeded while waiting tracks`, so the next fix should target WebRTC track readiness/startup timing rather than more log suppression.
-- The local add-on is pinned to `MediaMTX v1.12.3`, and that version rejects newer config keys like `whepTrackGatherTimeout` with `json: unknown field "whepTrackGatherTimeout"`; always verify live binary support before applying config options from newer MediaMTX docs.
-- The local add-on deploy path does not propagate `.ha_live_addon/config.yaml`, so new addon schema/options do not automatically appear in Home Assistant during a hot deploy; for short-lived investigations, prefer code-gated tracing or explicitly update the live options through the HA app configuration workflow.
-- Scoped tracing on `dog-run` showed first upstream tracks arriving about 6.5s after connection while MediaMTX v1.12.3 reports `deadline exceeded while waiting tracks` around 2s, which confirms a real startup timing mismatch on this stack. Wi-Fi may still contribute, but it is not the only explanation for the current `processing errors` bursts.
-- `scripts/deploy_ha_local_addon.sh` must copy `app/.env` when build-time version pins like `MTX_TAG` change; otherwise a rebuild can silently keep using the old MediaMTX version even though repo files were updated locally.
-- Upgrading the live HA add-on to `MediaMTX v1.16.3` was compatible with the generated config, and `whepTrackGatherTimeout=8s` was accepted there. In the short live validation window, `dog-run` reached `stream is available and online` cleanly, which strongly suggests the old `deadline exceeded while waiting tracks` issue was primarily a version/timing limitation rather than only random Wi-Fi instability.
-- The newer `MediaMTX v1.16.3` log messages are more actionable than `v1.12.3`; after the upgrade the dominant remaining warning became `invalid FU-A packet (non-starting)`, which pointed at H264 fragment forwarding rather than generic startup failure.
-- In the WHEP proxy, forwarding FU-A fragments after priming is not enough on its own; if the start fragment is lost or a reader effectively joins mid-fragment, downstream MediaMTX can log `invalid FU-A packet (non-starting)`. Guarding FU-A forwarding so non-starting fragments are dropped until a valid start is seen materially reduces this class of warning.
-
-# V4.0 Public Release Prep Lessons
-
-- When forking a Home Assistant add-on, promote the patched add-on from a hidden working directory (`.ha_live_addon/`) to the public add-on path (`home_assistant/`) before the first public push; otherwise new users will see the old add-on metadata.
-- The CI workflow `prebuild` job that requires DockerHub secrets will cause immediate badge failures on a new fork; use GHCR as the primary registry and make DockerHub optional.
-- Web UI files (`site.js`, `base.html`) in both `app/` and `home_assistant/app/` need URL updates for the new fork; the GitHub API fetch for version checks must point to the new repo.
-- Remove funding/sponsorship links that reference the original author when forking; keep attribution in provenance docs instead of user-facing surfaces.
-- Add `.opencode/` and backup directories to `.gitignore` before the first push to avoid committing local tooling residue.
-- For release docs, sell outcomes rather than hype: stronger defaults, cleaner setup, and better reliability are believable; blanket claims like "It just works" or overspecific UI/config promises should be tied back to validated behavior in the code.
-- A Home Assistant add-on that builds from source during install should avoid BuildKit-only `RUN --mount=type=cache` syntax unless you have explicitly verified the HA builder supports it; local HA installs may fail before runtime even though the same Dockerfile works in CI/buildx.
-- When promoting an add-on from a hidden working tree into the public `home_assistant/` path, also sync `home_assistant/app/.env`; otherwise the add-on can build and display an outdated version even if `home_assistant/config.yml` was updated.
+- Keep repo-tracked env files free of secrets. Use git-ignored local override files for any real keys or host-specific values.
+- Never embed stream credentials into URLs rendered by the UI or returned by the API. Use request headers for authenticated playback instead.
+- Keep internal bridge and proxy surfaces on loopback when they are only meant for local process-to-process traffic.
+- Put `.dockerignore` at the build-context root so local override files like `*.env.local` and `build.env.local` cannot enter image builds.
+- When a secret reaches git history, rewrite it from a clean clone, verify the literal value is absent from `git rev-list --all`, and only then update public refs.
