@@ -38,6 +38,7 @@ RUN set -eux; \
     fi; \
     cd /build; \
     . app/.env; \
+    if [ -f app/.env.local ]; then . app/.env.local; fi; \
     mkdir -p tokens; \
     curl -fsSL https://github.com/homebridge/ffmpeg-for-homebridge/releases/latest/download/ffmpeg-alpine-${FFMPEG_ARCH}.tar.gz -o ffmpeg.tar.gz; \
     tar tzf ffmpeg.tar.gz || (echo "Invalid ffmpeg tarball for ${FFMPEG_ARCH}" && exit 1); \

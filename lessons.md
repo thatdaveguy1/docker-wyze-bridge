@@ -1,5 +1,7 @@
 # Lessons
 
+- If a repo-tracked env file accidentally contains a real SDK key, preserve the local workflow by moving the value into git-ignored `*.local` overrides first, then scrub the tracked file and update loaders/builds to prefer the local override.
+
 - For this repo's Home Assistant local add-on flow, copying files into `/addons/local/wyze_bridge_local/...` plus `ha apps restart` is not enough to prove the running add-on picked up code changes.
 - The reliable deployment boundary is `ha apps rebuild local_docker_wyze_bridge_local --force`, then verify the running HTTP service directly.
 - Do not claim repo and HA are in sync based only on source-file copies or on-disk remote files. Verify the runtime response from the live add-on (`/static/site.js`, `/api`, rendered `/`) before making sync claims.

@@ -1,10 +1,16 @@
+from pathlib import Path
 from platform import machine
 
 from dotenv import load_dotenv
 
 from wyzebridge.bridge_utils import env_bool
 
-load_dotenv()
+APP_DIR = Path(__file__).resolve().parents[1]
+
+load_dotenv(APP_DIR / "build.env")
+load_dotenv(APP_DIR / "build.env.local", override=True)
+load_dotenv(APP_DIR / ".env")
+load_dotenv(APP_DIR / ".env.local", override=True)
 load_dotenv("/.build_date")
 
 VERSION: str = env_bool("VERSION", "DEV", style="original")
@@ -19,5 +25,6 @@ MTX_TAG: str = env_bool("MTX_TAG", style="original")
 BUILD_STR = ARCH
 
 if BUILD != VERSION:
-    BUILD_STR += f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"
-
+    BUILD_STR += (
+        f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"
+    )
