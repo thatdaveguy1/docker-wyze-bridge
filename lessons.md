@@ -29,3 +29,11 @@
 - Upgrading the live HA add-on to `MediaMTX v1.16.3` was compatible with the generated config, and `whepTrackGatherTimeout=8s` was accepted there. In the short live validation window, `dog-run` reached `stream is available and online` cleanly, which strongly suggests the old `deadline exceeded while waiting tracks` issue was primarily a version/timing limitation rather than only random Wi-Fi instability.
 - The newer `MediaMTX v1.16.3` log messages are more actionable than `v1.12.3`; after the upgrade the dominant remaining warning became `invalid FU-A packet (non-starting)`, which pointed at H264 fragment forwarding rather than generic startup failure.
 - In the WHEP proxy, forwarding FU-A fragments after priming is not enough on its own; if the start fragment is lost or a reader effectively joins mid-fragment, downstream MediaMTX can log `invalid FU-A packet (non-starting)`. Guarding FU-A forwarding so non-starting fragments are dropped until a valid start is seen materially reduces this class of warning.
+
+# V4.0 Public Release Prep Lessons
+
+- When forking a Home Assistant add-on, promote the patched add-on from a hidden working directory (`.ha_live_addon/`) to the public add-on path (`home_assistant/`) before the first public push; otherwise new users will see the old add-on metadata.
+- The CI workflow `prebuild` job that requires DockerHub secrets will cause immediate badge failures on a new fork; use GHCR as the primary registry and make DockerHub optional.
+- Web UI files (`site.js`, `base.html`) in both `app/` and `home_assistant/app/` need URL updates for the new fork; the GitHub API fetch for version checks must point to the new repo.
+- Remove funding/sponsorship links that reference the original author when forking; keep attribution in provenance docs instead of user-facing surfaces.
+- Add `.opencode/` and backup directories to `.gitignore` before the first push to avoid committing local tooling residue.

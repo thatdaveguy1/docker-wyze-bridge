@@ -1,19 +1,30 @@
-name: Docker Wyze Bridge (Local Patched)
-description: Local patched build of Docker Wyze Bridge with validated fixes.
-slug: docker_wyze_bridge_local
-url: https://github.com/idisposable/docker-wyze-bridge
-version: 3.12.3-local
-stage: experimental
+name: Docker Wyze Bridge V4.0
+description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams with V4 support and Home Assistant optimizations.
+slug: docker_wyze_bridge_v4
+url: https://github.com/thatdaveguy1/docker-wyze-bridge
+version: 4.0.0
+stage: stable
 arch:
+  - armv7
+  - aarch64
   - amd64
 startup: application
 boot: auto
 apparmor: false
 hassio_api: true
 host_network: true
-ingress: true
-ingress_port: 5000
-panel_icon: mdi:bridge
+ports:
+  58554/tcp: 58554
+  58888/tcp: 58888
+  58889/tcp: 58889
+  59997/tcp: 59997
+  5000/tcp: 5000
+ports_description:
+  58554/tcp: RTSP (WebRTC-backed) rtsp://localhost:58554/camera-name
+  58888/tcp: HLS http://localhost:58888/camera-name/stream.m3u8
+  58889/tcp: WebRTC/WHEP http://localhost:58889/camera-name
+  59997/tcp: MediaMTX API
+  5000/tcp: Web UI http://localhost:5000
 map:
   - addon_config:rw
   - media:rw
@@ -21,20 +32,19 @@ map:
 services:
   - mqtt:want
 video: true
+ingress: true
+ingress_port: 5000
+panel_icon: mdi:bridge
+watchdog: http://[HOST]:[PORT:5000]/health
 options:
   ENABLE_AUDIO: true
   ON_DEMAND: true
   MOTION_API: true
-  FILTER_NAMES: NORTH YARD
-  LOG_LEVEL: INFO
-  MEDIAMTX: []
   CAM_OPTIONS: []
+  MEDIAMTX: []
   CONNECT_TIMEOUT: 60
   CONNECT_RETRIES: 3
   CONNECT_RETRY_DELAY: 2.0
-  FORCE_V4_PARALLEL: false
-  ENABLE_V4_KVS_TRIAL: true
-  ENABLE_ALL_RTC_TRIAL: true
 schema:
   WYZE_EMAIL: email?
   WYZE_PASSWORD: password?

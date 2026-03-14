@@ -69,3 +69,20 @@
 - [completed] Re-enable `whepTrackGatherTimeout=8s` on MediaMTX `1.16.3` and validate live startup; `dog-run` now reaches `stream is available and online` without the earlier `deadline exceeded while waiting tracks` failure during the short post-upgrade validation window
 - [completed] Run a longer post-upgrade soak and compare noisy paths; `dog-run`, `garage`, `deck`, and `north-yard` all reached `stream is available and online` cleanly on `MediaMTX 1.16.3`, and `dog-run` no longer showed the earlier startup-timeout failure in the observed window
 - [completed] Investigate and mitigate `invalid FU-A packet (non-starting)` bursts by tightening H264 FU-A forwarding in the WHEP proxy so non-starting fragments are dropped until a valid fragment start is seen; the immediate post-fix soak did not reproduce the earlier FU-A bursts in the observed startup/read window
+
+# V4.0 Public Release Prep
+
+- [completed] Promote patched add-on from `.ha_live_addon/` to public `home_assistant/` path
+- [completed] Update add-on metadata to V4.0 release values (slug: `docker_wyze_bridge_v4`, version: `4.0.0`)
+- [completed] Normalize version to 4.0.0 across `app/.env`, `home_assistant/config.yml`, and changelog
+- [completed] Replace stale fork URLs and branding in web UI (`site.js`, `base.html`)
+- [completed] Update Docker compose files to use new GHCR image
+- [completed] Clean local-only repo residue and update `.gitignore`
+- [completed] Update CI/workflows to use GHCR as primary registry
+- [completed] Update `repository.json` for new fork
+- [completed] Create beginner documentation in `docs/user_guide/`
+- [completed] Validate release-prep code changes with the expanded local Python regression suite (`27 tests ... OK`)
+- [pending] Validate WHEP proxy Go tests once the `go` toolchain is available in this shell
+- [pending] Validate Home Assistant install and browser flows against a live HA instance with real Wyze credentials
+- [pending] Create git commit for V4.0 release prep
+- [pending] Push to new upstream fork `thatdaveguy1/docker-wyze-bridge`

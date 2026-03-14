@@ -86,4 +86,4 @@ http://homeassistant.local:58888/camera-nickname/stream.m3u8
 http://homeassistant.local:58888/camera-nickname
 ```
 
-Please visit [github.com/idisposable/docker-wyze-bridge](https://github.com/idisposable/docker-wyze-bridge) for additional information.
+Please visit [github.com/thatdaveguy1/docker-wyze-bridge](https://github.com/thatdaveguy1/docker-wyze-bridge) for additional information.

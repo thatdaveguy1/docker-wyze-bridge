@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>docker-wyze-bridge</Name>
-  <Repository>idisposablegithub365/wyze-bridge</Repository>
-  <Registry>https://hub.docker.com/r/idisposablegithub365/wyze-bridge</Registry>
+  <Repository>ghcr.io/thatdaveguy1/docker-wyze-bridge</Repository>
+  <Registry>https://ghcr.io</Registry>
   <Branch>
     <Tag>latest</Tag>
     <TagDescription>Latest stable release.</TagDescription>
@@ -20,15 +20,15 @@
     <TagDescription>Latest development release for testing future changes.</TagDescription>
   </Branch>
   <Network>host</Network>
-  <Support>https://github.com/idisposable/docker-wyze-bridge</Support>
-  <Project>https://github.com/idisposable/docker-wyze-bridge</Project>
+  <Support>https://github.com/thatdaveguy1/docker-wyze-bridge</Support>
+  <Project>https://github.com/thatdaveguy1/docker-wyze-bridge</Project>
   <Overview>WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams in a docker container.</Overview>
   <Category>HomeAutomation:</Category>
   <WebUI>http://[IP]:[PORT:5000]</WebUI>
   <TemplateURL />
   <Icon>https://raw.githubusercontent.com/selfhosters/unRAID-CA-templates/master/templates/img/wyze.png</Icon>
-  <DonateText>ko-fi</DonateText>
-  <DonateLink>https://ko-fi.com/mrlt8</DonateLink>
+  <DonateText />
+  <DonateLink />
   <Requires>A unique API_KEY and API_ID which can be generated on the Wyze Developer Portal:
     https://developer-api-console.wyze.com/#/apikey/view</Requires>
   <Networking>

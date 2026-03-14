@@ -1,9 +1,8 @@
-name: Docker Wyze Bridge
-description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams in a docker container.
-slug: docker_wyze_bridge
-url: https://github.com/idisposable/docker-wyze-bridge
-image: idisposablegithub365/wyze-bridge
-version: 3.12.3
+name: Docker Wyze Bridge V4.0
+description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams with V4 support and Home Assistant optimizations.
+slug: docker_wyze_bridge_v4
+url: https://github.com/thatdaveguy1/docker-wyze-bridge
+version: 4.0.0
 stage: stable
 arch:
   - armv7
@@ -15,38 +14,17 @@ apparmor: false
 hassio_api: true
 host_network: true
 ports:
-  1935/tcp: 1935
-  1936/tcp: 1936
-  2935/tcp: 2935
-  2936/tcp: 2936
-  8000/udp: 8000
-  8001/udp: 8001
-  8002/udp: 8002
-  8003/udp: 8003
-  8189/udp: 8189
-  8189/tcp: 8189
-  8322/tcp: 8322
-  8554/tcp: 8554
-  8888/tcp: 8888
-  8889/tcp: 8889
-  8890/udp: 8890
+  58554/tcp: 58554
+  58888/tcp: 58888
+  58889/tcp: 58889
+  59997/tcp: 59997
   5000/tcp: 5000
 ports_description:
-  1935/tcp: RTMP rtmp://localhost:1935/mystream?user=myuser&pass=mypass
-  1936/tcp: RTMP rtmps://localhost:1936/mystream?user=myuser&pass=mypass
-  2935/tcp: RTMPS rtmps://localhost:2935/mystream?user=myuser&pass=mypass
-  2936/tcp: RTMPS rtmps://localhost:2936/mystream?user=myuser&pass=mypass
-  8000/udp: RTSP UDP/RTP rtsp://localhost:8000/mystream
-  8001/udp: RTSP UDP/RTCP rtsp://localhost:8001/mystream
-  8002/udp: RTSP RTP Multicast
-  8003/udp: RTSP RTCP Multicast control
-  8189/udp: WebRTC ICE/UDP
-  8322/tcp: TCP/TLS/RTSPS rtsps://localhost:8322/mystream
-  8554/tcp: RTSP rtsp://localhost:8554/mystream
-  8888/tcp: HLS http://localhost:8888/mystream
-  8889/tcp: WebRTC http://localhost:8889/mystream and http://localhost:8889/mystream/whep
-  8890/udp: SRT UDP srt://localhost:8890?streamid=read:mystream:myuser:mypass
-  5000/tcp: WEB-UI http://localhost:5000/mystream
+  58554/tcp: RTSP (WebRTC-backed) rtsp://localhost:58554/camera-name
+  58888/tcp: HLS http://localhost:58888/camera-name/stream.m3u8
+  58889/tcp: WebRTC/WHEP http://localhost:58889/camera-name
+  59997/tcp: MediaMTX API
+  5000/tcp: Web UI http://localhost:5000
 map:
   - addon_config:rw
   - media:rw
@@ -64,6 +42,9 @@ options:
   MOTION_API: true
   CAM_OPTIONS: []
   MEDIAMTX: []
+  CONNECT_TIMEOUT: 60
+  CONNECT_RETRIES: 3
+  CONNECT_RETRY_DELAY: 2.0
 schema:
   WYZE_EMAIL: email?
   WYZE_PASSWORD: password?
@@ -146,6 +127,12 @@ schema:
       SUB_RECORD: bool?
       SUBSTREAM: bool?
       MOTION_WEBHOOKS: str?
+  CONNECT_TIMEOUT: int?
+  CONNECT_RETRIES: int?
+  CONNECT_RETRY_DELAY: float?
+  FORCE_V4_PARALLEL: bool?
+  ENABLE_V4_KVS_TRIAL: bool?
+  ENABLE_ALL_RTC_TRIAL: bool?
   MEDIAMTX:
     - match(^\w+=.*)?
   DOMAIN: str?

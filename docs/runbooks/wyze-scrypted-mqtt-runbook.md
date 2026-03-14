@@ -1,7 +1,7 @@
 # Wyze Bridge → Scrypted MQTT Motion Runbook
 
 This runbook is written for remote execution over SSH and assumes you already control:
-- the `local_docker_wyze_bridge_local` add-on (see `LIVE-DEPLOYMENT.md`).
+- the `local_docker_wyze_bridge_local` add-on (see `docs/maintainer/LIVE-DEPLOYMENT.md`).
 - a reachable MQTT broker that both Home Assistant and Scrypted can touch.
 - the SSH helper scripts (`scripts/ha_ssh.sh`, `.ha_ssh.env`).
 
