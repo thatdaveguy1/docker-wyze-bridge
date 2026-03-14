@@ -84,5 +84,7 @@
 - [completed] Validate release-prep code changes with the expanded local Python regression suite (`27 tests ... OK`)
 - [pending] Validate WHEP proxy Go tests once the `go` toolchain is available in this shell
 - [pending] Validate Home Assistant install and browser flows against a live HA instance with real Wyze credentials
-- [pending] Create git commit for V4.0 release prep
-- [pending] Push to new upstream fork `thatdaveguy1/docker-wyze-bridge`
+- [completed] Create git commit for V4.0 release prep
+- [completed] Push to new upstream fork `thatdaveguy1/docker-wyze-bridge`
+- [completed] Tighten public docs and release wording so claims about KVS routing, ports, and install behavior match the actual code
+- [completed] Commit and push the follow-up doc polish pass with more accurate, slightly stronger release messaging

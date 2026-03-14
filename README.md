@@ -1,19 +1,26 @@
 # Docker Wyze Bridge V4.0 (thatdaveguy fork)
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/thatdaveguy1/docker-wyze-bridge?logo=github)](https://github.com/thatdaveguy1/docker-wyze-bridge/releases/latest)
-[![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/thatdaveguy1/wyze-bridge?sort=semver&logo=docker&logoColor=white)](https://ghcr.io/thatdaveguy1/docker-wyze-bridge)
+[![GHCR Package](https://img.shields.io/badge/ghcr-package-blue?logo=github)](https://ghcr.io/thatdaveguy1/docker-wyze-bridge)
 [![Home Assistant Add-on](https://img.shields.io/badge/home_assistant-add--on-blue.svg?logo=homeassistant&logoColor=white)](./docs/user_guide/install_ha.md)
 
 ### WebRTC/RTSP/RTMP/HLS Bridge for Wyze Cam
 
 ![Wyze Bridge UI](https://user-images.githubusercontent.com/67088095/224595527-05242f98-c4ab-4295-b9f5-07051ced1008.png)
 
-Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork includes specific optimizations for the **Wyze Cam V4** and a polished **Home Assistant** integration.
+Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork is tuned for the current Wyze lineup, with stronger defaults for modern cameras and a cleaner **Home Assistant** experience.
 
 - No modifications, third-party, or special firmware required.
-- **It just works!**
+- Built to be easier to install, easier to understand, and easier to keep running.
 - Streams direct from camera without additional bandwidth or subscriptions.
 - Local high-performance WebRTC and RTSP backend.
+
+## Why Choose This Fork
+
+- Better defaults for modern Wyze cameras, especially V3, V3 Pro, and V4.
+- A more beginner-friendly Home Assistant add-on with cleaner docs and safer defaults.
+- A more usable web UI with copy-ready stream URLs and clearer protocol availability.
+- Practical reliability work around startup timing, session lifetime, and long-running bridge stability.
 
 ---
 

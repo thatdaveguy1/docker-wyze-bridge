@@ -37,3 +37,4 @@
 - Web UI files (`site.js`, `base.html`) in both `app/` and `home_assistant/app/` need URL updates for the new fork; the GitHub API fetch for version checks must point to the new repo.
 - Remove funding/sponsorship links that reference the original author when forking; keep attribution in provenance docs instead of user-facing surfaces.
 - Add `.opencode/` and backup directories to `.gitignore` before the first push to avoid committing local tooling residue.
+- For release docs, sell outcomes rather than hype: stronger defaults, cleaner setup, and better reliability are believable; blanket claims like "It just works" or overspecific UI/config promises should be tied back to validated behavior in the code.

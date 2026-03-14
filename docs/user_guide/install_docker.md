@@ -70,7 +70,7 @@ Run `docker compose up -d` to start the bridge.
 | `ENABLE_AUDIO` | Enable audio for all cameras. | `True` |
 | `NET_MODE` | Connection mode: `LAN`, `P2P`, or `ANY`. | `ANY` |
 
-For a full list of options, see the [Advanced Configuration](https://github.com/thatdaveguy1/docker-wyze-bridge/wiki) (coming soon) or check the sample compose files in the root of the repository.
+For more advanced options, check the sample compose files in the root of the repository and the add-on config examples in this repo. A fuller advanced configuration guide can be added later without changing the basic install flow here.
 
 ## Ports
 
