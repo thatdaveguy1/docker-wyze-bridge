@@ -6,3 +6,4 @@
 - [completed] Narrow GitHub Actions permissions so only the version bump job has `contents: write`.
 - [completed] Move root Python tests into a dedicated `tests/` directory and verify discovery still works.
 - [completed] Apply minimal branch protection on `main` to block force-pushes and deletions without breaking direct CI-driven version bumps.
+- [in_progress] Fix the GHCR hwaccel Docker build regression and rerun the Docker workflow for the final `v4.0.0` tip.

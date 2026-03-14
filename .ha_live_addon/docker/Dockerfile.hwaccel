@@ -12,7 +12,7 @@ ARG QSV
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     set -eux; \
-    if [ -n "$QSV" ]; then \
+    if [ "$QSV" = "1" ]; then \
         echo 'deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware' >/etc/apt/sources.list.d/debian-testing.list; \
     fi; \
     apt-get update; \
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libffi-dev \
         tar \
         xz-utils; \
-    if [ -n "$QSV" ]; then \
+    if [ "$QSV" = "1" ]; then \
         apt-get install -y i965-va-driver intel-media-va-driver-non-free libmfx1 libva-drm2; \
         apt-get install -y i965-va-driver-shaders; \
     fi; \        
@@ -42,16 +42,18 @@ RUN set -eux; \
     TARGETARCH=amd64; FFMPEG_ARCH=x86_64; MTX_ARCH=amd64; \
     cd /build; \
     . app/build.env; \
-    mkdir -p tokens ${QSV:+usr/lib}; \
-    curl -SL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.1-latest-linux64-lgpl-6.1.tar.xz -o ffmpeg.tar.xz; \
-    tar -Jxf ffmpeg.tar.xz --strip-components=1 -C usr/local --wildcards '*ffmpeg'; \
-    rm ffmpeg.tar.xz; \
+    mkdir -p tokens; \
+    if [ "$QSV" = "1" ]; then mkdir -p usr/lib; fi; \
+    curl -fsSL https://github.com/homebridge/ffmpeg-for-homebridge/releases/latest/download/ffmpeg-alpine-${FFMPEG_ARCH}.tar.gz -o ffmpeg.tar.gz; \
+    tar tzf ffmpeg.tar.gz || (echo "Invalid ffmpeg tarball for ${FFMPEG_ARCH}" && exit 1); \
+    tar xzf ffmpeg.tar.gz -C . ;\
+    rm ffmpeg.tar.gz; \
     curl -fsSL https://github.com/bluenviron/mediamtx/releases/download/v${MTX_TAG}/mediamtx_v${MTX_TAG}_linux_${MTX_ARCH}.tar.gz -o mediamtx.tar.gz; \
     tar tzf mediamtx.tar.gz || (echo "Invalid mediamtx tarball for ${MTX_ARCH}" && exit 1); \
     tar xzf mediamtx.tar.gz -C app; \
     rm mediamtx.tar.gz; \
     cp app/lib/lib.${TARGETARCH} usr/local/lib/libIOTCAPIs_ALL.so; \
-    if [ -n "$QSV" ]; \
+    if [ "$QSV" = "1" ]; \
         then cp -R /usr/lib/x86_64-linux-gnu/ usr/lib/; \
     fi; \
     rm -rf app/*.txt app/lib/; \
