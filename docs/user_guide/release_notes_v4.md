@@ -15,7 +15,7 @@ This fork aims to:
 ## What's New in V4.0
 
 ### Wyze Cam V4 Support
-- **New KVS/WebRTC Backend:** The V4.0 release replaces the legacy TUTK/LAN path with a cloud-signaled KVS backend for the V4 and other newer cameras. This significantly improves reliability and connection speed for these models.
+- **New KVS/WebRTC Backend:** In the current code, the KVS/WebRTC path is the default for all WebRTC-capable cameras, not just V4. That includes V3, V3 Pro, V4, Pan, Pan V2, Pan V3, Floodlight V2, Floodlight Pro, OG, and other models that are not in the `NO_WEBRTC` list.
 - **Improved Authentication:** Added support for modern Wyze API and signaling protocols.
 
 ### Home Assistant Integration

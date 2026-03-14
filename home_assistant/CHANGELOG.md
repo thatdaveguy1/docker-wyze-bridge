@@ -30,13 +30,13 @@ Local patched release built on top of `idisposable/docker-wyze-bridge` `v3.12.3`
 
 - Base fork and release line: `idisposable/docker-wyze-bridge`
 - KVS/WebRTC direction for newer cameras, including signaling behavior such as `recipientClientId`: likely influenced by `akeslo/docker-wyze-bridge`
-- HA-local packaging, WHEP proxy integration, V4/RTC trial routing, deployment tooling, UI changes, regression tests, and operational docs: original local work in this repo
+- HA-local packaging, WHEP proxy integration, earlier V4/RTC routing work, deployment tooling, UI changes, regression tests, and operational docs: original local work in this repo
 - Detailed file-by-file attribution: `docs/maintainer/provenance-2026-03-11-local-patched-attribution.md`
 
 ### Local changes in this release
 
 - Add a local patched Home Assistant add-on tree under `.ha_live_addon/` with its own Dockerfile, config, runtime, translations, docs, and deployment helpers
-- Add a local WHEP proxy path plus KVS config refresh flow for RTC-backed cameras, with V4 and all-RTC trial flags and focused regression tests
+- Add a local WHEP proxy path plus KVS config refresh flow for RTC-backed cameras, along with focused routing regression tests
 - Fix bridge reliability issues around process cleanup, session lifetime, timeout sizing, and on-demand readiness, with proposed upstream PR notes and targeted tests
 - Improve the web UI stream menu, copy actions, protocol availability rules, and loopback auth handling for `/kvs-config/<camera>`
 - Add live deployment handoff docs, runbooks, plan docs, task tracking, and sanitized sample payloads used during validation
