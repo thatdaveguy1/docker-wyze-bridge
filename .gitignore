@@ -38,3 +38,7 @@ deploy_to_ha.sh
 lima-bridged.yaml
 lima-simple.yaml
 utm-vm/
+
+# Local tooling residue
+.opencode/
+.home_assistant_OLD/

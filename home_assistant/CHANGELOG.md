@@ -1,5 +1,46 @@
 # What's Changed
 
+## What's Changed in v4.0.0
+
+First public release of the `thatdaveguy1/docker-wyze-bridge` fork. This release focuses on Wyze Cam V4 support, improved Home Assistant integration, and a more stable streaming backend.
+
+### Major Changes
+
+- **Wyze Cam V4 Support:** New cloud-signaled KVS/WebRTC backend for first-class V4 support and improved latency for V3/V3 Pro cameras.
+- **Home Assistant Optimized:** New `docker_wyze_bridge_v4` slug, ingress-aware base URLs, and conflict-free port mapping (58554, 58888, 58889).
+- **Polished Web UI:** One-click copy buttons for stream URLs, improved protocol status reporting, and better stream availability logic.
+- **MediaMTX V1.16.3:** Upgraded backend for lower latency, better WebRTC track gathering, and reduced startup failures.
+- **Stability Fixes:** Resolved several long-running session, process-cleanup, and on-demand readiness bugs.
+
+### Credits
+
+This fork builds on the excellent work of:
+- `idisposable/docker-wyze-bridge` - Base fork and release line
+- `akeslo/docker-wyze-bridge` - KVS/WebRTC signaling and architectural direction
+- `kroo/wyzecam` - Fundamental Wyze API and TUTK implementation
+- `aler9/mediamtx` - High-performance streaming backend
+
+For detailed attribution, see `docs/maintainer/provenance-2026-03-11-local-patched-attribution.md`.
+
+## What's Changed in v3.12.3-local
+
+Local patched release built on top of `idisposable/docker-wyze-bridge` `v3.12.3`, with KVS/WebRTC migration ideas likely influenced by `akeslo/docker-wyze-bridge` and a larger set of repo-local reliability, HA integration, and UI work.
+
+### Credit and provenance
+
+- Base fork and release line: `idisposable/docker-wyze-bridge`
+- KVS/WebRTC direction for newer cameras, including signaling behavior such as `recipientClientId`: likely influenced by `akeslo/docker-wyze-bridge`
+- HA-local packaging, WHEP proxy integration, V4/RTC trial routing, deployment tooling, UI changes, regression tests, and operational docs: original local work in this repo
+- Detailed file-by-file attribution: `docs/maintainer/provenance-2026-03-11-local-patched-attribution.md`
+
+### Local changes in this release
+
+- Add a local patched Home Assistant add-on tree under `.ha_live_addon/` with its own Dockerfile, config, runtime, translations, docs, and deployment helpers
+- Add a local WHEP proxy path plus KVS config refresh flow for RTC-backed cameras, with V4 and all-RTC trial flags and focused regression tests
+- Fix bridge reliability issues around process cleanup, session lifetime, timeout sizing, and on-demand readiness, with proposed upstream PR notes and targeted tests
+- Improve the web UI stream menu, copy actions, protocol availability rules, and loopback auth handling for `/kvs-config/<camera>`
+- Add live deployment handoff docs, runbooks, plan docs, task tracking, and sanitized sample payloads used during validation
+
 ## What's Changed in v3.12.3
 
 Cleaned up the threading logic around startup/shutdown to reduce CPU and memory leaks

@@ -1,53 +1,40 @@
-[![Docker](https://github.com/idisposable/docker-wyze-bridge/actions/workflows/docker-image.yml/badge.svg)](https://github.com/idisposable/docker-wyze-bridge/actions/workflows/docker-image.yml)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/idisposable/docker-wyze-bridge?logo=github)](https://github.com/idisposable/docker-wyze-bridge/releases/latest)
-[![Docker Image Size (latest semver)](https://img.shields.io/docker/image-size/idisposablegithub365/wyze-bridge?sort=semver&logo=docker&logoColor=white)](https://hub.docker.com/r/idisposablegithub365/wyze-bridge)
-[![Docker Pulls](https://img.shields.io/docker/pulls/idisposablegithub365/wyze-bridge?logo=docker&logoColor=white)](https://hub.docker.com/r/idisposablegithub365/wyze-bridge)
-![GitHub Repo stars](https://img.shields.io/github/stars/idisposable/docker-wyze-bridge?style=social)
+# Docker Wyze Bridge V4.0 (thatdaveguy fork)
 
-# WebRTC/RTMP/RTSP/HLS Bridge for Wyze Cam
+This Home Assistant add-on provides a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork includes specific optimizations for the **Wyze Cam V4** and a polished Home Assistant integration.
 
-![479shots_so](https://user-images.githubusercontent.com/67088095/224595527-05242f98-c4ab-4295-b9f5-07051ced1008.png)
+## 🚀 Installation
 
-Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for most of your Wyze cameras including the outdoor, doorbell, and 2K cams. 
+1.  Add the repository to Home Assistant: `https://github.com/thatdaveguy1/docker-wyze-bridge`
+2.  Install the **Docker Wyze Bridge (V4.0)** add-on.
+3.  Fill in your **Wyze Email**, **Wyze Password**, **API ID**, and **API Key**.
+4.  **API Key and API ID:** Required as of April 2024. Get them from the [Wyze Support Article](https://support.wyze.com/hc/en-us/articles/16129834216731).
+5.  Click **Start**.
 
-No third-party or special firmware required.
+## 🆕 What's New in V4.0
 
-It just works!
-
-Streams direct from camera without additional bandwidth or subscriptions.
-
-
-Based on [@noelhibbard's script](https://gist.github.com/noelhibbard/03703f551298c6460f2fd0bfdbc328bd#file-readme-md) with [kroo/wyzecam](https://github.com/kroo/wyzecam) and [aler9/rtsp-simple-server](https://github.com/aler9/rtsp-simple-server).
-
-Please consider [supporting](https://ko-fi.com/mrlt8) this project if you found it useful, or use our [affiliate link](https://amzn.to/3NLnbvt) if shopping on amazon!
-
-## System Compatibility
-
-![Supports arm32v7 Architecture](https://img.shields.io/badge/arm32v7-yes-success.svg)
-![Supports arm64 Architecture](https://img.shields.io/badge/arm64-yes-success.svg)
-![Supports amd64 Architecture](https://img.shields.io/badge/amd64-yes-success.svg)
-![Supports Apple Silicon Architecture](https://img.shields.io/badge/apple_silicon-yes-success.svg)
-[![Home Assistant Add-on](https://img.shields.io/badge/home_assistant-add--on-blue.svg?logo=homeassistant&logoColor=white)](https://github.com/idisposable/docker-wyze-bridge/wiki/Home-Assistant)
-
-Should work on most x64 systems as well as on most modern arm-based systems like the Raspberry Pi 3/4/5 or Apple Silicon M1/M2/M3.
-
-## Supported Cameras
-
-![Wyze Cam V1](https://img.shields.io/badge/wyze_v1-yes-success.svg)
-![Wyze Cam V2](https://img.shields.io/badge/wyze_v2-yes-success.svg)
-![Wyze Cam V3](https://img.shields.io/badge/wyze_v3-yes-success.svg)
-![Wyze Cam V3 Pro](https://img.shields.io/badge/wyze_v3_pro-yes-success.svg)
-![Wyze Cam V4](https://img.shields.io/badge/wyze_v4-yes-success.svg)
-![Wyze Cam Floodlight](https://img.shields.io/badge/wyze_floodlight-yes-success.svg)
-![Wyze Cam Floodlight V2](https://img.shields.io/badge/wyze_floodlight_v2-yes-success.svg)
-![Wyze Cam Pan](https://img.shields.io/badge/wyze_pan-yes-success.svg)
-![Wyze Cam Pan V2](https://img.shields.io/badge/wyze_pan_v2-yes-success.svg)
-![Wyze Cam Pan V3](https://img.shields.io/badge/wyze_pan_v3-yes-success.svg)
-![Wyze Cam Pan Pro](https://img.shields.io/badge/wyze_pan_pro-yes-success.svg)
-![Wyze Cam Outdoor](https://img.shields.io/badge/wyze_outdoor-yes-success.svg)
-![Wyze Cam Outdoor V2](https://img.shields.io/badge/wyze_outdoor_v2-yes-success.svg)
-![Wyze Cam Doorbell](https://img.shields.io/badge/wyze_doorbell-yes-success.svg)
-![Wyze Cam Doorbell V2](https://img.shields.io/badge/wyze_doorbell_v2-yes-success.svg)
+- **Wyze Cam V4 Support:** A new cloud-signaled KVS backend for first-class V4 support.
+- **Polished Web UI:** One-click copy buttons for stream URLs and improved protocol status reporting.
+- **Home Assistant Optimized:** New `docker_wyze_bridge_v4` slug, ingress-aware base URLs, and conflict-free port mapping.
+- **MediaMTX V1.16.3:** Upgraded backend for lower latency and better stability.
+- **Stability Fixes:** Resolved several long-running session and process-cleanup bugs.
 
 ---
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J3J85TD3K)
+
+## 🛠 Documentation & Support
+
+- 📖 [User Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/README.md)
+- ❓ [Troubleshooting](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/troubleshooting.md)
+- 🆙 [Upgrade Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/upgrade.md)
+
+---
+
+## 💖 Credits & Attribution
+
+This fork is built on the excellent work of the original authors and contributors:
+- `idisposable/docker-wyze-bridge`
+- `akeslo/docker-wyze-bridge`
+- `kroo/wyzecam`
+- `aler9/mediamtx`
+
+> [!IMPORTANT]
+> This project is not affiliated with Wyze Labs, Inc. Use at your own risk.

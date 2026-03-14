@@ -10,8 +10,8 @@ See the official help documentation on how to generate your developer keys: http
 
 Note that all streams and the REST API will necessitate authentication when WebUI Auth `WB_AUTH` is enabled.
 
-- REST API will require an `api` query parameter. 
-  - Example:  `http://homeassistant.local:5000/api/<camera-name>/state?api=<your-wb-api-key>`
+- REST API will require an `api` query parameter.
+  - Example: `http://homeassistant.local:5000/api/<camera-name>/state?api=<your-wb-api-key>`
 - Streams will also require authentication.
   - username: `wb`
   - password: your unique wb api key
@@ -64,19 +64,26 @@ rtmp://homeassistant.local:1935/camera-nickname
 - RTSP:
 
 ```
-rtsp://homeassistant.local:8554/camera-nickname
+rtsp://homeassistant.local:58554/camera-nickname
+```
+
+- WebRTC / WHEP:
+
+```
+http://homeassistant.local:58889/camera-nickname
+http://homeassistant.local:58889/camera-nickname/whep
 ```
 
 - HLS:
 
 ```
-http://homeassistant.local:8888/camera-nickname/stream.m3u8
+http://homeassistant.local:58888/camera-nickname/stream.m3u8
 ```
 
 - HLS can also be viewed in the browser using:
 
 ```
-http://homeassistant.local:8888/camera-nickname
+http://homeassistant.local:58888/camera-nickname
 ```
 
-Please visit [github.com/idisposable/docker-wyze-bridge](https://github.com/idisposable/docker-wyze-bridge) for additional information.
+Please visit [github.com/thatdaveguy1/docker-wyze-bridge](https://github.com/thatdaveguy1/docker-wyze-bridge) for additional information.
