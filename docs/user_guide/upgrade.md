@@ -19,15 +19,6 @@ The V4.0 release is a major update focused on Wyze Cam V4 support, improved Home
 4.  **Install V4.0:** Install the new **Docker Wyze Bridge (V4.0)** add-on and paste your saved configuration into the configuration tab.
 5.  **Update your stream links:** If you have hardcoded RTSP or HLS links in your dashboards or Frigate, update them to use the new ports (`58554`, `58888`, `58889`).
 
-## Upgrading from Local Patched Build
-
-If you were already using the **Docker Wyze Bridge (Local Patched)** add-on from this repo, the transition to V4.0 is seamless.
-
-### Migration Steps
-1.  The `local_docker_wyze_bridge_local` slug is being replaced by the official `docker_wyze_bridge_v4` slug.
-2.  Your existing configuration can be copied over directly.
-3.  The V4.0 release includes the latest stability fixes and the final polished Web UI.
-
 ## Troubleshooting Upgrades
 
 ### "Port already in use"
