@@ -37,7 +37,7 @@ RUN set -eux; \
         TARGETARCH=amd64; FFMPEG_ARCH=x86_64; MTX_ARCH=amd64; \
     fi; \
     cd /build; \
-    . app/.env; \
+    . app/build.env; \
     mkdir -p tokens; \
     curl -fsSL https://github.com/homebridge/ffmpeg-for-homebridge/releases/latest/download/ffmpeg-alpine-${FFMPEG_ARCH}.tar.gz -o ffmpeg.tar.gz; \
     tar tzf ffmpeg.tar.gz || (echo "Invalid ffmpeg tarball for ${FFMPEG_ARCH}" && exit 1); \

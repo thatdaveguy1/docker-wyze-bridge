@@ -41,7 +41,7 @@ RUN set -eux; \
     echo "BUILDING IMAGE FOR amd64";\
     TARGETARCH=amd64; FFMPEG_ARCH=x86_64; MTX_ARCH=amd64; \
     cd /build; \
-    . app/.env; \
+    . app/build.env; \
     mkdir -p tokens ${QSV:+usr/lib}; \
     curl -SL https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n6.1-latest-linux64-lgpl-6.1.tar.xz -o ffmpeg.tar.xz; \
     tar -Jxf ffmpeg.tar.xz --strip-components=1 -C usr/local --wildcards '*ffmpeg'; \
