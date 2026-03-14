@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from wyzebridge.bridge_utils import env_bool
 
+load_dotenv("/app/build.env")
 load_dotenv()
 load_dotenv("/.build_date")
 
@@ -19,5 +20,6 @@ MTX_TAG: str = env_bool("MTX_TAG", style="original")
 BUILD_STR = ARCH
 
 if BUILD != VERSION:
-    BUILD_STR += f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"
-
+    BUILD_STR += (
+        f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"
+    )
