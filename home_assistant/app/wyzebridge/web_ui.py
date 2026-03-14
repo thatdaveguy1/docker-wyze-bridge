@@ -129,15 +129,6 @@ def preview_refresh_route(snapshot_type: str) -> str:
     return "thumb" if snapshot_type == "api" else "snapshot"
 
 
-def _with_basic_auth(url: Optional[str]) -> Optional[str]:
-    if not url or not WbAuth.api:
-        return url
-    parsed = urlparse(url)
-    if not parsed.scheme or not parsed.netloc or "@" in parsed.netloc:
-        return url
-    return urlunparse(parsed._replace(netloc=f"wb:{WbAuth.api}@{parsed.netloc}"))
-
-
 def _with_scheme(url: Optional[str], scheme: str) -> Optional[str]:
     if not url:
         return url
@@ -168,8 +159,8 @@ def _stream_entry(
     available: bool,
     reason: str,
 ) -> dict:
-    url = _with_basic_auth(external_url)
-    lan = _with_basic_auth(lan_url)
+    url = external_url
+    lan = lan_url
     return {
         "id": stream_id,
         "label": label,

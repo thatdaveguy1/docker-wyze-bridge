@@ -193,6 +193,40 @@ class TestWebUIPreviewStreams(unittest.TestCase):
         self.assertEqual(web_ui.preview_refresh_route("api"), "thumb")
         self.assertEqual(web_ui.preview_refresh_route("rtsp"), "snapshot")
 
+    def test_stream_metadata_never_embeds_basic_auth_in_urls(self):
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", "http://homeassistant.local:58889"),
+                patch.object(web_ui, "RTSP_URL", "rtsp://homeassistant.local:58554"),
+                patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
+                patch.object(web_ui, "RTMP_URL", "rtmp://homeassistant.local:51935"),
+                patch.object(web_ui, "BRIDGE_IP", "192.168.1.10"),
+                patch.object(web_ui.os.path, "getmtime", return_value=1234),
+                patch.object(web_ui.WbAuth, "api", "super-secret-api"),
+            ):
+                data = web_ui.format_streams(
+                    {
+                        "garage": {
+                            "enabled": True,
+                            "connected": True,
+                            "rtsp_fw_enabled": True,
+                            "boa_url": None,
+                            "webrtc": True,
+                        }
+                    }
+                )["garage"]
+
+        for stream in data["streams"]:
+            for field in ("url", "lan_url", "copy_text", "lan_copy_text"):
+                value = stream.get(field)
+                if value:
+                    self.assertNotIn("super-secret-api", value)
+                    self.assertNotIn("@", value)
+        self.assertTrue(any(stream["auth_required"] for stream in data["streams"]))
+
 
 if __name__ == "__main__":
     unittest.main()

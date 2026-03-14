@@ -30,7 +30,7 @@ class TestKVSMtxOnDemandConfig(unittest.TestCase):
         with patch("wyzebridge.mtx_server.MtxInterface", FakeMtxInterface):
             mtx_server.MtxServer().add_path("deck", on_demand=False, is_kvs=True)
 
-        self.assertEqual(writes["paths.deck.source"], "whep://localhost:8080/whep/deck")
+        self.assertEqual(writes["paths.deck.source"], "whep://127.0.0.1:8080/whep/deck")
         self.assertTrue(writes["paths.deck.sourceOnDemand"])
         self.assertEqual(writes["paths.deck.sourceOnDemandStartTimeout"], "30s")
         self.assertEqual(writes["paths.deck.sourceOnDemandCloseAfter"], "30s")

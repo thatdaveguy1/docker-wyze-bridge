@@ -1,0 +1,10 @@
+**/.DS_Store
+**/__pycache__/
+**/tokens/
+*.pickle
+*.pyc
+*.env.local
+**/build.env.local
+.opencode/
+scripts/.ha_ssh.env
+worktrees/

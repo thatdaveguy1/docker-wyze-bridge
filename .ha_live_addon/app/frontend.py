@@ -74,7 +74,12 @@ def create_app():
         }
 
         if all(credentials.values()):
-            wb.api.creds.update(**credentials)
+            wb.api.creds.update(
+                email=credentials["email"] or "",
+                password=credentials["password"] or "",
+                key_id=credentials["key_id"] or "",
+                api_key=credentials["api_key"] or "",
+            )
             return {"status": "success"}
 
         return {"status": "missing credentials"}
@@ -121,6 +126,8 @@ def create_app():
                 autoplay=autoplay,
             )
         )
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
 
         resp.set_cookie("number_of_columns", str(number_of_columns))
         resp.set_cookie("refresh_period", str(refresh_period))

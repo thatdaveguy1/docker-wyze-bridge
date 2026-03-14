@@ -61,6 +61,16 @@ class TestFrontendKVSConfigAuth(unittest.TestCase):
             response.get_json(), {"signaling_url": "wss://example.test/dog-run"}
         )
 
+    def test_kvs_config_requires_auth_off_loopback(self):
+        client = self.create_client()
+
+        response = client.get(
+            "/kvs-config/dog-run",
+            environ_base={"REMOTE_ADDR": "10.0.0.42"},
+        )
+
+        self.assertEqual(response.status_code, 401)
+
 
 if __name__ == "__main__":
     unittest.main()

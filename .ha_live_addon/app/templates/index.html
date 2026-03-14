@@ -384,7 +384,10 @@
 {% block api_info %}
 {% if api %}
 <p>
-    API key: <code>{{ api }}</code>
+    <span class="icon-text">
+        <span class="icon"><i class="fas fa-lock"></i></span>
+        <span>Stream auth is enabled. Browser playback uses auth headers and copied URLs stay credential-free.</span>
+    </span>
 </p>
 {% else %}
 <span class="icon-text">
@@ -395,22 +398,7 @@
 {% block javascript %}
 {% if api %}
 <script>
-    function addApiKey() {
-        document.querySelectorAll('a.stream-link').forEach(function (link) {
-            var href = link.getAttribute('href');
-            var updatedHref = href.replace(/^(\w{4,5}):\/\//, function (match, protocol) {
-                return protocol + '://' + encodeURIComponent('wb') + ':' + encodeURIComponent('{{api}}') + '@';
-            });
-            link.setAttribute('href', updatedHref);
-        });
-        document.querySelectorAll('video.hls').forEach(function (sourceElement) {
-            sourceElement.dataset.src = sourceElement.dataset.src.replace(/^https?:\/\//, function (match) {
-                return match + encodeURIComponent('wb') + ':' + encodeURIComponent('{{api}}') + '@';
-            });
-        });
-        document.removeEventListener('DOMContentLoaded', addApiKey);
-    }
-    document.addEventListener('DOMContentLoaded', addApiKey);
+    window.WB_STREAM_AUTH = {{ {"username": "wb", "password": api}|tojson }};
 </script>
 {% endif %}
 <script src="static/site.js"></script>

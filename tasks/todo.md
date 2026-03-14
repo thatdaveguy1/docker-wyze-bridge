@@ -1,5 +1,12 @@
 # Todo
 
+- [completed] Remediate audit findings: remove credential-bearing stream URLs and stop exposing auth in rendered copy buttons/API payloads
+- [completed] Restrict KVS proxy and `whep_proxy` to loopback-only internal access
+- [completed] Add effective Docker ignore files and stop sourcing local `*.env.local` files during image builds
+- [completed] Run targeted Python regression tests for stream metadata, KVS auth bypass, and on-demand WHEP source config
+- [completed] Rewrite git history to purge the leaked SDK key from `main` and tag `v4.0.0`, then force-push both refs with explicit leases
+- [completed] Re-clone the repo from rewritten `origin/main`, transplant the security remediation changes, and re-run the targeted Python regression tests
+
 - [completed] Fix process crash and validate on Home Assistant OS
 - [completed] Fix session/audio lifetime regression and validate V3/V3 Pro stream stability
 - [completed] Add regression tests for timeout propagation, retry behavior, and connect watchdog timing
@@ -83,9 +90,11 @@
 - [completed] Create beginner documentation in `docs/user_guide/`
 - [completed] Validate release-prep code changes with the expanded local Python regression suite (`27 tests ... OK`)
 - [pending] Validate WHEP proxy Go tests once the `go` toolchain is available in this shell
-- [pending] Validate Home Assistant install and browser flows against a live HA instance with real Wyze credentials
+- [completed] Validate Home Assistant install and browser flows against a live HA instance with real Wyze credentials by SSH-installing `0eb0428f_docker_wyze_bridge_v4`, copying the live config from `local_docker_wyze_bridge_local`, starting the new add-on, and verifying the authenticated UI and `/api` respond with `deck`, `dog-run`, `garage`, `hamster`, and `north-yard`
 - [completed] Create git commit for V4.0 release prep
 - [completed] Push to new upstream fork `thatdaveguy1/docker-wyze-bridge`
 - [completed] Tighten public docs and release wording so claims about KVS routing, ports, and install behavior match the actual code
 - [completed] Commit and push the follow-up doc polish pass with more accurate, slightly stronger release messaging
 - [completed] Add a regression test for Home Assistant source-build compatibility and fix the add-on packaging so local HA installs do not depend on BuildKit-only Dockerfile mounts
+- [completed] Switch the live HA runtime from `local_docker_wyze_bridge_local` to `0eb0428f_docker_wyze_bridge_v4` and confirm the new add-on is started while the old one remains stopped
+- [completed] Run `desloppify` on the repository and produce a prioritized proposal of concrete codebase improvements

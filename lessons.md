@@ -2,6 +2,14 @@
 
 - If a repo-tracked env file accidentally contains a real SDK key, preserve the local workflow by moving the value into git-ignored `*.local` overrides first, then scrub the tracked file and update loaders/builds to prefer the local override.
 
+- When running `desloppify` after a `pip` install on macOS, ensure the Python scripts directory is on `PATH` (for this shell: `/Library/Frameworks/Python.framework/Versions/3.13/bin`) or detectors that rely on executables (like Bandit) may silently report reduced coverage.
+
+- Do not embed `WB_API` or any stream credential into generated stream URLs, copied URLs, or DOM-mutated link targets. Keep URLs credential-free and use request headers for browser playback instead.
+
+- Docker only honors `.dockerignore` from the build-context root, not from the Dockerfile directory. If CI builds from repo root or an add-on subdirectory, put the ignore file at that context root or local secret overrides like `*.env.local` can still enter the image build context.
+
+- When a leaked secret lives in old commit history and the current working repo is dirty, do the rewrite in a separate clean clone, verify the literal secret is gone from `git rev-list --all`, then force-push only the rewritten refs with explicit leases. That avoids mixing irreversible history surgery with in-progress local changes.
+
 - For this repo's Home Assistant local add-on flow, copying files into `/addons/local/wyze_bridge_local/...` plus `ha apps restart` is not enough to prove the running add-on picked up code changes.
 - The reliable deployment boundary is `ha apps rebuild local_docker_wyze_bridge_local --force`, then verify the running HTTP service directly.
 - Do not claim repo and HA are in sync based only on source-file copies or on-disk remote files. Verify the runtime response from the live add-on (`/static/site.js`, `/api`, rendered `/`) before making sync claims.
