@@ -16,3 +16,4 @@
 - [completed] Validate the current KVS startup/playback behavior in the HA dev add-on lane; no `400` warning reproduced, so no KVS runtime or logging change was applied in this pass.
 - [completed] Prepare the `4.0.1` release surfaces with version bumps, changelog entries, and updated HA-facing release docs.
 - [completed] Fix the HA local add-on validation lane so metadata refreshes use `ha store reload` first and dev syncs exclude macOS junk files that can break Supervisor parsing.
+- [completed] Publish the `v4.0.1` Git tag and GitHub release after restoring the README homepage split between `4.0.1` patch notes and the original `4.0.0` highlights.
