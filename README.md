@@ -46,7 +46,6 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 - **Visible HA Login Path:** The Home Assistant add-on now shows `Wyze email`, `Wyze password`, `Key ID`, and `API key` by default.
 - **Clearer HA Messaging:** Home Assistant docs and translations now describe the normal login path consistently and explain that sub-stream support follows the internal capability map.
-- **Safer Dev-Lane Validation:** The local HA staging workflow now reloads the add-on store metadata correctly and excludes macOS junk files that can poison Supervisor parsing.
 - **No Surprise KVS Claim:** `4.0.1` does not advertise a KVS runtime fix. The reported `400` warning was not reproduced in the HA dev lane during this patch cycle.
 
 ### What V4.0 Introduced
