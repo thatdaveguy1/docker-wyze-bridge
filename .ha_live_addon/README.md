@@ -1,40 +1,27 @@
-# Docker Wyze Bridge V4.0 (thatdaveguy fork)
+# Docker Wyze Bridge (Dev Build)
 
-This Home Assistant add-on provides a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork includes specific optimizations for the **Wyze Cam V4** and a polished Home Assistant integration.
+This local Home Assistant add-on is the staging lane for this repository. It exists so we can validate changes over SSH before mirroring approved fixes into the production add-on and eventual PRs.
 
-## 🚀 Installation
+## What This Is For
 
-1.  Add the repository to Home Assistant: `https://github.com/thatdaveguy1/docker-wyze-bridge`
-2.  Install the **Docker Wyze Bridge (V4.0)** add-on.
-3.  Fill in your **Wyze Email**, **Wyze Password**, **API ID**, and **API Key**.
-4.  **API Key and API ID:** Required as of April 2024. Get them from the [Wyze Support Article](https://support.wyze.com/hc/en-us/articles/16129834216731).
-5.  Click **Start**.
+- Baseline-checking the local Home Assistant add-on against `4.0.1`.
+- Testing in-progress fixes before promoting them to the tracked production source tree.
+- Running controlled prod/dev swap tests where production is stopped, the dev add-on is started, and production is restored when verification is done.
 
-## 🆕 What's New in V4.0
+## Operating Rules
 
-- **WebRTC-Capable Cameras:** The KVS/WebRTC path is now the default for WebRTC-capable cameras, including V3, V3 Pro, and V4.
-- **Polished Web UI:** One-click copy buttons for stream URLs and improved protocol status reporting.
-- **Home Assistant Optimized:** New `docker_wyze_bridge_v4` slug, ingress-aware base URLs, and conflict-free port mapping.
-- **MediaMTX V1.16.3:** Upgraded backend for lower latency and better stability.
-- **Stability Fixes:** Resolved several long-running session and process-cleanup bugs.
+1. Install this add-on alongside the production **Docker Wyze Bridge V4.0.1** add-on.
+2. Copy production settings into this dev add-on before the first test run.
+3. Never run production and dev at the same time because they intentionally share the same ports.
+4. Stop production before starting the dev add-on.
+5. Restore production after every test window.
 
----
+## Baseline
 
-## 🛠 Documentation & Support
+- Add-on name: `Docker Wyze Bridge (Dev Build)`
+- Add-on slug: `docker_wyze_bridge_dev`
+- Baseline version: `4.0.1`
 
-- 📖 [User Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/README.md)
-- ❓ [Troubleshooting](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/troubleshooting.md)
-- 🆙 [Upgrade Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/upgrade.md)
+## Where The Real Instructions Live
 
----
-
-## 💖 Credits & Attribution
-
-This fork is built on the excellent work of the original authors and contributors:
-- `idisposable/docker-wyze-bridge`
-- `akeslo/docker-wyze-bridge`
-- `kroo/wyzecam`
-- `aler9/mediamtx`
-
-> [!IMPORTANT]
-> This project is not affiliated with Wyze Labs, Inc. Use at your own risk.
+The detailed local-only runbooks for setup, swapping, smoke checks, troubleshooting, and promotion live under `docs/maintainer/` in this workspace. Those docs are intentionally gitignored and are not part of the public repository.

@@ -1,8 +1,8 @@
-name: Docker Wyze Bridge V4.0
+name: Docker Wyze Bridge V4.0.1
 description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams with V4 support and Home Assistant optimizations.
 slug: docker_wyze_bridge_v4
 url: https://github.com/thatdaveguy1/docker-wyze-bridge
-version: 4.0.0
+version: 4.0.1
 stage: stable
 arch:
   - armv7
@@ -37,6 +37,10 @@ ingress_port: 5000
 panel_icon: mdi:bridge
 watchdog: http://[HOST]:[PORT:5000]/health
 options:
+  WYZE_EMAIL: ""
+  WYZE_PASSWORD: ""
+  API_ID: ""
+  API_KEY: ""
   ENABLE_AUDIO: true
   ON_DEMAND: true
   MOTION_API: true
@@ -46,10 +50,10 @@ options:
   CONNECT_RETRIES: 3
   CONNECT_RETRY_DELAY: 2.0
 schema:
-  WYZE_EMAIL: email?
-  WYZE_PASSWORD: password?
-  API_ID: match(\s*[a-fA-F0-9-]{36}\s*)?
-  API_KEY: match(\s*[a-zA-Z0-9]{60}\s*)?
+  WYZE_EMAIL: email
+  WYZE_PASSWORD: password
+  API_ID: match(\s*[a-fA-F0-9-]{36}\s*)
+  API_KEY: match(\s*[a-zA-Z0-9]{60}\s*)
   WB_IP: str?
   REFRESH_TOKEN: str?
   ACCESS_TOKEN: str?

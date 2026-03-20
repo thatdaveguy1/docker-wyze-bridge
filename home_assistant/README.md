@@ -1,16 +1,16 @@
-# Docker Wyze Bridge V4.0 (thatdaveguy fork)
+# Docker Wyze Bridge V4.0.1 (thatdaveguy fork)
 
 This Home Assistant add-on provides a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork is tuned for modern Wyze cameras and a smoother Home Assistant setup experience.
 
 ## 🚀 Installation
 
 1.  Add the repository to Home Assistant: `https://github.com/thatdaveguy1/docker-wyze-bridge`
-2.  Install the **Docker Wyze Bridge (V4.0)** add-on.
-3.  Fill in your **Wyze Email**, **Wyze Password**, **API ID**, and **API Key**.
+2.  Install the **Docker Wyze Bridge (V4.0.1)** add-on.
+3.  Fill in the default visible login fields: **Wyze Email**, **Wyze Password**, **Key ID**, and **API Key**.
 4.  **API Key and API ID:** Required as of April 2024. Get them from the [Wyze Support Article](https://support.wyze.com/hc/en-us/articles/16129834216731).
 5.  Click **Start**.
 
-## 🆕 What's New in V4.0
+## 🆕 What's New in V4.0.1
 
 - **WebRTC-Capable Cameras:** The KVS/WebRTC path is now the default for WebRTC-capable cameras, including V3, V3 Pro, and V4.
 - **Polished Web UI:** One-click copy buttons for stream URLs and improved protocol status reporting.

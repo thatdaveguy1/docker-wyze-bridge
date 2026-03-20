@@ -2,7 +2,9 @@
 
 ## Wyze Authentication
 
-As of April 2024, you will need to supply your own API Key and API ID along with your Wyze email and password. 
+The standard Home Assistant setup path uses the visible `Wyze email`, `Wyze password`, `Key ID`, and `API key` fields on the add-on configuration page.
+
+As of April 2024, you will need to supply your own API Key and API ID along with your Wyze email and password.
 
 See the official help documentation on how to generate your developer keys: https://support.wyze.com/hc/en-us/articles/16129834216731.
 
@@ -42,11 +44,11 @@ Available options:
 - `NET_MODE` - Change the allowed net mode for this camera only.
 - `ROTATE` - Rotate this camera 90 degrees clockwise.
 - `QUALITY` - Adjust the quality for this camera only.
-- `SUB_QUALITY` - Adjust the quality for this camera's substream.
+- `SUB_QUALITY` - Adjust the quality for this camera's substream when the model supports sub-streams.
 - `FORCE_FPS` - Sets the frames-per-second for this camera.
 - `RECORD` - Enable recording for this camera.
-- `SUB_RECORD` - Enable recording of the substream for this camera.
-- `SUBSTREAM` - Enable a substream for this camera.
+- `SUB_RECORD` - Enable recording of the substream for this camera when the model supports sub-streams.
+- `SUBSTREAM` - Enable a substream for this camera when the model is included in the internal capability map. Pan V2 is not currently included.
 - `MOTION_WEBHOOKS` - Specify a url to POST to when motion is detected.
 
 ## URIs

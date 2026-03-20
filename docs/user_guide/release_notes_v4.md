@@ -1,6 +1,6 @@
-# Release Notes V4.0
+# Release Notes V4.0.1
 
-The **Docker Wyze Bridge V4.0** is the first public release of this fork. This release focuses on Wyze Cam V4 support, improved Home Assistant integration, and a more stable streaming backend.
+The **Docker Wyze Bridge V4.0.1** is a focused patch release for the V4 fork line. It keeps the streaming behavior from `4.0.0` and concentrates on clearer Home Assistant packaging and support messaging.
 
 ## Why this Fork Exists?
 
@@ -12,7 +12,21 @@ This fork aims to:
 - Stabilize the bridge for 24/7 streaming reliability.
 - Support modern WebRTC-backed RTSP and HLS delivery.
 
-## What's New in V4.0
+## What's New in V4.0.1
+
+### Home Assistant login defaults
+- **Visible by default:** The standard Home Assistant login path now surfaces `Wyze email`, `Wyze password`, `Key ID`, and `API key` without requiring users to show hidden optional fields first.
+- **Packaging coverage:** The add-on packaging test now locks in those defaults for both the production and dev add-on manifests.
+
+### Home Assistant wording cleanup
+- **Clearer login copy:** HA-facing docs and translations now describe the standard login path consistently as email, password, Key ID, and API key.
+- **Support-aware sub-stream text:** HA-facing wording now explains that sub-stream support follows the internal capability map and that Pan V2 is not currently included.
+
+### KVS scope for this patch
+- **No KVS behavior change:** This patch does not change KVS startup or playback behavior.
+- **Dev-lane validation only:** The reported KVS `400` warning was not reproduced in the Home Assistant dev add-on lane during this release pass, so no KVS logging or runtime fix is included in `4.0.1`.
+
+## What V4.0 already introduced
 
 ### Wyze Cam V4 Support
 - **New KVS/WebRTC Backend:** In the current code, the KVS/WebRTC path is the default for all WebRTC-capable cameras, not just V4. That includes V3, V3 Pro, V4, Pan, Pan V2, Pan V3, Floodlight V2, Floodlight Pro, OG, and other models that are not in the `NO_WEBRTC` list.
@@ -34,7 +48,7 @@ This fork aims to:
 - **Session Lifetime Fixes:** Improved handling of Wyze session contexts to ensure streams stay open during bridge reads.
 
 ## What's Inherited?
-The V4.0 release builds on the excellent work of:
+The V4 fork line builds on the excellent work of:
 - **`idisposable/docker-wyze-bridge`**: For the core bridge architecture and Home Assistant packaging.
 - **`akeslo/docker-wyze-bridge`**: For the initial KVS/WebRTC signaling and architectural direction.
 - **`kroo/wyzecam`**: For the fundamental Wyze API and TUTK implementation.
