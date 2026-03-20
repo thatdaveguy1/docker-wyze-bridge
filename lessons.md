@@ -12,3 +12,4 @@
 - On this HA box, even a freshly copied local add-on folder may not become indexable immediately after `ha supervisor reload`. If you need UI-proof validation, prefer a slot Home Assistant has already indexed or plan for heavier Supervisor-side refresh steps.
 - On this HA box, `ha store reload` is the important local add-on metadata refresh step; run it before `ha supervisor reload` when validating local add-on schema or translation changes.
 - Exclude macOS `.DS_Store` and `._*` files from HA local add-on syncs. Supervisor will try to parse files like `translations/._en.yml`, and that can poison local add-on metadata refreshes.
+- In zsh, `status` is a special read-only parameter. When wrapping release commands in shell one-liners, use a different variable name for exit codes.
