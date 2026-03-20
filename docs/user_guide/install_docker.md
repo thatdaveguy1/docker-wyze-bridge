@@ -1,6 +1,6 @@
 # Docker Install Guide
 
-This guide covers setting up the **Docker Wyze Bridge V4.0** using Docker or Docker Compose.
+This guide covers setting up the **Docker Wyze Bridge V4.0.1** using Docker or Docker Compose.
 
 ## Prerequisites
 

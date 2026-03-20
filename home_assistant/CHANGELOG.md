@@ -1,5 +1,17 @@
 # What's Changed
 
+## What's Changed in v4.0.1
+
+Patch release focused on Home Assistant packaging and documentation clarity.
+
+### Major Changes
+
+- Surface the standard Home Assistant login fields (`Wyze email`, `Wyze password`, `Key ID`, `API key`) by default in the add-on manifest.
+- Mirror the same visible-login behavior in the repository-local dev add-on manifest and add packaging coverage for it.
+- Update HA translations and docs so the standard login path no longer describes the API credentials as optional for normal setup.
+- Clarify HA sub-stream wording so it reflects the internal capability map and explicitly notes that Pan V2 is not currently included.
+- Validate the current KVS startup and playback behavior in the HA dev lane without changing runtime behavior, since the reported `400` warning was not reproduced in this patch cycle.
+
 ## What's Changed in v4.0.0
 
 First public release of the `thatdaveguy1/docker-wyze-bridge` fork. This release focuses on Wyze Cam V4 support, improved Home Assistant integration, and a more stable streaming backend.

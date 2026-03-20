@@ -1,4 +1,4 @@
-# Docker Wyze Bridge V4.0 (thatdaveguy fork)
+# Docker Wyze Bridge V4.0.1 (thatdaveguy fork)
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/thatdaveguy1/docker-wyze-bridge?logo=github)](https://github.com/thatdaveguy1/docker-wyze-bridge/releases/latest)
 [![GHCR Package](https://img.shields.io/badge/ghcr-package-blue?logo=github)](https://ghcr.io/thatdaveguy1/docker-wyze-bridge)
@@ -19,6 +19,8 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 - Better defaults for modern Wyze cameras, especially V3, V3 Pro, and V4.
 - A more beginner-friendly Home Assistant add-on with cleaner docs and safer defaults.
+- The Home Assistant add-on now surfaces the standard `Wyze email`, `Wyze password`, `Key ID`, and `API key` fields by default.
+- Sub-stream messaging now explains that support follows the internal capability map instead of implying every camera supports it.
 - A more usable web UI with copy-ready stream URLs and clearer protocol availability.
 - Practical reliability work around startup timing, session lifetime, and long-running bridge stability.
 
@@ -40,7 +42,7 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 ---
 
-## 🆕 What's New in V4.0
+## 🆕 What's New in V4.0.1
 
 - **WebRTC-Capable Cameras:** The KVS/WebRTC path is now the default for WebRTC-capable cameras, including V3, V3 Pro, and V4.
 - **Polished Web UI:** One-click copy buttons for stream URLs and improved protocol status reporting.
@@ -72,10 +74,12 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 ## 🛠 Documentation & Support
 
-- 🆕 [V4.0 Release Notes](./docs/user_guide/release_notes_v4.md)
+- 🆕 [V4.0.1 Release Notes](./docs/user_guide/release_notes_v4.md)
 - 🆙 [Upgrade & Migration Guide](./docs/user_guide/upgrade.md)
 - ❓ [Troubleshooting Guide](./docs/user_guide/troubleshooting.md)
 - 📘 [Home Assistant Add-on Docs](./home_assistant/DOCS.md)
+- 🧪 Repository-local Home Assistant staging is maintained through `.ha_live_addon/` as a separate `Dev Build` add-on before fixes are promoted into production sources.
+- 🧰 On Home Assistant systems where local add-on store reload is blocked, the SSH staging helpers can reuse an already-indexed local add-on slot as the dev lane.
 
 ---
 

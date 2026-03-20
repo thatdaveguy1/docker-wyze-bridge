@@ -1,16 +1,16 @@
 configuration:
   WYZE_EMAIL:
-    name: Wyze Account Email
-    description: Enter the email for the Wyze account login.
+    name: Wyze email
+    description: Standard Home Assistant login path. Enter the email for your Wyze account.
   WYZE_PASSWORD:
-    name: Wyze Account Password
-    description: Enter the password for the Wyze account login.
+    name: Wyze password
+    description: Standard Home Assistant login path. Enter the password for your Wyze account.
   API_ID:
     name: Key ID
-    description: Optional, but must be used in combination with the API Key.
+    description: Standard Home Assistant login path. Enter the Wyze developer Key ID used with the API key.
   API_KEY:
-    name: API Key
-    description: Optional, but must be used in combination with the Key ID.
+    name: API key
+    description: Standard Home Assistant login path. Enter the Wyze developer API key used with the Key ID.
   WB_IP:
     name: Bridge IP
     description: Home Assistant IP for WebRTC ICE traffic.
@@ -63,7 +63,7 @@ configuration:
     description: Make a Webhook/HTTP request to any url. e.g., http://localhost/motion?cam={cam_name}. This sets the default for all cameras.
   SUBSTREAM:
     name: Enable sub-stream
-    description: Create a secondary SD30 stream on "/cam-name-sub", this sets the default for all cameras.
+    description: Create a secondary SD30 stream on "/cam-name-sub" for cameras whose internal capability map supports sub-streams. Pan V2 is not currently included.
   AUDIO_CODEC:
     name: Audio Codec
     description: Cams with PCM audio will be re-encoded to AAC by default for RTSP compatibility.
@@ -152,13 +152,13 @@ configuration:
     description: Sets the quality of the stream for all cameras. SD or HD followed by a bit rate number (e.g. SD30 or HD180)
   SUB_QUALITY:
     name: Substream Quality Default
-    description: Sets the quality of the additional camera sub-stream for all cameras. SD or HD followed by a bit rate number (e.g. SD30 or HD180)
+    description: Sets the quality of the additional camera sub-stream for cameras whose internal capability map supports sub-streams. SD or HD followed by a bit rate number (e.g. SD30 or HD180)
   FORCE_FPS:
     name: Force FPS
     description: Sets the default frames-per-second for all cameras
   SUB_RECORD:
     name: Record Sub-Stream
-    description: Allows recording the sub-stream from all cameras that support substreams
+    description: Allows recording the sub-stream from cameras whose internal capability map supports sub-streams. Pan V2 is not currently included
   FFMPEG_FLAGS:
     name: FFmpeg Flags
     description: Additional flags to pass FFmpeg for all cameras

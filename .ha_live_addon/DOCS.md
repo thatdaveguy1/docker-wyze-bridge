@@ -1,8 +1,19 @@
-# Docker Wyze Bridge
+# Docker Wyze Bridge (Dev Build)
+
+This add-on is the local staging build for SSH-driven validation. It is not the public production add-on.
+
+## Before You Start
+
+- Keep the production add-on installed and unchanged.
+- Copy production settings into this dev add-on before testing.
+- Stop production before starting this add-on because both add-ons intentionally share the same ports.
+- Restore production after each test cycle.
 
 ## Wyze Authentication
 
-As of April 2024, you will need to supply your own API Key and API ID along with your Wyze email and password. 
+This staging add-on should use the same login path and settings as production. The standard Home Assistant setup path uses the visible `Wyze email`, `Wyze password`, `Key ID`, and `API key` fields on the add-on configuration page.
+
+As of April 2024, you will need to supply your own API Key and API ID along with your Wyze email and password.
 
 See the official help documentation on how to generate your developer keys: https://support.wyze.com/hc/en-us/articles/16129834216731.
 
@@ -16,7 +27,7 @@ Note that all streams and the REST API will necessitate authentication when WebU
   - username: `wb`
   - password: your unique wb api key
 
-Please double check your router/firewall and do NOT forward ports or enable DMZ access to your bridge/server unless you know what you are doing!
+Please double check your router/firewall and do NOT forward ports or enable DMZ access to your bridge/server unless you know what you are doing.
 
 
 ## Camera Specific Options
@@ -42,11 +53,11 @@ Available options:
 - `NET_MODE` - Change the allowed net mode for this camera only.
 - `ROTATE` - Rotate this camera 90 degrees clockwise.
 - `QUALITY` - Adjust the quality for this camera only.
-- `SUB_QUALITY` - Adjust the quality for this camera's substream.
+- `SUB_QUALITY` - Adjust the quality for this camera's substream when the model supports sub-streams.
 - `FORCE_FPS` - Sets the frames-per-second for this camera.
 - `RECORD` - Enable recording for this camera.
-- `SUB_RECORD` - Enable recording of the substream for this camera.
-- `SUBSTREAM` - Enable a substream for this camera.
+- `SUB_RECORD` - Enable recording of the substream for this camera when the model supports sub-streams.
+- `SUBSTREAM` - Enable a substream for this camera when the model is included in the internal capability map. Pan V2 is not currently included.
 - `MOTION_WEBHOOKS` - Specify a url to POST to when motion is detected.
 
 ## URIs
@@ -86,4 +97,4 @@ http://homeassistant.local:58888/camera-nickname/stream.m3u8
 http://homeassistant.local:58888/camera-nickname
 ```
 
-Please visit [github.com/thatdaveguy1/docker-wyze-bridge](https://github.com/thatdaveguy1/docker-wyze-bridge) for additional information.
+For local staging workflow details, use the gitignored maintainer docs in this workspace under `docs/maintainer/`.
