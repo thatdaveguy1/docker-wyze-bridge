@@ -46,6 +46,7 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 
 - **Safer KVS/WHEP Startup:** The WHEP proxy now exposes downstream output tracks only after real upstream audio/video media is ready, which reduces early attach failures during camera startup.
 - **Hardened Bridge Initialization:** If Wyze login succeeds but `get_user_info` fails or returns empty, the bridge now falls back to the configured Wyze email instead of crashing during startup.
+- **Wyze Bulb Cam Confirmed:** The `4.0.2` validation notes now include confirmed compatibility for the **Wyze Bulb Cam** on the RTC/WHEP pipeline.
 - **Better HA Validation Workflow:** The Home Assistant prod/dev swap helper stays intentionally minimal while in-app diagnostics and live log checks remain the preferred way to validate bridge behavior.
 - **Patch Release Scope:** `4.0.2` focuses on runtime stability and release hardening for the V4 fork line rather than introducing new camera-facing features.
 
@@ -76,6 +77,7 @@ Create a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze c
 ![Wyze Cam Outdoor V2](https://img.shields.io/badge/wyze_outdoor_v2-yes-success.svg)
 ![Wyze Cam Doorbell](https://img.shields.io/badge/wyze_doorbell-yes-success.svg)
 ![Wyze Cam Doorbell V2](https://img.shields.io/badge/wyze_doorbell_v2-yes-success.svg)
+![Wyze Bulb Cam](https://img.shields.io/badge/wyze_bulb_cam-yes-success.svg)
 
 ---
 
