@@ -29,11 +29,12 @@ This fork aims to:
 ### Scope and notes for this patch
 - **Patch-level release:** `4.0.2` is a runtime reliability release, not a feature expansion release.
 - **Validated path:** The auth/init crash was fixed and the follow-up Home Assistant dev-lane validation completed cleanly with `dog-run` reaching `video_ready=true`, `audio_ready=true`, and `upstream_alive=true` during the successful startup pass.
+- **Compatibility note:** The **Wyze Bulb Cam** is now confirmed compatible with this fork's RTC/WHEP pipeline and should follow the same WebRTC-backed path as the other newer supported cameras.
 
 ## What V4.0 and V4.0.1 already introduced
 
 ### Wyze Cam V4 Support
-- **New KVS/WebRTC Backend:** In the current code, the KVS/WebRTC path is the default for all WebRTC-capable cameras, not just V4. That includes V3, V3 Pro, V4, Pan, Pan V2, Pan V3, Floodlight V2, Floodlight Pro, OG, and other models that are not in the `NO_WEBRTC` list.
+- **New KVS/WebRTC Backend:** In the current code, the KVS/WebRTC path is the default for all WebRTC-capable cameras, not just V4. That includes V3, V3 Pro, V4, Pan, Pan V2, Pan V3, Floodlight V2, Floodlight Pro, OG, Wyze Bulb Cam, and other models that are not in the `NO_WEBRTC` list.
 - **Improved Authentication:** Added support for modern Wyze API and signaling protocols.
 
 ### Home Assistant Integration
