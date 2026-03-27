@@ -63,4 +63,5 @@ Advanced users can override MediaMTX port behavior through the add-on configurat
 The V4.0.2 release includes specific fixes and improvements for:
 - **Wyze Cam V4:** Uses the default KVS/WebRTC path and is a major focus of this fork.
 - **Wyze Cam V3 and V3 Pro:** Also use the default KVS/WebRTC path for lower latency and better stability.
+- **Wyze Bulb Cam:** Confirmed compatible on the RTC/WHEP pipeline.
 - All other Wyze cameras are supported via the standard bridge path.
