@@ -34,9 +34,11 @@ from wyzecam.api import (
     wakeup_kvs_camera,
 )
 from wyzebridge.auth import get_secret
-from wyzebridge.bridge_utils import env_bool, env_list
+from wyzebridge.bridge_utils import env_bool, env_cam, env_list
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
 from wyzebridge.logging import logger
+
+WHEP_PROXY_PORT = environ.get("WHEP_PROXY_PORT", "8080")
 
 
 def cached(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -102,6 +104,51 @@ def sanitize_url(url: str) -> str:
         if parts.scheme and parts.netloc
         else parts.path or "<redacted>"
     )
+
+
+def kvs_trace_enabled(stream_name: str) -> bool:
+    raw = environ.get("KVS_TRACE_STREAM", "").strip()
+    if not raw:
+        return False
+    if raw.lower() in {"1", "true", "yes", "all", "*"}:
+        return True
+    return stream_name.upper() in env_list("KVS_TRACE_STREAM")
+
+
+def sanitize_kvs_trace(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: sanitize_kvs_trace_field(key, val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [sanitize_kvs_trace(item) for item in value]
+    return value
+
+
+def sanitize_kvs_trace_field(key: str, value: Any) -> Any:
+    lowered = key.lower()
+    if lowered in {
+        "auth_token",
+        "signaltoken",
+        "authorization",
+        "credential",
+        "username",
+        "phone_id",
+        "clientid",
+    }:
+        return "<redacted>"
+    if lowered in {"signaling_url", "url", "urls"} and isinstance(value, str):
+        return sanitize_url(value)
+    return sanitize_kvs_trace(value)
+
+
+def log_kvs_trace(stream_name: str, stage: str, payload: Any) -> None:
+    if not kvs_trace_enabled(stream_name):
+        return
+    trace = {
+        "camera": stream_name,
+        "stage": stage,
+        "payload": sanitize_kvs_trace(payload),
+    }
+    logger.info(f"[KVS_TRACE] {json.dumps(trace, sort_keys=True)}")
 
 
 class WyzeCredentials:
@@ -352,7 +399,8 @@ class WyzeApi:
 
     @authenticated
     def get_kvs_signal(self, cam_name: str) -> Optional[dict]:
-        if not (cam := self.get_camera(cam_name, True)):
+        stream_name, _, quality = self._stream_request(cam_name)
+        if not (cam := self.get_camera(stream_name, True)):
             return {"result": "cam not found", "cam": cam_name}
 
         if not self.auth:
@@ -367,7 +415,12 @@ class WyzeApi:
                 wss["ClientId"] = self.auth.phone_id
             else:
                 wss = get_cam_webrtc(self.auth, cam.mac)
-            return wss | {"result": "ok", "cam": cam_name}
+            return wss | {
+                "result": "ok",
+                "cam": cam_name,
+                "camera_name": stream_name,
+                "quality": quality,
+            }
         except (HTTPError, WyzeAPIError) as ex:
             logger.warning(
                 f"[API] Error fetching signaling data [{type(ex).__name__}] {ex}"
@@ -392,28 +445,62 @@ class WyzeApi:
             if self.auth:
                 wakeup_kvs_camera(self.auth, cam)
 
+    def _stream_request(self, uri: str) -> tuple[str, bool, str]:
+        substream = uri.endswith("-sub")
+        cam_name = uri[:-4] if substream else uri
+        quality_key = "sub_quality" if substream else "quality"
+        default_quality = "sd30" if substream else "hd180"
+        quality = env_cam(quality_key, cam_name, default_quality)
+        return cam_name, substream, quality
+
     @authenticated
     def get_kvs_proxy_config(self, cam_name: str) -> Optional[dict]:
         if not self.auth:
             logger.error("[API] User not authorized in get_kvs_proxy_config()")
             return None
-        if not (cam := self.get_camera(cam_name, True)):
+        stream_name, substream, quality = self._stream_request(cam_name)
+        if not (cam := self.get_camera(stream_name, True)):
             logger.error(
-                f"[API] Camera not found in get_kvs_proxy_config(): {cam_name}"
+                f"[API] Camera not found in get_kvs_proxy_config(): {stream_name}"
             )
             return None
         if not cam.is_kvs:
             logger.error(
-                f"[API] Camera is not KVS in get_kvs_proxy_config(): {cam_name}"
+                f"[API] Camera is not KVS in get_kvs_proxy_config(): {stream_name}"
             )
             return None
         self._maybe_wake_kvs_camera(cam)
-        if cam.product_model in {"LD_CFP", "HL_CAM4"}:
+        force_webrtc = environ.get("HL_CAM4_FORCE_WEBRTC", "").strip().lower() in {"1", "true", "yes", "on"}
+        if cam.product_model in {"LD_CFP", "HL_CAM4"} and not force_webrtc:
             kvs_stream = get_camera_stream(self.auth, cam)
+            property_data = getattr(kvs_stream, "property", None)
+            log_kvs_trace(
+                stream_name,
+                "raw_proxy_params",
+                {
+                    "property": (
+                        property_data.model_dump(by_alias=True)
+                        if hasattr(property_data, "model_dump")
+                        else None
+                    ),
+                    "params": kvs_stream.params.model_dump(),
+                    "requested_quality": quality,
+                    "substream": substream,
+                    "stream_id": cam_name,
+                },
+            )
             kvs_stream.params.signaling_url = unquote(kvs_stream.params.signaling_url)
             if not kvs_stream.params.signaling_url:
                 raise ValueError("empty signaling_url from Wyze API")
-            return kvs_stream.params.model_dump() | {"phone_id": self.auth.phone_id}
+            config = kvs_stream.params.model_dump() | {
+                "phone_id": self.auth.phone_id,
+                "stream_id": cam_name,
+                "camera_name": stream_name,
+                "quality": quality,
+                "substream": substream,
+            }
+            log_kvs_trace(stream_name, "derived_kvs_config", config)
+            return config
 
         if not cam.webrtc_support:
             logger.error(f"[API] Camera does not support RTC proxy: {cam_name}")
@@ -421,6 +508,11 @@ class WyzeApi:
 
         signal = get_cam_webrtc(self.auth, cam.mac)
         signaling_url = signal.get("signalingUrl") or ""
+        log_kvs_trace(
+            stream_name,
+            "webrtc_signal",
+            {"signalingUrl": signaling_url, "product_model": cam.product_model},
+        )
         if not signaling_url:
             raise ValueError("empty signalingUrl from Wyze API")
         ice_servers = []
@@ -442,33 +534,35 @@ class WyzeApi:
             "ice_servers": ice_servers,
             "auth_token": signal.get("signalToken", ""),
             "phone_id": signal.get("ClientId") or self.auth.phone_id,
+            "stream_id": cam_name,
+            "camera_name": stream_name,
+            "quality": quality,
+            "substream": substream,
         }
 
     @authenticated
-    def setup_mtx_proxy(self, cam_name: str, uri: str) -> bool:
+    def setup_mtx_proxy(self, uri: str) -> bool:
         if not self.auth:
             logger.error("[API] User not authorized in setup_mtx_proxy()")
-            return False
-        if not (cam := self.get_camera(cam_name, True)):
             return False
         try:
             last_error = None
             for _ in range(10):
                 try:
-                    kvs_config = self.get_kvs_proxy_config(cam.name_uri)
+                    kvs_config = self.get_kvs_proxy_config(uri)
                     if not kvs_config:
                         raise ValueError(
-                            f"failed to build KVS config for {cam.name_uri}"
+                            f"failed to build KVS config for {uri}"
                         )
                     response = requests.post(
-                        f"http://127.0.0.1:8080/websocket/{uri}",
+                        f"http://127.0.0.1:{WHEP_PROXY_PORT}/websocket/{uri}",
                         json=kvs_config,
                         headers={"Content-Type": "application/json"},
                         timeout=10,
                     )
                     response.raise_for_status()
                     status = requests.get(
-                        f"http://127.0.0.1:8080/status/{uri}", timeout=2
+                        f"http://127.0.0.1:{WHEP_PROXY_PORT}/status/{uri}", timeout=2
                     )
                     status.raise_for_status()
                     last_error = None
@@ -480,7 +574,7 @@ class WyzeApi:
                 raise last_error
             return True
         except Exception as ex:
-            logger.error(f"[API] Failed to setup KVS proxy for {cam_name}: {ex}")
+            logger.error(f"[API] Failed to setup KVS proxy for {uri}: {ex}")
             return False
 
     @authenticated

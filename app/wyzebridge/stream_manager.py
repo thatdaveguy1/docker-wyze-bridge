@@ -9,6 +9,7 @@ from wyzebridge.wyze_api import WyzeApi
 from wyzebridge.stream import Stream
 from wyzebridge.config import MOTION, MQTT_DISCOVERY, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd, wait_for_purges
+from wyzebridge.go2rtc import preload_native_stream, write_native_snapshot
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
 from wyzebridge.mtx_event import RtspEvent
@@ -22,6 +23,7 @@ class StreamManager:
         "stop_flag",
         "streams",
         "rtsp_snapshots",
+        "native_preloads",
         "last_snap",
         "monitor_snapshots_thread",
     )
@@ -31,6 +33,7 @@ class StreamManager:
         self.stop_flag: bool = False
         self.streams: dict[str, Stream] = {}
         self.rtsp_snapshots: dict[str, Popen] = {}
+        self.native_preloads: set[str] = set()
         self.last_snap: float = 0
         self.monitor_snapshots_thread: Optional[Thread] = None
 
@@ -54,7 +57,7 @@ class StreamManager:
         return stream.get_info() if (stream := self.get(uri)) else {}
 
     def get_all_cam_info(self) -> dict:
-        return {uri: s.get_info() for uri, s in self.streams.items()}
+        return {uri: s.get_info() for uri, s in list(self.streams.items())}
 
     def stop_all(self) -> None:
         logger.info(f"[STREAM] Stopping {self.total} stream{'s'[: self.total ^ 1]}")
@@ -152,12 +155,12 @@ class StreamManager:
         """
         if self.stop_flag:
             return []
-        return [cam for cam, s in self.streams.items() if s.health_check() > 0]
+        return [cam for cam, s in list(self.streams.items()) if s.health_check() > 0]
 
     def enabled_streams(self) -> list[str]:
         if self.stop_flag:
             return []
-        return [cam for cam, s in self.streams.items() if getattr(s, "enabled", False)]
+        return [cam for cam, s in list(self.streams.items()) if getattr(s, "enabled", False)]
 
     def snap_all(self, cams: Optional[list[str]] = None, force: bool = False):
         """
@@ -186,7 +189,7 @@ class StreamManager:
     def get_sse_status(self) -> dict:
         return {
             uri: {"status": cam.status(), "motion": cam.motion}
-            for uri, cam in self.streams.items()
+            for uri, cam in list(self.streams.items())
         }
 
     def send_cmd(
@@ -220,7 +223,7 @@ class StreamManager:
 
             if "update_snapshot" in cam_resp:
                 demand_opened = not stream.connected
-                snap = self.get_rtsp_snap(cam_name)
+                snap = self.get_snapshot(cam_name)["ok"]
                 if demand_opened:
                     stream.stop()
 
@@ -257,6 +260,26 @@ class StreamManager:
         finally:
             self.stop_subprocess(cam_name)
         return False
+
+    def _native_snapshot(self, cam_name: str) -> bool:
+        if not (stream := self.get(cam_name)):
+            return False
+        info = stream.get_info()
+        if not info.get("native_selected"):
+            return False
+        alias = info.get("native_alias")
+        if not alias:
+            return False
+        if alias not in self.native_preloads:
+            preload = preload_native_stream(alias)
+            if preload.get("ok"):
+                self.native_preloads.add(alias)
+        return write_native_snapshot(alias, cam_name)
+
+    def get_snapshot(self, cam_name: str) -> dict:
+        if self._native_snapshot(cam_name):
+            return {"ok": True, "source": "go2rtc"}
+        return {"ok": self.get_rtsp_snap(cam_name), "source": "rtsp"}
 
     def stop_subprocess(self, cam: str):
         ffmpeg = self.rtsp_snapshots.get(cam)

@@ -1,5 +1,15 @@
 # What's Changed
 
+## What's Changed in v4.1.1
+
+Patch release focused on the shared native `go2rtc` runtime path and clearer native camera behavior.
+
+### Major Changes
+
+- Move native `go2rtc` startup into a shared helper so root Docker, the production add-on, and the local dev add-on all bootstrap the same sidecar flow.
+- Add camera-level native selection metadata, native snapshot routing, and richer `/health/details` diagnostics so `HL_CAM4` can prefer native while `HL_BC` stays bridge-first.
+- Add API-first native talkback through `POST /api/<camera>/talkback` for cameras already validated on the native sidecar path.
+
 ## What's Changed in v4.0.2
 
 Patch release focused on startup hardening and Home Assistant runtime validation.

@@ -261,8 +261,17 @@
                                     <span
                                         class="icon is-small">
                                         <i class="fas fa-circle-pause" aria-hidden="true"></i></span>
-                                    <span>Stop</span></button>
-                            </div>
+                                     <span>Stop</span></button>
+                             </div>
+                             {% if not camera.substream %}
+                             <p class="menu-label dropdown-item"><i class="fas fa-code-branch"></i> Stream Mode</p>
+                             <div class="buttons are-small is-centered stream-mode-group" data-cam="{{cam_uri}}">
+                                 <button class="button stream-mode-button" type="button" data-mode="main" title="Pull only the main stream">Main</button>
+                                 <button class="button stream-mode-button" type="button" data-mode="both" title="Pull both main and sub streams">Both</button>
+                                 <button class="button stream-mode-button {% if not camera.bridge_can_substream %}is-static{% endif %}" type="button" data-mode="sub" {% if not camera.bridge_can_substream %}disabled title="Sub stream is not available for this camera"{% else %}title="Pull only the sub stream"{% endif %}>Sub</button>
+                             </div>
+                             <p class="dropdown-item has-text-grey-light is-size-7">Main is the default. Sub and Both are only available on cameras that expose a supported secondary stream.</p>
+                             {% endif %}
                         </div>
                     </div>
                 </div>

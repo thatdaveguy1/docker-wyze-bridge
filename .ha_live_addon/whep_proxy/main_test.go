@@ -61,12 +61,12 @@ func TestOutputTracksRequireReadyMedia(t *testing.T) {
 		t.Fatalf("expected no output tracks before upstream media is ready, got %d", got)
 	}
 
-	stream.videoReady.Store(true)
-	if got := len(stream.outputTracks()); got != 1 {
-		t.Fatalf("expected only video track once video is ready, got %d", got)
+	stream.audioReady.Store(true)
+	if got := len(stream.outputTracks()); got != 0 {
+		t.Fatalf("expected no output tracks while only audio is ready, got %d", got)
 	}
 
-	stream.audioReady.Store(true)
+	stream.videoReady.Store(true)
 	if got := len(stream.outputTracks()); got != 2 {
 		t.Fatalf("expected both output tracks once media is ready, got %d", got)
 	}

@@ -15,8 +15,14 @@ from wyzebridge.wyze_stream import StreamStatus, WyzeStream
 class TestConnectWatchdogTimeout(unittest.TestCase):
     def test_connecting_watchdog_respects_retry_window(self):
         stream = WyzeStream.__new__(WyzeStream)
-        stream.camera = SimpleNamespace(nickname="North Yard", is_battery=False)
-        stream.options = SimpleNamespace(reconnect=False)
+        stream.camera = SimpleNamespace(
+            nickname="North Yard",
+            is_battery=False,
+            product_model="WYZEC1",
+            is_kvs=False,
+            can_substream=False,
+        )
+        stream.options = SimpleNamespace(reconnect=False, substream=False)
         stream.start_time = 100.0
         stream.stop = lambda: setattr(stream, "stopped", True)
         stream.stopped = False

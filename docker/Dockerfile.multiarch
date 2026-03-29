@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 COPY /app/ /build/app/
 
 RUN chmod +x /build/app/run
+RUN chmod +x /build/app/go2rtc_sidecar.sh
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eux; pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
@@ -49,6 +50,10 @@ RUN set -eux; \
     tar tzf mediamtx.tar.gz || (echo "Invalid mediamtx tarball for ${MTX_ARCH}" && exit 1); \
     tar xzf mediamtx.tar.gz -C app; \
     rm mediamtx.tar.gz; \
+    GO2RTC_ARCH=$([ "${TARGETARCH}" = "arm64" ] && echo "arm64" || [ "${TARGETARCH}" = "arm" ] && echo "arm" || echo "amd64"); \
+    mkdir -p usr/local/bin; \
+    curl -fsSL "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_${GO2RTC_ARCH}" -o usr/local/bin/go2rtc && echo "go2rtc downloaded OK"; \
+    chmod +x usr/local/bin/go2rtc; \
     cp app/lib/lib.${TARGETARCH} usr/local/lib/libIOTCAPIs_ALL.so; \
     rm -rf app/*.txt app/lib/; \
     if [ -z "${BUILD_DATE}" ]; \

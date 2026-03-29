@@ -11,6 +11,11 @@ from wyzebridge.bridge_utils import LIVESTREAM_PLATFORMS, env_bool, env_cam
 from wyzebridge.config import IMG_PATH, IMG_TYPE, SNAPSHOT_FORMAT
 from wyzebridge.logging import logger
 
+def internal_rtsp_url(uri: str) -> str:
+    rtsp_port = os.getenv("MTX_RTSPADDRESS", ":8554").rsplit(":", 1)[-1] or "8554"
+    return f"rtsp://0.0.0.0:{rtsp_port}/{uri}"
+
+
 def get_ffmpeg_cmd(
     uri: str, vcodec: str, audio: dict, is_vertical: bool = False
 ) -> list[str]:
@@ -56,7 +61,7 @@ def get_ffmpeg_cmd(
 
     rtsp_transport = "udp" if "udp" in env_bool("MTX_RTSPTRANSPORTS") else "tcp"
     fio_cmd = r"use_fifo=1:fifo_options=attempt_recovery=1\\\:drop_pkts_on_overflow=1:"
-    rss_cmd = f"[{fio_cmd}{{}}f=rtsp:{rtsp_transport=:}]rtsp://0.0.0.0:8554/{uri}"
+    rss_cmd = f"[{fio_cmd}{{}}f=rtsp:{rtsp_transport=:}]{internal_rtsp_url(uri)}"
     rtsp_ss = rss_cmd.format("")
 
     if env_cam("AUDIO_STREAM", uri, style="original") and audio:
@@ -311,7 +316,7 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
     cmd = (
         ["ffmpeg", "-loglevel", "error", "-analyzeduration", "0", "-probesize", "32"]
         + ["-f", "rtsp", "-rtsp_transport", rtsp_transport, "-thread_queue_size", "500"]
-        + ["-i", f"rtsp://0.0.0.0:8554/{cam_name}", "-map", "0:v:0"]
+        + ["-i", internal_rtsp_url(cam_name), "-map", "0:v:0"]
         + rotation
         + ["-f", "image2", "-frames:v", "1", "-y", img]
     )
