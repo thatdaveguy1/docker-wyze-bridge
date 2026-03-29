@@ -73,6 +73,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
 from wyzebridge.stream_manager import StreamManager
 
+# StreamManager import needed the lightweight wyzebridge stubs above, but later
+# tests in the same pytest process need the real module. Drop the stubs after
+# import so future imports resolve the actual implementation.
+sys.modules.pop("wyzebridge.wyze_stream", None)
+sys.modules.pop("wyzebridge.wyze_events", None)
+
 
 class DummyApi:
     pass

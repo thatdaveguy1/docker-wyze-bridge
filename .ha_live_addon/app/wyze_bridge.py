@@ -17,7 +17,7 @@ from wyzebridge.config import (
 )
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream, migrate_path
-from wyzebridge.camera_settings import get_camera_setting
+from wyzebridge.camera_settings import get_camera_setting, update_camera_settings
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
 from wyzebridge.hass import setup_hass
 from wyzebridge.logging import logger
@@ -121,16 +121,16 @@ class WyzeBridge(Thread):
                 f"[+] Adding {cam.nickname} [{cam.product_model}] at {cam.name_uri}"
             )
 
+            stream_config = self.camera_stream_config(cam)
             options = WyzeStreamOptions(
-                quality=env_cam("quality", cam.name_uri),
+                quality=f"hd{stream_config['feeds']['hd']['kbps']}",
                 audio=bool(env_cam("enable_audio", cam.name_uri)),
                 record=bool(env_cam("record", cam.name_uri)),
                 reconnect=(not ON_DEMAND) or is_livestream(cam.name_uri),
             )
 
-            stream_mode = self.camera_stream_mode(cam)
-            create_main = stream_mode in {"", "main", "both"}
-            create_sub = self.camera_substream_enabled(cam, stream_mode)
+            create_main = stream_config["feeds"]["hd"]["enabled"]
+            create_sub = stream_config["feeds"]["sd"]["enabled"]
 
             if create_main:
                 stream = WyzeStream(user, self.api, cam, options)
@@ -146,20 +146,133 @@ class WyzeBridge(Thread):
                 self.add_substream(user, self.api, cam, options)
 
     def camera_stream_mode(self, cam: WyzeCamera) -> str:
-        mode = get_camera_setting(cam.name_uri, "stream") or env_cam(
-            "stream", cam.name_uri
-        )
-        return str(mode or "").strip().lower()
+        return self.camera_stream_config(cam)["mode"]
 
     def camera_substream_enabled(self, cam: WyzeCamera, stream_mode: str = "") -> bool:
-        mode = (stream_mode or self.camera_stream_mode(cam)).lower()
-        if mode in {"sub", "both"}:
-            return cam.bridge_can_substream
-        if mode == "main":
+        return self.camera_stream_config(cam)["feeds"]["sd"]["enabled"]
+
+    def camera_hd_supported(self, cam: WyzeCamera) -> bool:
+        if cam.product_model == "HL_BC":
             return False
-        return env_bool(f"SUBSTREAM_{cam.name_uri}") or (
+        return True
+
+    def camera_sd_supported(self, cam: WyzeCamera) -> bool:
+        return bool(cam.bridge_can_substream or cam.product_model == "HL_BC")
+
+    def camera_feed_resolution(self, cam: WyzeCamera, feed: str) -> str | None:
+        actual = self.camera_actual_resolution(cam, substream=feed == "sd")
+        if actual:
+            return actual
+        if feed == "sd" and self.camera_sd_supported(cam):
+            return "640x360"
+        if feed == "hd" and self.camera_hd_supported(cam):
+            if cam.product_model == "HL_CAM3P":
+                return "2560x1440"
+            if cam.product_model == "HL_CAM4":
+                return "2560x1440" if env_bool("GO2RTC_RTSP_PORT") else "1920x1080"
+            if cam.is_2k:
+                return "2560x1440"
+            return "1920x1080"
+        return None
+
+    def camera_actual_resolution(self, cam: WyzeCamera, substream: bool = False) -> str | None:
+        info = self.streams.get_info(cam.name_uri + ("-sub" if substream else ""))
+        if resolution := info.get("actual_resolution"):
+            return str(resolution)
+        if not cam.camera_info:
+            return None
+        parm = cam.camera_info.get("sdParm" if substream else "videoParm") or {}
+        width = parm.get("width")
+        height = parm.get("height")
+        if width and height:
+            return f"{width}x{height}"
+        return None
+
+    def camera_feed_config(self, cam: WyzeCamera) -> dict:
+        hd_supported = self.camera_hd_supported(cam)
+        sd_supported = self.camera_sd_supported(cam)
+        legacy_mode = str(
+            get_camera_setting(cam.name_uri, "stream", "__missing__")
+            if get_camera_setting(cam.name_uri, "stream", "__missing__") != "__missing__"
+            else env_cam("stream", cam.name_uri)
+        ).strip().lower()
+        hd_enabled_saved = get_camera_setting(cam.name_uri, "hd", "__missing__")
+        sd_enabled_saved = get_camera_setting(cam.name_uri, "sd", "__missing__")
+        default_sd_enabled = env_bool(f"SUBSTREAM_{cam.name_uri}") or (
             env_bool("SUBSTREAM") and cam.bridge_can_substream
         )
+        hd_enabled = (
+            bool(hd_enabled_saved)
+            if hd_enabled_saved != "__missing__"
+            else legacy_mode not in {"sub"}
+        ) and hd_supported
+        sd_enabled = (
+            bool(sd_enabled_saved)
+            if sd_enabled_saved != "__missing__"
+            else legacy_mode in {"sub", "both"} or (legacy_mode == "" and default_sd_enabled)
+        ) and sd_supported
+        if not hd_enabled and not sd_enabled:
+            if hd_supported:
+                hd_enabled = True
+            elif sd_supported:
+                sd_enabled = True
+
+        hd_kbps = int(get_camera_setting(cam.name_uri, "hd_kbps") or env_cam("quality", cam.name_uri, "hd180")[2:] or 180)
+        sd_kbps = int(get_camera_setting(cam.name_uri, "sd_kbps") or env_cam("sub_quality", cam.name_uri, "sd30")[2:] or 30)
+        mode = "both" if hd_enabled and sd_enabled else "sub" if sd_enabled else "main"
+        return {
+            "mode": mode,
+            "feeds": {
+                "hd": {
+                    "enabled": hd_enabled,
+                    "supported": hd_supported,
+                    "kbps": hd_kbps,
+                    "resolution": self.camera_feed_resolution(cam, "hd"),
+                    "path": "main",
+                    "reason": "" if hd_supported else "HD stream is not available for this camera",
+                },
+                "sd": {
+                    "enabled": sd_enabled,
+                    "supported": sd_supported,
+                    "kbps": sd_kbps,
+                    "resolution": self.camera_feed_resolution(cam, "sd"),
+                    "path": "sub" if cam.bridge_can_substream else "main",
+                    "reason": "" if sd_supported else "SD stream is not available for this camera",
+                },
+            },
+        }
+
+    def camera_stream_config(self, cam: WyzeCamera) -> dict:
+        return self.camera_feed_config(cam)
+
+    def apply_camera_stream_config(self, cam: WyzeCamera, payload: dict) -> dict:
+        config = self.camera_feed_config(cam)
+        hd_supported = config["feeds"]["hd"]["supported"]
+        sd_supported = config["feeds"]["sd"]["supported"]
+
+        hd_enabled = bool(payload.get("hd_enabled"))
+        sd_enabled = bool(payload.get("sd_enabled"))
+        if hd_enabled and not hd_supported:
+            raise ValueError("HD stream is not available for this camera")
+        if sd_enabled and not sd_supported:
+            raise ValueError("SD stream is not available for this camera")
+        if not hd_enabled and not sd_enabled:
+            raise ValueError("At least one feed must stay enabled")
+
+        hd_kbps = int(payload.get("hd_kbps") or config["feeds"]["hd"]["kbps"])
+        sd_kbps = int(payload.get("sd_kbps") or config["feeds"]["sd"]["kbps"])
+        mode = "both" if hd_enabled and sd_enabled else "sub" if sd_enabled else "main"
+        update_camera_settings(
+            cam.name_uri,
+            {
+                "stream": mode,
+                "hd": hd_enabled,
+                "sd": sd_enabled,
+                "hd_kbps": hd_kbps,
+                "sd_kbps": sd_kbps,
+            },
+        )
+        return self.camera_feed_config(cam)
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
         if rtsp_fw := env_bool("rtsp_fw").lower():
@@ -179,7 +292,7 @@ class WyzeBridge(Thread):
     ):
         """Setup and add substream if enabled for camera."""
         if self.camera_substream_enabled(cam):
-            quality = env_cam("sub_quality", cam.name_uri, "sd30")
+            quality = f"sd{self.camera_stream_config(cam)['feeds']['sd']['kbps']}"
             record = bool(env_cam("sub_record", cam.name_uri))
             sub_opt = replace(options, substream=True, quality=quality, record=record)
             logger.info(
