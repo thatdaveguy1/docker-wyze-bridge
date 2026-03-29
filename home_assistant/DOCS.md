@@ -21,11 +21,12 @@ Common optional defaults near the top of the add-on form:
 
 - `Connect on demand`
 - `Enable audio by default`
-- `Use Wyze motion events`
-- `Create substream by default`
+- `Default HD quality request`
+- `Default SD quality request`
+- `Create SD substream by default`
 - `Camera Specific Options`
 
-Most other fields are optional and only needed for custom integrations, troubleshooting, or advanced network setups.
+The add-on form is intentionally focused on the common Home Assistant setup path. Rare power-user settings are kept out of the page so the form stays manageable.
 
 ## Stream Surfaces
 
@@ -74,28 +75,32 @@ Camera-specific options can be passed using `CAM_OPTIONS`.
 
 ```yaml
 - CAM_NAME: Front
-  STREAM: both
+  HD: true
+  SD: true
+  SD_KBPS: 60
   AUDIO: true
   ROTATE: true
 - CAM_NAME: Back door
-  QUALITY: SD50
+  HD: false
+  SD: true
   RECORD: true
 ```
 
 Available options:
 
+- `HD` enables the higher-quality feed for that camera.
+- `SD` enables the lower-bandwidth feed for that camera.
+- `HD_KBPS` and `SD_KBPS` set per-feed bitrate targets.
 - `AUDIO` enables audio for that camera.
-- `FFMPEG` uses a custom ffmpeg command for that camera.
-- `LIVESTREAM` sends that camera to an RTMP target.
+- `STREAM` is the older `main` / `both` / `sub` shortcut. Prefer `HD` and `SD` for new setups.
+- `QUALITY` and `SUB_QUALITY` override the requested quality for that camera.
+- `FORCE_FPS` sets frames per second.
+- `RECORD` and `SUB_RECORD` control recording for each feed.
+- `SUBSTREAM` enables a `-sub` path only when the camera path supports it.
 - `NET_MODE` overrides the allowed network mode.
 - `ROTATE` rotates the camera clockwise.
-- `STREAM` chooses `main`, `both`, or `sub` for that camera. `sub` and `both` only work when the camera exposes a supported substream.
-- `QUALITY` adjusts the requested main-stream quality.
-- `SUB_QUALITY` adjusts the requested substream quality when supported.
-- `FORCE_FPS` sets frames per second.
-- `RECORD` enables recording for that camera.
-- `SUB_RECORD` enables recording for the substream when supported.
-- `SUBSTREAM` enables a substream only when the camera path supports it.
+- `LIVESTREAM` sends that camera to an RTMP target.
 - `MOTION_WEBHOOKS` posts to a webhook when motion is detected.
+- `FFMPEG` uses a custom ffmpeg command for that camera.
 
 The Web UI also exposes a per-camera stream mode control for `Main`, `Both`, or `Sub`. Cameras without supported substreams keep the `Sub` option disabled in the UI.

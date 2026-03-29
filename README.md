@@ -52,7 +52,7 @@ Full caveats, firmware notes, and public limitations live in [Camera Support](./
 - Native `-sd` aliases may be available when the camera exposes a meaningful second stream.
 - The sidecar API on `:11984` is an internal implementation detail and is not part of the stable public interface.
 - The visible add-on name is `Docker Wyze Bridge`, while the existing Home Assistant slug stays in place for migration stability.
-- The Home Assistant add-on now keeps required login fields at the top, uses clearer optional-setting descriptions, and supports per-camera stream mode selection (`Main`, `Both`, or `Sub`) through `CAM_OPTIONS` and the Web UI. On the March 29, 2026 validation host, the live dev add-on rebuild and Web UI/API round-trip were verified on `:55000`.
+- The Home Assistant add-on now keeps required login fields at the top, trims the HA form down to common day-to-day settings, uses much clearer optional-setting descriptions, and supports per-camera feed selection through `CAM_OPTIONS` and the Web UI with independent `HD` and `SD` toggles, per-feed kbps targets, surfaced feed resolution labels, and disabled controls for unsupported feeds. Rare power-user knobs are kept out of the HA form so the page stays manageable. On the March 29, 2026 validation host, the live dev add-on at `:55000` now shows Bulb Cam style `HD disabled / SD enabled` state correctly and completed a browser-driven settings round-trip on a supported camera.
 
 ## Documentation
 

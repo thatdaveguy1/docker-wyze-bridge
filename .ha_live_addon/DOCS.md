@@ -30,11 +30,12 @@ Common optional defaults near the top of the add-on form:
 
 - `Connect on demand`
 - `Enable audio by default`
-- `Use Wyze motion events`
-- `Create substream by default`
+- `Default HD quality request`
+- `Default SD quality request`
+- `Create SD substream by default`
 - `Camera Specific Options`
 
-Most other fields are optional and are mainly for custom networking, recording, MQTT, or troubleshooting.
+The add-on form is intentionally focused on the common Home Assistant setup path. Rare power-user settings are kept out of the page so the form stays manageable.
 
 ## Stream and API Authentication
 
@@ -57,29 +58,34 @@ Camera specific options can now be passed to the bridge using `CAM_OPTIONS`. To 
 
 ```YAML
 - CAM_NAME: Front
-  STREAM: both
+  HD: true
+  SD: true
+  SD_KBPS: 60
   AUDIO: true
   ROTATE: true
 - CAM_NAME: Back door
-  QUALITY: SD50
+  HD: false
+  SD: true
   RECORD: true
 ```
 
 Available options:
 
+- `HD` - Enable the higher-quality feed for this camera.
+- `SD` - Enable the lower-bandwidth feed for this camera.
+- `HD_KBPS` and `SD_KBPS` - Set per-feed bitrate targets.
 - `AUDIO` - Enable audio for this camera.
-- `FFMPEG` - Use a custom ffmpeg command for this camera.
-- `LIVESTREAM` - Specify a rtmp url to livestream to for this camera.
+- `STREAM` - Older `main`, `both`, or `sub` shortcut. Prefer `HD` and `SD` for new setups.
+- `QUALITY` - Adjust the requested quality for this camera only.
+- `SUB_QUALITY` - Adjust the requested quality for this camera's lower-bandwidth feed.
+- `FORCE_FPS` - Set the frames-per-second for this camera.
+- `RECORD` and `SUB_RECORD` - Enable recording for each feed.
+- `SUBSTREAM` - Enable a `-sub` path for this camera when the path supports it.
 - `NET_MODE` - Change the allowed net mode for this camera only.
 - `ROTATE` - Rotate this camera 90 degrees clockwise.
-- `STREAM` - Choose `main`, `both`, or `sub` for this camera. `sub` and `both` only work when the camera exposes a supported substream.
-- `QUALITY` - Adjust the quality for this camera only.
-- `SUB_QUALITY` - Adjust the quality for this camera's substream when the model supports sub-streams.
-- `FORCE_FPS` - Sets the frames-per-second for this camera.
-- `RECORD` - Enable recording for this camera.
-- `SUB_RECORD` - Enable recording of the substream for this camera when the model supports sub-streams.
-- `SUBSTREAM` - Enable a substream for this camera when the model is included in the internal capability map. Pan V2 is not currently included.
-- `MOTION_WEBHOOKS` - Specify a url to POST to when motion is detected.
+- `LIVESTREAM` - Specify an RTMP URL to livestream to for this camera.
+- `MOTION_WEBHOOKS` - Specify a URL to POST to when motion is detected.
+- `FFMPEG` - Use a custom FFmpeg command for this camera.
 
 The Web UI also exposes a per-camera stream mode control for `Main`, `Both`, or `Sub`. Cameras without supported substreams keep the `Sub` option disabled in the UI.
 
