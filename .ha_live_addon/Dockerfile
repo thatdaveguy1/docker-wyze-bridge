@@ -25,6 +25,7 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
+ARG BUILD_VERSION
 COPY /app/ /build/app/
 
 RUN chmod +x /build/app/run
@@ -51,6 +52,10 @@ RUN set -eux; \
     tar tzf mediamtx.tar.gz || (echo "Invalid mediamtx tarball for ${MTX_ARCH}" && exit 1); \
     tar xzf mediamtx.tar.gz -C app; \
     rm mediamtx.tar.gz; \
+    GO2RTC_ARCH=$([ "$(uname -m)" = "aarch64" ] && echo "arm64" || [ "$(uname -m)" = "armv7l" ] && echo "arm" || echo "amd64"); \
+    mkdir -p usr/local/bin; \
+    curl -fsSL "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_${GO2RTC_ARCH}" -o usr/local/bin/go2rtc && echo "go2rtc downloaded OK"; \
+    chmod +x usr/local/bin/go2rtc; \
     cp app/lib/lib.${TARGETARCH} usr/local/lib/libIOTCAPIs_ALL.so; \
     rm -rf app/*.txt app/lib/; \
     if [ -z "${BUILD_DATE}" ]; \

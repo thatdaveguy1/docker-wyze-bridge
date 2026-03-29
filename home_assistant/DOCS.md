@@ -1,33 +1,59 @@
 # Docker Wyze Bridge
 
-## Wyze Authentication
+## Authentication
 
 The standard Home Assistant setup path uses the visible `Wyze email`, `Wyze password`, `Key ID`, and `API key` fields on the add-on configuration page.
 
-As of April 2024, you will need to supply your own API Key and API ID along with your Wyze email and password.
+As of April 2024, Wyze developer credentials are required. See the official guide:
 
-See the official help documentation on how to generate your developer keys: https://support.wyze.com/hc/en-us/articles/16129834216731.
+`https://support.wyze.com/hc/en-us/articles/16129834216731`
+
+## Stream Surfaces
+
+### Standard bridge ports
+
+- RTSP: `rtsp://homeassistant.local:58554/camera-name`
+- HLS: `http://homeassistant.local:58888/camera-name/stream.m3u8`
+- WebRTC / WHEP: `http://homeassistant.local:58889/camera-name`
+- Web UI: `http://homeassistant.local:5000`
+
+### Native Home Assistant `go2rtc` sidecar
+
+- Supported RTSP surface: `rtsp://homeassistant.local:19554/camera-name`
+- Internal sidecar API: `http://homeassistant.local:11984/api`
+
+Important:
+
+- `:19554` is the supported public sidecar surface in `4.1`.
+- `:11984` is an internal implementation detail and not part of the stable public interface.
+- A `-sd` alias may exist for some cameras, but it is only useful when the camera exposes a meaningful second stream.
+
+## Camera-Specific Limits
+
+The public `4.1` release intentionally documents current limits rather than implying every modern Wyze model behaves the same.
+
+- Wyze Cam V3: bridge main and firmware-gated bridge substream are supported; validated V3-class paths have reached `1920x1080`.
+- Wyze Cam V3 Pro: bridge main validated at `2560x1440`; `4.1` does not promise a fixed substream ceiling for every installation.
+- Wyze Cam V4: standard bridge RTSP may remain `640x360`; validated Home Assistant native sidecar output reached `2560x1440` main and `640x360` substream.
+- Wyze Bulb Cam: supported, but current public validation keeps both main and `-sd` at `640x360`.
+
+See [Camera Support](../docs/user_guide/camera_support.md) for the detailed matrix.
 
 ## Stream and API Authentication
 
-Note that all streams and the REST API will necessitate authentication when WebUI Auth `WB_AUTH` is enabled.
+When `WB_AUTH` is enabled, streams and API endpoints require authentication.
 
-- REST API will require an `api` query parameter.
-  - Example: `http://homeassistant.local:5000/api/<camera-name>/state?api=<your-wb-api-key>`
-- Streams will also require authentication.
-  - username: `wb`
-  - password: your unique wb api key
+- REST API example: `http://homeassistant.local:5000/api/<camera-name>/state?api=<your-wb-api-key>`
+- Stream username: `wb`
+- Stream password: your unique Web UI password or API key, depending on configuration
 
-Please double check your router/firewall and do NOT forward ports or enable DMZ access to your bridge/server unless you know what you are doing!
+Do not forward bridge or RTSP ports to the public internet unless you understand the security implications.
 
+## Camera-Specific Options
 
-## Camera Specific Options
+Camera-specific options can be passed using `CAM_OPTIONS`.
 
-Camera specific options can now be passed to the bridge using `CAM_OPTIONS`. To do so you, will need to specify the `CAM_NAME` and the option(s) that you want to pass to the camera.
-
-`CAM_OPTIONS`:
-
-```YAML
+```yaml
 - CAM_NAME: Front
   AUDIO: true
   ROTATE: true
@@ -38,54 +64,15 @@ Camera specific options can now be passed to the bridge using `CAM_OPTIONS`. To 
 
 Available options:
 
-- `AUDIO` - Enable audio for this camera.
-- `FFMPEG` - Use a custom ffmpeg command for this camera.
-- `LIVESTREAM` - Specify a rtmp url to livestream to for this camera.
-- `NET_MODE` - Change the allowed net mode for this camera only.
-- `ROTATE` - Rotate this camera 90 degrees clockwise.
-- `QUALITY` - Adjust the quality for this camera only.
-- `SUB_QUALITY` - Adjust the quality for this camera's substream when the model supports sub-streams.
-- `FORCE_FPS` - Sets the frames-per-second for this camera.
-- `RECORD` - Enable recording for this camera.
-- `SUB_RECORD` - Enable recording of the substream for this camera when the model supports sub-streams.
-- `SUBSTREAM` - Enable a substream for this camera when the model is included in the internal capability map. Pan V2 is not currently included.
-- `MOTION_WEBHOOKS` - Specify a url to POST to when motion is detected.
-
-## URIs
-
-`camera-nickname` is the name of the camera set in the Wyze app and are converted to lower case with hyphens in place of spaces.
-
-e.g. 'Front Door' would be `/front-door`
-
-- RTMP:
-
-```
-rtmp://homeassistant.local:1935/camera-nickname
-```
-
-- RTSP:
-
-```
-rtsp://homeassistant.local:58554/camera-nickname
-```
-
-- WebRTC / WHEP:
-
-```
-http://homeassistant.local:58889/camera-nickname
-http://homeassistant.local:58889/camera-nickname/whep
-```
-
-- HLS:
-
-```
-http://homeassistant.local:58888/camera-nickname/stream.m3u8
-```
-
-- HLS can also be viewed in the browser using:
-
-```
-http://homeassistant.local:58888/camera-nickname
-```
-
-Please visit [github.com/thatdaveguy1/docker-wyze-bridge](https://github.com/thatdaveguy1/docker-wyze-bridge) for additional information.
+- `AUDIO` enables audio for that camera.
+- `FFMPEG` uses a custom ffmpeg command for that camera.
+- `LIVESTREAM` sends that camera to an RTMP target.
+- `NET_MODE` overrides the allowed network mode.
+- `ROTATE` rotates the camera clockwise.
+- `QUALITY` adjusts the requested main-stream quality.
+- `SUB_QUALITY` adjusts the requested substream quality when supported.
+- `FORCE_FPS` sets frames per second.
+- `RECORD` enables recording for that camera.
+- `SUB_RECORD` enables recording for the substream when supported.
+- `SUBSTREAM` enables a substream only when the camera path supports it.
+- `MOTION_WEBHOOKS` posts to a webhook when motion is detected.

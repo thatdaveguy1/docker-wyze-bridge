@@ -1,34 +1,40 @@
-# Upgrade and Migration Guide
+# Upgrade Guide
 
-This guide covers upgrading to **Docker Wyze Bridge V4.0.2** from earlier versions or from other forks.
+This guide covers upgrading to the `4.1` release line of Docker Wyze Bridge from older upstream builds or earlier releases in this fork.
 
-## Upgrading from Upstream (idisposable/docker-wyze-bridge)
+## What Changes in 4.1
 
-The V4.0.2 release keeps the V4 platform work intact while adding startup hardening for the Home Assistant bridge/runtime path.
+- The visible product name is now `Docker Wyze Bridge`.
+- The Home Assistant add-on now bundles a native `go2rtc` sidecar and exposes RTSP on `:19554`.
+- Public documentation now includes model-specific stream ceilings and substream limits for `V3`, `V3 Pro`, `V4`, and `Wyze Bulb Cam`.
 
-### What has Changed?
-- **New Home Assistant Slug:** The add-on now uses `docker_wyze_bridge_v4`. This allows it to install alongside the original upstream add-on if needed.
-- **KVS/WebRTC Backend:** Support for Wyze Cam V4 and improved latency for V3/V3 Pro cameras.
-- **Optimized Ports:** Defaults have changed for Home Assistant users (e.g., `58554` for RTSP) to avoid common port conflicts.
-- **Polished Web UI:** New one-click copy buttons for stream URLs and improved status reporting.
+## Migration Steps
 
-### Migration Steps
-1.  **Backup your configuration:** If you are using the Home Assistant add-on, copy your current Wyze credentials and `CAM_OPTIONS` from the configuration tab.
-2.  **Stop the old add-on:** If you were using the upstream version, stop it before installing the V4.0.2 release to avoid port conflicts.
-3.  **Add the new repository:** Follow the [Home Assistant Install Guide](./install_ha.md) to add the `thatdaveguy1/docker-wyze-bridge` repository.
-4.  **Install V4.0.2:** Install the new **Docker Wyze Bridge (V4.0.2)** add-on and paste your saved configuration into the configuration tab.
-5.  **Update your stream links:** If you have hardcoded RTSP or HLS links in your dashboards or Frigate, update them to use the new ports (`58554`, `58888`, `58889`).
+1. Back up your Home Assistant add-on configuration.
+2. Stop any older bridge add-on that still uses the same RTSP or Web UI ports.
+3. Install or update to `Docker Wyze Bridge`.
+4. Re-enter or paste your `Wyze Email`, `Wyze Password`, `Key ID`, and `API Key` if needed.
+5. Update any RTSP consumers that should use the native Home Assistant sidecar to point at `:19554`.
 
-## Troubleshooting Upgrades
+## Port Notes
 
-### "Port already in use"
-- **Problem:** The V4.0.2 add-on fails to start with a port conflict error.
-- **Solution:** 
-  1.  Ensure you have stopped any other versions of the bridge or other services using ports `8554`, `8888`, `8889`, or `5000`.
-  2.  If you are in Home Assistant, check the **Configuration** tab and change the port mapping to an unused port block.
+Standard Home Assistant ports remain:
 
-### "Cameras not connecting after upgrade"
-- **Problem:** After upgrading, some cameras stay offline or fail to connect.
-- **Solution:** 
-  1.  Check the logs for `Wyze API Pull Error`. You may need to refresh your API credentials or clear the bridge's local cache.
-  2.  Restart the bridge to clear any stale session data.
+- `5000` Web UI
+- `58554` bridge RTSP
+- `58888` HLS
+- `58889` WebRTC / WHEP
+
+New supported native RTSP surface:
+
+- `19554` native `go2rtc` RTSP
+
+The internal sidecar API on `:11984` is not a stable public interface.
+
+## Known Upgrade Caveats
+
+- A camera can gain a native `go2rtc` RTSP path without gaining a better resolution ceiling.
+- `QUALITY` values still do not override Wyze-side resolution decisions.
+- A `-sub` alias does not guarantee a distinct lower-resolution helper feed.
+
+See [Camera Support](./camera_support.md) for model-specific notes.
