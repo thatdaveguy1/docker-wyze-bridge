@@ -45,6 +45,51 @@ go2rtc_sidecar_cleanup() {
     fi
 }
 
+normalize_go2rtc_config() {
+    if [ ! -f "${GO2RTC_CONFIG}" ]; then
+        return
+    fi
+
+    python3 - <<'PY'
+import os
+from pathlib import Path
+
+
+path = Path(os.environ["GO2RTC_CONFIG"])
+if not path.exists():
+    raise SystemExit(0)
+
+lines = path.read_text(encoding="utf-8").splitlines()
+managed = {"api", "rtsp", "webrtc"}
+kept = []
+i = 0
+
+while i < len(lines):
+    line = lines[i]
+    if not line.startswith((" ", "\t")) and line.endswith(":") and line[:-1] in managed:
+        i += 1
+        while i < len(lines) and (not lines[i] or lines[i].startswith((" ", "\t"))):
+            i += 1
+        continue
+    kept.append(line)
+    i += 1
+
+while kept and not kept[0].strip():
+    kept.pop(0)
+
+prefix = [
+    "api:",
+    f'  listen: ":{os.environ["GO2RTC_API_PORT"]}"',
+    "rtsp:",
+    f'  listen: ":{os.environ["GO2RTC_RTSP_PORT"]}"',
+    "webrtc:",
+    '  listen: "127.0.0.1:0"',
+]
+
+path.write_text("\n".join(prefix + kept).rstrip() + "\n", encoding="utf-8")
+PY
+}
+
 start_go2rtc_sidecar() {
     if [ -x /config/go2rtc ] && ! command -v go2rtc >/dev/null 2>&1; then
         export PATH="/config:$PATH"
@@ -92,6 +137,8 @@ config = "\n".join(
         f'  listen: ":{os.environ["GO2RTC_API_PORT"]}"',
         "rtsp:",
         f'  listen: ":{os.environ["GO2RTC_RTSP_PORT"]}"',
+        "webrtc:",
+        '  listen: "127.0.0.1:0"',
         "log:",
         "  level: info",
         "wyze:",
@@ -107,6 +154,8 @@ config = "\n".join(
 Path(os.environ["GO2RTC_CONFIG"]).write_text(config, encoding="utf-8")
 PY
     fi
+
+    normalize_go2rtc_config
 
     echo "[GO2RTC] Starting go2rtc HD sidecar (RTSP :${GO2RTC_RTSP_PORT}, API :${GO2RTC_API_PORT}) config=${GO2RTC_CONFIG}" >&2
     go2rtc -config "${GO2RTC_CONFIG}" >> /tmp/go2rtc.log 2>&1 &
@@ -218,6 +267,8 @@ lines = [
     f'  listen: ":{os.environ["GO2RTC_API_PORT"]}"',
     "rtsp:",
     f'  listen: ":{os.environ["GO2RTC_RTSP_PORT"]}"',
+    "webrtc:",
+    '  listen: "127.0.0.1:0"',
     "log:",
     "  level: info",
     "wyze:",
