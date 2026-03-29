@@ -11,6 +11,7 @@ from typing import Any, Optional
 from requests import PreparedRequest, Response, get, post
 
 from wyzebridge.build_config import APP_VERSION, IOS_VERSION, VERSION
+from wyzebridge.logging import logger
 from wyzecam.kinesis.wpk_stream_info_model import Stream
 from wyzecam.api_models import KVS_CAMS, WyzeAccount, WyzeCamera, WyzeCredential
 
@@ -78,6 +79,55 @@ class WyzeAPIError(Exception):
         self.code = code
         self.msg = msg
         super().__init__(f"{code=} {msg=} method={req.method} path={req.path_url}")
+
+
+def kvs_trace_enabled(camera_name: str) -> bool:
+    raw = getenv("KVS_TRACE_STREAM", "").strip()
+    if not raw:
+        return False
+    if raw.lower() in {"1", "true", "yes", "all", "*"}:
+        return True
+    wanted = {item.strip().upper() for item in raw.split(",") if item.strip()}
+    return camera_name.upper() in wanted
+
+
+def sanitize_kvs_trace(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: sanitize_kvs_trace_field(key, val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [sanitize_kvs_trace(item) for item in value]
+    return value
+
+
+def sanitize_kvs_trace_field(key: str, value: Any) -> Any:
+    lowered = key.lower()
+    if lowered in {
+        "auth_token",
+        "signaltoken",
+        "authorization",
+        "credential",
+        "username",
+        "phone_id",
+        "clientid",
+    }:
+        return "<redacted>"
+    if lowered in {"signaling_url", "url", "urls"} and isinstance(value, str):
+        parts = urllib.parse.urlsplit(value)
+        if parts.scheme and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}{parts.path}"
+    return sanitize_kvs_trace(value)
+
+
+def log_kvs_trace(camera: WyzeCamera, stage: str, payload: Any) -> None:
+    if not kvs_trace_enabled(camera.name_uri):
+        return
+    trace = {
+        "camera": camera.name_uri,
+        "product_model": camera.product_model,
+        "stage": stage,
+        "payload": sanitize_kvs_trace(payload),
+    }
+    logger.info(f"[KVS_TRACE] {json.dumps(trace, sort_keys=True)}")
 
 
 def login(
@@ -353,7 +403,9 @@ def get_camera_stream(auth_info: WyzeCredential, camera: WyzeCamera) -> Stream:
     headers["authorization"] = auth_info.access_token or ""
     headers["content-type"] = "application/json"
     resp = post(url, data=payload, headers=headers)
-    return Stream(**validate_resp(resp)[0])
+    stream_info = validate_resp(resp)[0]
+    log_kvs_trace(camera, "raw_stream_info", stream_info)
+    return Stream(**stream_info)
 
 
 def post_device(

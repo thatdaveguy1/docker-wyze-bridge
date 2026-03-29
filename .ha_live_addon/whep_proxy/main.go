@@ -104,7 +104,10 @@ func (stream *WebRTCStream) outputTracks() []*webrtc.TrackLocalStaticRTP {
 	defer stream.mediaMu.RUnlock()
 
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0, 2)
-	if stream.videoTrack != nil && stream.videoReady.Load() {
+	if stream.videoTrack != nil {
+		if !stream.videoReady.Load() {
+			return tracks
+		}
 		tracks = append(tracks, stream.videoTrack)
 	}
 	if stream.audioTrack != nil && stream.audioReady.Load() {
@@ -869,10 +872,14 @@ func main() {
 	r.HandleFunc("/whep/{streamID}", whepHandler).Methods("GET", "OPTIONS", "POST")
 	r.HandleFunc("/websocket/{streamID}", websocketHandler).Methods("GET", "POST")
 	r.HandleFunc("/status/{streamID}", statusHandler).Methods("GET")
+	addr := "127.0.0.1:8080"
+	if port := os.Getenv("WHEP_PROXY_PORT"); port != "" {
+		addr = "127.0.0.1:" + port
+	}
 
 	go func() {
-		fmt.Println("[WHEP_PROXY] Listening on 127.0.0.1:8080")
-		if err := http.ListenAndServe("127.0.0.1:8080", r); err != nil {
+		fmt.Println("[WHEP_PROXY] Listening on " + addr)
+		if err := http.ListenAndServe(addr, r); err != nil {
 			panic(err)
 		}
 	}()

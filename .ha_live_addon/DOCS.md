@@ -17,6 +17,25 @@ As of April 2024, you will need to supply your own API Key and API ID along with
 
 See the official help documentation on how to generate your developer keys: https://support.wyze.com/hc/en-us/articles/16129834216731.
 
+## Recommended Setup Order
+
+Fill these in first:
+
+- `Wyze email`
+- `Wyze password`
+- `Key ID`
+- `API key`
+
+Common optional defaults near the top of the add-on form:
+
+- `Connect on demand`
+- `Enable audio by default`
+- `Use Wyze motion events`
+- `Create substream by default`
+- `Camera Specific Options`
+
+Most other fields are optional and are mainly for custom networking, recording, MQTT, or troubleshooting.
+
 ## Stream and API Authentication
 
 Note that all streams and the REST API will necessitate authentication when WebUI Auth `WB_AUTH` is enabled.
@@ -38,6 +57,7 @@ Camera specific options can now be passed to the bridge using `CAM_OPTIONS`. To 
 
 ```YAML
 - CAM_NAME: Front
+  STREAM: both
   AUDIO: true
   ROTATE: true
 - CAM_NAME: Back door
@@ -52,6 +72,7 @@ Available options:
 - `LIVESTREAM` - Specify a rtmp url to livestream to for this camera.
 - `NET_MODE` - Change the allowed net mode for this camera only.
 - `ROTATE` - Rotate this camera 90 degrees clockwise.
+- `STREAM` - Choose `main`, `both`, or `sub` for this camera. `sub` and `both` only work when the camera exposes a supported substream.
 - `QUALITY` - Adjust the quality for this camera only.
 - `SUB_QUALITY` - Adjust the quality for this camera's substream when the model supports sub-streams.
 - `FORCE_FPS` - Sets the frames-per-second for this camera.
@@ -59,6 +80,8 @@ Available options:
 - `SUB_RECORD` - Enable recording of the substream for this camera when the model supports sub-streams.
 - `SUBSTREAM` - Enable a substream for this camera when the model is included in the internal capability map. Pan V2 is not currently included.
 - `MOTION_WEBHOOKS` - Specify a url to POST to when motion is detected.
+
+The Web UI also exposes a per-camera stream mode control for `Main`, `Both`, or `Sub`. Cameras without supported substreams keep the `Sub` option disabled in the UI.
 
 ## URIs
 

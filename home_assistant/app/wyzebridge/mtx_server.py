@@ -23,7 +23,7 @@ from wyzebridge.config import (
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 
-MTX_CONFIG: str = "/app/mediamtx.yml"
+MTX_CONFIG: str = "/app/mediamtx.yml" if Path("/app").exists() else ".runtime/mediamtx.yml"
 MTX_PATH: str = "%path"
 
 
@@ -50,6 +50,9 @@ class MtxInterface:
 
     def load_config(self):
         logger.debug(f"[MTX] Reading config from {MTX_CONFIG=}")
+        Path(MTX_CONFIG).parent.mkdir(parents=True, exist_ok=True)
+        if not Path(MTX_CONFIG).exists():
+            Path(MTX_CONFIG).write_text("paths: {}\n", encoding="utf-8")
         with open(MTX_CONFIG, "r") as f:
             self.data = yaml.safe_load(f) or {}
 

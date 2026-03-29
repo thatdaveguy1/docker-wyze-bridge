@@ -62,6 +62,8 @@ def setup_hass(hass_token: Optional[str]) -> None:
                 environ[f"SUB_RECORD_{cam_name}"] = str(cam["SUB_RECORD"])
             if "SUBSTREAM" in cam:
                 environ[f"SUBSTREAM_{cam_name}"] = str(cam["SUBSTREAM"])
+            if "STREAM" in cam:
+                environ[f"STREAM_{cam_name}"] = str(cam["STREAM"])
             if "MOTION_WEBHOOKS" in cam:
                 environ[f"MOTION_WEBHOOKS_{cam_name}"] = str(cam["MOTION_WEBHOOKS"])
 

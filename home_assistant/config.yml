@@ -2,7 +2,7 @@ name: Docker Wyze Bridge
 description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cameras with Home Assistant support and a native go2rtc sidecar.
 slug: docker_wyze_bridge_v4
 url: https://github.com/thatdaveguy1/docker-wyze-bridge
-version: 4.1.0
+version: 4.1.1
 stage: stable
 arch:
   - armv7
@@ -56,6 +56,25 @@ schema:
   WYZE_PASSWORD: password
   API_ID: match(\s*[a-fA-F0-9-]{36}\s*)
   API_KEY: match(\s*[a-zA-Z0-9]{60}\s*)
+  ON_DEMAND: bool?
+  ENABLE_AUDIO: bool?
+  MOTION_API: bool?
+  SUBSTREAM: bool?
+  CAM_OPTIONS:
+    - CAM_NAME: str?
+      STREAM: list(main|both|sub)?
+      AUDIO: bool?
+      FFMPEG: str?
+      LIVESTREAM: str?
+      NET_MODE: str?
+      ROTATE: bool?
+      QUALITY: str?
+      SUB_QUALITY: str?
+      FORCE_FPS: int?
+      RECORD: bool?
+      SUB_RECORD: bool?
+      SUBSTREAM: bool?
+      MOTION_WEBHOOKS: str?
   WB_IP: str?
   REFRESH_TOKEN: str?
   ACCESS_TOKEN: str?
@@ -66,13 +85,9 @@ schema:
   SNAPSHOT_KEEP: str?
   IMG_TYPE: list(jpg|png)?
   IMG_DIR: str?
-  ENABLE_AUDIO: bool?
-  ON_DEMAND: bool?
-  MOTION_API: bool?
   MOTION_INT: float(1.1,)?
   MOTION_START: bool?
   MOTION_WEBHOOKS: str?
-  SUBSTREAM: bool?
   AUDIO_CODEC: list(COPY|AAC|LIBOPUS|MP3|PCM_MULAW|PCM_ALAW)?
   AUDIO_FILTER: str?
   LLHLS: bool?
@@ -119,20 +134,6 @@ schema:
   BOA_ALARM: bool?
   BOA_MOTION: str?
   BOA_COOLDOWN: int?
-  CAM_OPTIONS:
-    - CAM_NAME: str?
-      AUDIO: bool?
-      FFMPEG: str?
-      LIVESTREAM: str?
-      NET_MODE: str?
-      ROTATE: bool?
-      QUALITY: str?
-      SUB_QUALITY: str?
-      FORCE_FPS: int?
-      RECORD: bool?
-      SUB_RECORD: bool?
-      SUBSTREAM: bool?
-      MOTION_WEBHOOKS: str?
   CONNECT_TIMEOUT: int?
   CONNECT_RETRIES: int?
   CONNECT_RETRY_DELAY: float?

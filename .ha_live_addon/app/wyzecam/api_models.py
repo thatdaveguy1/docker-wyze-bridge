@@ -224,6 +224,10 @@ class WyzeCamera(BaseModel):
         return is_min_version(self.firmware_ver, min_ver)
 
     @property
+    def bridge_can_substream(self) -> bool:
+        return self.can_substream or self.is_kvs
+
+    @property
     def rtsp_fw(self) -> bool:
         return bool(self.firmware_ver and self.firmware_ver[:5] in RTSP_FW)
 

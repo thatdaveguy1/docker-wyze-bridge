@@ -20,6 +20,22 @@ DEV_SLUG="${HA_DEV_ADDON_SLUG:-docker_wyze_bridge_dev}"
 PROD_SLUG="${HA_PROD_ADDON_SLUG:-docker_wyze_bridge_v4}"
 FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-ccab4aaf_frigate}"
 PROD_INFO_FILE="$REPO_DIR/.orig_addon_info.json"
+DEV_WEB_PORT="${HA_DEV_WEB_PORT:-55000}"
+DEV_WHEP_PROXY_PORT="${HA_DEV_WHEP_PROXY_PORT:-18080}"
+DEV_RTSP_PORT="${HA_DEV_RTSP_PORT:-59554}"
+DEV_HLS_PORT="${HA_DEV_HLS_PORT:-59888}"
+DEV_WEBRTC_PORT="${HA_DEV_WEBRTC_PORT:-59889}"
+DEV_WEBRTC_UDP_PORT="${HA_DEV_WEBRTC_UDP_PORT:-59189}"
+DEV_RTP_PORT="${HA_DEV_RTP_PORT:-59000}"
+DEV_RTCP_PORT="${HA_DEV_RTCP_PORT:-59001}"
+DEV_RTMP_PORT="${HA_DEV_RTMP_PORT:-52935}"
+DEV_RTMPS_PORT="${HA_DEV_RTMPS_PORT:-52936}"
+DEV_RTSPS_PORT="${HA_DEV_RTSPS_PORT:-59322}"
+DEV_SRT_PORT="${HA_DEV_SRT_PORT:-59890}"
+DEV_PLAYBACK_PORT="${HA_DEV_PLAYBACK_PORT:-60996}"
+DEV_API_PORT="${HA_DEV_API_PORT:-60997}"
+DEV_METRICS_PORT="${HA_DEV_METRICS_PORT:-60998}"
+DEV_PPROF_PORT="${HA_DEV_PPROF_PORT:-60999}"
 
 usage() {
   cat <<EOF
@@ -166,6 +182,36 @@ addon_field() {
   printf '%s' "$info" | python3 -c 'import json,sys; data=json.load(sys.stdin).get("data", {}); value=data.get(sys.argv[1], ""); print(value if value is not None else "")' "$field"
 }
 
+addon_web_port() {
+  slug="$1"
+  if [ "$slug" = "$DEV_SLUG" ]; then
+    printf '%s\n' "$DEV_WEB_PORT"
+    return 0
+  fi
+  info=$(ha_apps info "$slug" --raw-json 2>/dev/null || printf '')
+  [ -n "$info" ] || return 1
+  ADDON_INFO_JSON="$info" DEV_SLUG="$DEV_SLUG" DEV_WHEP_PROXY_PORT="$DEV_WHEP_PROXY_PORT" python3 - <<'PY'
+import json
+import os
+
+root = json.loads(os.environ["ADDON_INFO_JSON"]).get("data", {})
+network = root.get("network") or {}
+descriptions = root.get("network_description") or {}
+
+for key, host_port in network.items():
+    if "Web UI" in descriptions.get(key, ""):
+        print(host_port)
+        raise SystemExit
+
+fallback = network.get("5000/tcp")
+if fallback:
+    print(fallback)
+    raise SystemExit
+
+print("5000")
+PY
+}
+
 addon_known() {
   addon_field "$1" name >/dev/null 2>&1
 }
@@ -238,11 +284,12 @@ wait_for_http() {
 addon_base_url() {
   slug="$1"
   ip=$(addon_field "$slug" ip_address 2>/dev/null || printf '')
+  port=$(addon_web_port "$slug" 2>/dev/null || printf '5000')
   if [ -z "$ip" ]; then
     echo "Could not determine IP address for add-on $slug." >&2
     return 1
   fi
-  printf 'http://%s:5000' "$ip"
+  printf 'http://%s:%s' "$ip" "$port"
 }
 
 stop_addon_for_cutover() {
@@ -306,7 +353,10 @@ for entry in root.get("options", {}).get("MEDIAMTX") or []:
     if match:
         ports.add(int(match.group(1)))
 
-ports.add(8080)
+if root.get("slug") == os.environ.get("DEV_SLUG"):
+    ports.add(int(os.environ.get("DEV_WHEP_PROXY_PORT", "18080")))
+else:
+    ports.add(8080)
 print(" ".join(str(port) for port in sorted(ports)))
 PY
 }
@@ -401,8 +451,24 @@ capture_prod() {
 copy_prod_options() {
   capture_prod
   payload_file=$(mktemp)
+  DEV_API_PORT="$DEV_API_PORT" \
+  DEV_HLS_PORT="$DEV_HLS_PORT" \
+  DEV_METRICS_PORT="$DEV_METRICS_PORT" \
+  DEV_PLAYBACK_PORT="$DEV_PLAYBACK_PORT" \
+  DEV_PPROF_PORT="$DEV_PPROF_PORT" \
+  DEV_RTCP_PORT="$DEV_RTCP_PORT" \
+  DEV_RTMP_PORT="$DEV_RTMP_PORT" \
+  DEV_RTMPS_PORT="$DEV_RTMPS_PORT" \
+  DEV_RTP_PORT="$DEV_RTP_PORT" \
+  DEV_RTSP_PORT="$DEV_RTSP_PORT" \
+  DEV_RTSPS_PORT="$DEV_RTSPS_PORT" \
+  DEV_SRT_PORT="$DEV_SRT_PORT" \
+  DEV_WEBRTC_PORT="$DEV_WEBRTC_PORT" \
+  DEV_WEBRTC_UDP_PORT="$DEV_WEBRTC_UDP_PORT" \
   python3 - "$PROD_INFO_FILE" >"$payload_file" <<'PY'
 import json
+import os
+from urllib.parse import urlparse
 import sys
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
@@ -413,6 +479,50 @@ payload = data.get("options")
 
 if not payload:
     raise SystemExit("Production add-on info did not include an options payload to copy.")
+
+
+def pick_host(options):
+    candidates = [
+        options.get("DOMAIN"),
+        options.get("WB_WEBRTC_URL"),
+        options.get("WB_RTSP_URL"),
+        options.get("WB_HLS_URL"),
+        options.get("WB_RTMP_URL"),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if "://" in candidate:
+            parsed = urlparse(candidate)
+            if parsed.hostname:
+                return parsed.hostname
+        elif candidate.strip():
+            return candidate.strip()
+    return "homeassistant.local"
+
+
+host = pick_host(payload)
+payload["DOMAIN"] = host
+payload["MEDIAMTX"] = [
+    f"MTX_APIADDRESS=:{os.environ['DEV_API_PORT']}",
+    f"MTX_HLSADDRESS=:{os.environ['DEV_HLS_PORT']}",
+    f"MTX_METRICSADDRESS=:{os.environ['DEV_METRICS_PORT']}",
+    f"MTX_PLAYBACKADDRESS=:{os.environ['DEV_PLAYBACK_PORT']}",
+    f"MTX_PPROFADDRESS=:{os.environ['DEV_PPROF_PORT']}",
+    f"MTX_RTCPADDRESS=:{os.environ['DEV_RTCP_PORT']}",
+    f"MTX_RTMPADDRESS=:{os.environ['DEV_RTMP_PORT']}",
+    f"MTX_RTMPSADDRESS=:{os.environ['DEV_RTMPS_PORT']}",
+    f"MTX_RTPADDRESS=:{os.environ['DEV_RTP_PORT']}",
+    f"MTX_RTSPADDRESS=:{os.environ['DEV_RTSP_PORT']}",
+    f"MTX_RTSPSADDRESS=:{os.environ['DEV_RTSPS_PORT']}",
+    f"MTX_SRTADDRESS=:{os.environ['DEV_SRT_PORT']}",
+    f"MTX_WEBRTCADDRESS=:{os.environ['DEV_WEBRTC_PORT']}",
+    f"MTX_WEBRTCLOCALUDPADDRESS=:{os.environ['DEV_WEBRTC_UDP_PORT']}",
+]
+payload["WB_RTSP_URL"] = f"rtsp://{host}:{os.environ['DEV_RTSP_PORT']}"
+payload["WB_WEBRTC_URL"] = f"http://{host}:{os.environ['DEV_WEBRTC_PORT']}"
+payload["WB_HLS_URL"] = f"http://{host}:{os.environ['DEV_HLS_PORT']}"
+payload["WB_RTMP_URL"] = f"rtmp://{host}:{os.environ['DEV_RTMP_PORT']}"
 
 json.dump({"options": payload}, sys.stdout, separators=(",", ":"))
 PY

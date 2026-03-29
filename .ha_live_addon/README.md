@@ -20,7 +20,7 @@ This local Home Assistant add-on is the staging lane for this repository. It exi
 
 - Add-on name: `Docker Wyze Bridge (Dev Build)`
 - Add-on slug: `docker_wyze_bridge_dev`
-- Baseline version: `4.1.0`
+- Baseline version: `4.1.1`
 
 ## Where The Real Instructions Live
 

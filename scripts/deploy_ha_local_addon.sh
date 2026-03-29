@@ -32,6 +32,7 @@ EOF
 
 TARGET="dev"
 REBUILD="true"
+DEV_WEB_PORT="${HA_DEV_WEB_PORT:-55000}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -65,6 +66,35 @@ addon_field() {
   field="$2"
   info=$(ha_apps info "$slug" --raw-json)
   printf '%s' "$info" | python3 -c 'import json,sys; data=json.load(sys.stdin).get("data", {}); value=data.get(sys.argv[1], ""); print(value if value is not None else "")' "$field"
+}
+
+addon_web_port() {
+  slug="$1"
+  if [ "$slug" = "${HA_DEV_ADDON_SLUG:-local_docker_wyze_bridge_local}" ] || [ "$slug" = "${HA_DEV_ADDON_SLUG:-docker_wyze_bridge_dev}" ]; then
+    printf '%s\n' "$DEV_WEB_PORT"
+    return 0
+  fi
+  info=$(ha_apps info "$slug" --raw-json)
+  ADDON_INFO_JSON="$info" python3 - <<'PY'
+import json
+import os
+
+root = json.loads(os.environ["ADDON_INFO_JSON"]).get("data", {})
+network = root.get("network") or {}
+descriptions = root.get("network_description") or {}
+
+for key, host_port in network.items():
+    if "Web UI" in descriptions.get(key, ""):
+        print(host_port)
+        raise SystemExit
+
+fallback = network.get("5000/tcp")
+if fallback:
+    print(fallback)
+    raise SystemExit
+
+print("5000")
+PY
 }
 
 copy_file() {
@@ -145,13 +175,8 @@ if [ "$REBUILD" = "false" ]; then
 fi
 
 ha_apps rebuild "$APP_SLUG" --force
-INGRESS_ENTRY=$(ha_apps info "$APP_SLUG" --raw-json | python3 -c 'import json,sys; root=json.load(sys.stdin); data=root.get("data", {}); sys.stdout.write(data.get("ingress_entry", ""))')
-TARGET_URL=""
-if [ -n "$INGRESS_ENTRY" ]; then
-  TARGET_URL="http://172.30.32.1:8123${INGRESS_ENTRY%/}/static/site.js"
-else
-  TARGET_URL="http://172.30.32.1:5000/static/site.js"
-fi
+WEB_PORT=$(addon_web_port "$APP_SLUG")
+TARGET_URL="http://172.30.32.1:${WEB_PORT}/static/site.js"
 
 set +e
 "$SCRIPT_DIR/ha_ssh.sh" curl -fsS "$TARGET_URL" | grep -q "copyToClipboard"

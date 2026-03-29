@@ -4,6 +4,7 @@ from urllib.parse import quote
 import requests
 
 from wyzebridge.bridge_utils import env_bool
+from wyzebridge.go2rtc import go2rtc_probe
 
 DEFAULT_MEDIAMTX_API_PORT = 9997
 DEFAULT_WHEP_PROXY_PORT = 8080
@@ -78,9 +79,39 @@ def mediamtx_probe(stream_name: str | None, timeout: float = 1.5) -> dict:
     return probe
 
 
-def collect_bridge_diagnostics(stream_name: str | None = None) -> dict:
-    return {
+def collect_bridge_diagnostics(
+    stream_name: str | None = None, stream_info: dict | None = None
+) -> dict:
+    diagnostics = {
         "stream": stream_name,
         "whep_proxy": whep_proxy_probe(stream_name),
         "mediamtx": mediamtx_probe(stream_name),
     }
+    include_streams = bool(stream_info and stream_info.get("native_alias"))
+    diagnostics["go2rtc"] = go2rtc_probe(include_streams=include_streams)
+    if stream_info:
+        diagnostics["go2rtc"]["selection"] = {
+            "supported": stream_info.get("native_supported"),
+            "selected": stream_info.get("native_selected"),
+            "reason": stream_info.get("native_reason"),
+            "preload": stream_info.get("native_preload"),
+            "snapshot_source": stream_info.get("snapshot_source"),
+            "talkback_supported": stream_info.get("talkback_supported"),
+            "talkback_reason": stream_info.get("talkback_reason"),
+            "talkback_source": stream_info.get("talkback_source"),
+        }
+        alias = stream_info.get("native_alias")
+        if alias:
+            aliases = diagnostics["go2rtc"].get("aliases")
+            diagnostics["go2rtc"]["alias"] = {
+                "name": alias,
+                "exists": alias in aliases if isinstance(aliases, list) else None,
+            }
+        talkback_alias = stream_info.get("talkback_alias")
+        if talkback_alias:
+            aliases = diagnostics["go2rtc"].get("aliases")
+            diagnostics["go2rtc"]["talkback_alias"] = {
+                "name": talkback_alias,
+                "exists": talkback_alias in aliases if isinstance(aliases, list) else None,
+            }
+    return diagnostics
