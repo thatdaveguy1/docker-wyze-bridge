@@ -2,7 +2,7 @@ name: Docker Wyze Bridge (Dev Build)
 description: Local staging build of Docker Wyze Bridge for SSH-driven validation before production promotion.
 slug: docker_wyze_bridge_dev
 url: https://github.com/thatdaveguy1/docker-wyze-bridge
-version: 4.1.1-dev
+version: 4.1.1-dev2
 stage: stable
 arch:
   - armv7
@@ -47,53 +47,56 @@ options:
   ON_DEMAND: true
   MOTION_API: true
   CAM_OPTIONS: []
-  MEDIAMTX: []
   CONNECT_TIMEOUT: 60
   CONNECT_RETRIES: 3
   CONNECT_RETRY_DELAY: 2.0
 schema:
   WYZE_EMAIL: email
   WYZE_PASSWORD: password
-  API_ID: match(\s*[a-fA-F0-9-]{36}\s*)
-  API_KEY: match(\s*[a-zA-Z0-9]{60}\s*)
+  API_ID: match([a-fA-F0-9-]{36})
+  API_KEY: match([a-zA-Z0-9]{60})
+  TOTP_KEY: str?
   ON_DEMAND: bool?
   ENABLE_AUDIO: bool?
-  MOTION_API: bool?
+  QUALITY: str?
+  SUB_QUALITY: str?
   SUBSTREAM: bool?
+  NET_MODE: list(LAN|P2P|ANY)?
+  FORCE_FPS: int?
   CAM_OPTIONS:
     - CAM_NAME: str?
-      STREAM: list(main|both|sub)?
+      HD: bool?
+      SD: bool?
+      HD_KBPS: int?
+      SD_KBPS: int?
       AUDIO: bool?
-      FFMPEG: str?
-      LIVESTREAM: str?
-      NET_MODE: str?
-      ROTATE: bool?
+      STREAM: list(main|both|sub)?
       QUALITY: str?
       SUB_QUALITY: str?
       FORCE_FPS: int?
       RECORD: bool?
       SUB_RECORD: bool?
       SUBSTREAM: bool?
+      NET_MODE: str?
+      ROTATE: bool?
+      LIVESTREAM: str?
       MOTION_WEBHOOKS: str?
-  WB_IP: str?
-  REFRESH_TOKEN: str?
-  ACCESS_TOKEN: str?
-  TOTP_KEY: str?
-  NET_MODE: list(LAN|P2P|ANY)?
+      FFMPEG: str?
+  WB_AUTH: bool?
+  WB_USERNAME: str?
+  WB_PASSWORD: str?
+  STREAM_AUTH: str?
+  MOTION_API: bool?
+  MOTION_INT: float(1.1,)?
+  MOTION_START: bool?
+  MOTION_WEBHOOKS: str?
   SNAPSHOT: list(API|RTSP|RTSP15|RTSP30|RTSP60|RTSP180|RTSP300|Disable)?
   SNAPSHOT_FORMAT: str?
   SNAPSHOT_KEEP: str?
   IMG_TYPE: list(jpg|png)?
   IMG_DIR: str?
-  MOTION_INT: float(1.1,)?
-  MOTION_START: bool?
-  MOTION_WEBHOOKS: str?
-  AUDIO_CODEC: list(COPY|AAC|LIBOPUS|MP3|PCM_MULAW|PCM_ALAW)?
-  AUDIO_FILTER: str?
-  LLHLS: bool?
-  DISABLE_CONTROL: bool?
-  RTSP_FW: bool?
   RECORD_ALL: bool?
+  SUB_RECORD: bool?
   RECORD_KEEP: str?
   RECORD_LENGTH: str?
   RECORD_PATH: str?
@@ -108,47 +111,24 @@ schema:
   FILTER_MODELS: str?
   FILTER_MACS: str?
   FILTER_BLOCK: bool?
+  AUDIO_CODEC: list(COPY|AAC|LIBOPUS|MP3|PCM_MULAW|PCM_ALAW)?
   ROTATE_DOOR: bool?
   H264_ENC: str?
   FORCE_ENCODE: bool?
+  WB_IP: str?
+  STUN_SERVER: str?
+  DOMAIN: str?
+  CONNECT_TIMEOUT: int?
+  CONNECT_RETRIES: int?
+  CONNECT_RETRY_DELAY: float?
   IGNORE_OFFLINE: bool?
   OFFLINE_TIME: int?
-  FRESH_DATA: bool?
-  URI_MAC: bool?
-  URI_SEPARATOR: list(-|_|#)?
-  QUALITY: str?
-  SUB_QUALITY: str?
-  FORCE_FPS: int?
-  SUB_RECORD: bool?
-  FFMPEG_FLAGS: str?
-  FFMPEG_CMD: str?
   LOG_LEVEL: list(FATAL|ERROR|WARNING|INFO|DEBUG)?
   LOG_FILE: bool?
   LOG_TIME: bool?
   FFMPEG_LOGLEVEL: list(quiet|panic|fatal|error|warning|info|verbose|debug)?
-  IGNORE_RES: int?
-  BOA_ENABLED: bool?
-  BOA_INTERVAL: int?
-  BOA_TAKE_PHOTO: bool?
-  BOA_PHOTO: bool?
-  BOA_ALARM: bool?
-  BOA_MOTION: str?
-  BOA_COOLDOWN: int?
-  CONNECT_TIMEOUT: int?
-  CONNECT_RETRIES: int?
-  CONNECT_RETRY_DELAY: float?
-  FORCE_V4_PARALLEL: bool?
-  MEDIAMTX:
-    - match(^\w+=.*)?
-  DOMAIN: str?
-  WB_HLS_URL: url?
-  WB_RTMP_URL: url?
-  WB_RTSP_URL: url?
-  WB_WEBRTC_URL: url?
-  WB_AUTH: bool?
-  WB_USERNAME: str?
-  WB_PASSWORD: str?
-  STREAM_AUTH: str?
-  STUN_SERVER: str?
-  LATITUDE: float?
-  LONGITUDE: float?
+  FRESH_DATA: bool?
+  LLHLS: bool?
+  DISABLE_CONTROL: bool?
+  RTSP_FW: bool?
+  URI_SEPARATOR: list(-|_|#)?

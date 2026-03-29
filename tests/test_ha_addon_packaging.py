@@ -118,7 +118,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.1.1-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.1.1-dev2")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()
@@ -145,8 +145,8 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         expected_schema = {
             "WYZE_EMAIL": "  WYZE_EMAIL: email",
             "WYZE_PASSWORD": "  WYZE_PASSWORD: password",
-            "API_ID": "  API_ID: match(\\s*[a-fA-F0-9-]{36}\\s*)",
-            "API_KEY": "  API_KEY: match(\\s*[a-zA-Z0-9]{60}\\s*)",
+            "API_ID": "  API_ID: match([a-fA-F0-9-]{36})",
+            "API_KEY": "  API_KEY: match([a-zA-Z0-9]{60})",
         }
 
         for addon_name, config_text in addon_configs.items():
@@ -164,7 +164,35 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                         f"{addon_name} add-on should treat {field_name} as part of the standard visible login path",
                     )
 
-    def test_camera_options_expose_stream_selector(self):
+    def test_addon_schema_prioritizes_common_setup_fields(self):
+        addon_configs = {
+            "prod": (ADDON_DIR / "config.yml").read_text(),
+            "dev": (ROOT / ".ha_live_addon" / "config.yml").read_text(),
+        }
+
+        ordered_fields = [
+            "  WYZE_EMAIL: email",
+            "  WYZE_PASSWORD: password",
+            "  API_ID: match([a-fA-F0-9-]{36})",
+            "  API_KEY: match([a-zA-Z0-9]{60})",
+            "  TOTP_KEY: str?",
+            "  ON_DEMAND: bool?",
+            "  ENABLE_AUDIO: bool?",
+            "  QUALITY: str?",
+            "  SUB_QUALITY: str?",
+            "  SUBSTREAM: bool?",
+            "  NET_MODE: list(LAN|P2P|ANY)?",
+            "  FORCE_FPS: int?",
+            "  CAM_OPTIONS:",
+        ]
+
+        for addon_name, config_text in addon_configs.items():
+            with self.subTest(addon=addon_name):
+                schema_text = config_text.split("schema:\n", 1)[1]
+                indexes = [schema_text.index(field) for field in ordered_fields]
+                self.assertEqual(indexes, sorted(indexes))
+
+    def test_camera_options_expose_granular_feed_controls(self):
         addon_configs = {
             "prod": (ADDON_DIR / "config.yml").read_text(),
             "dev": (ROOT / ".ha_live_addon" / "config.yml").read_text(),
@@ -173,6 +201,89 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         for addon_name, config_text in addon_configs.items():
             with self.subTest(addon=addon_name):
                 self.assertIn("      STREAM: list(main|both|sub)?", config_text)
+                self.assertIn("      HD: bool?", config_text)
+                self.assertIn("      SD: bool?", config_text)
+                self.assertIn("      HD_KBPS: int?", config_text)
+                self.assertIn("      SD_KBPS: int?", config_text)
+
+    def test_camera_options_have_nested_translations(self):
+        addon_translations = {
+            "prod": (ADDON_DIR / "translations" / "en.yml").read_text(),
+            "dev": (ROOT / ".ha_live_addon" / "translations" / "en.yml").read_text(),
+        }
+
+        expected_snippets = [
+            "  CAM_OPTIONS:\n",
+            "    fields:\n",
+            "      CAM_NAME:\n",
+            "        name: Camera name\n",
+            "      HD:\n",
+            "        name: Enable HD feed\n",
+            "      SD_KBPS:\n",
+            "        name: SD bitrate target\n",
+            "      STREAM:\n",
+            "        name: Legacy stream mode\n",
+        ]
+
+        for addon_name, translation_text in addon_translations.items():
+            with self.subTest(addon=addon_name):
+                for snippet in expected_snippets:
+                    self.assertIn(snippet, translation_text)
+
+    def test_niche_power_user_fields_are_not_exposed_in_ha_form(self):
+        addon_configs = {
+            "prod": (ADDON_DIR / "config.yml").read_text(),
+            "dev": (ROOT / ".ha_live_addon" / "config.yml").read_text(),
+        }
+
+        removed_schema_fields = [
+            "  REFRESH_TOKEN: str?",
+            "  ACCESS_TOKEN: str?",
+            "  AUDIO_FILTER: str?",
+            "  FFMPEG_FLAGS: str?",
+            "  FFMPEG_CMD: str?",
+            "  BOA_ENABLED: bool?",
+            "  FORCE_V4_PARALLEL: bool?",
+            "  MEDIAMTX:\n",
+            "  WB_HLS_URL: url?",
+            "  WB_RTMP_URL: url?",
+            "  WB_RTSP_URL: url?",
+            "  WB_WEBRTC_URL: url?",
+            "  LATITUDE: float?",
+            "  LONGITUDE: float?",
+        ]
+
+        for addon_name, config_text in addon_configs.items():
+            with self.subTest(addon=addon_name):
+                for field in removed_schema_fields:
+                    self.assertNotIn(field, config_text)
+
+    def test_ha_env_files_define_fixed_mediatx_ports(self):
+        env_files = {
+            "prod": ADDON_DIR / "app" / ".env",
+            "dev": ROOT / ".ha_live_addon" / "app" / ".env",
+        }
+
+        expected_lines = {
+            "prod": [
+                "MTX_RTSPADDRESS=:58554",
+                "MTX_HLSADDRESS=:58888",
+                "MTX_WEBRTCADDRESS=:58889",
+                "MTX_APIADDRESS=:59997",
+            ],
+            "dev": [
+                "MTX_RTSPADDRESS=:59554",
+                "MTX_HLSADDRESS=:59888",
+                "MTX_WEBRTCADDRESS=:59889",
+                "MTX_APIADDRESS=:60997",
+            ],
+        }
+
+        for addon_name, env_path in env_files.items():
+            env_text = env_path.read_text()
+            with self.subTest(addon=addon_name):
+                for expected in expected_lines[addon_name]:
+                    self.assertIn(expected, env_text)
 
 
 if __name__ == "__main__":

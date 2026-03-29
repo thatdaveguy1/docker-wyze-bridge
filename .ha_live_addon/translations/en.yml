@@ -1,239 +1,245 @@
 configuration:
   WYZE_EMAIL:
     name: Wyze email
-    description: Required. Enter the email address for your Wyze account.
+    description: Enter the email address you use to sign in to Wyze. This is required.
   WYZE_PASSWORD:
     name: Wyze password
-    description: Required. Enter the password for your Wyze account.
+    description: Enter the password for your Wyze account. This is required.
   API_ID:
     name: Key ID
-    description: Required. Enter your Wyze developer Key ID. Used together with API key.
+    description: Enter your Wyze developer Key ID. Wyze now requires this together with your API key. This is required.
   API_KEY:
     name: API key
-    description: Required. Enter your Wyze developer API key. Used together with Key ID.
-  WB_IP:
-    name: WebRTC advertised IP
-    description: Advanced. Override the IP address announced to WebRTC clients. Leave blank unless WebRTC works locally but fails from other devices.
-  REFRESH_TOKEN:
-    name: Refresh Token
-    description: Advanced. Optional existing refresh token for authentication.
-  ACCESS_TOKEN:
-    name: Access Token
-    description: Advanced. Optional existing access token for authentication.
+    description: Enter your Wyze developer API key. This pairs with the Key ID above. This is required.
   TOTP_KEY:
-    name: TOTP Key
-    description: Optional. Only needed if your Wyze account uses TOTP-based MFA.
-  NET_MODE:
-    name: Allowed Net Modes
-    description: Optional. Limit how cameras connect: LAN only, P2P only, or either.
-  SNAPSHOT:
-    name: Snapshot Mode
-    description: How should a snapshot be taken (API or RTSP). The number is how often in seconds.
-  SNAPSHOT_FORMAT:
-    name: Snapshot File Name Pattern
-    description: The directory and file name pattern for saving snapshots. Use {cam_name} or {CAM_NAME} to insert the camera slug
-  SNAPSHOT_KEEP:
-    name: Snapshot Retention
-    description: How long to retain snapshots (e.g. 10h for 10 hours, 5d for 5 days)
-  IMG_TYPE:
-    name: Snapshot image type
-    description: Optional. Save snapshots as JPG or PNG. Defaults to JPG.
-  IMG_DIR:
-    name: Snapshot Directory
-    description: Specify the base directory for the snapshots. Defaults to img (and will be at /media/wyze/img)
-  DOMAIN:
-    name: Stream host name
-    description: Optional. Host name used when the UI shows stream URLs. Defaults to your Home Assistant host name.
-  ENABLE_AUDIO:
-    name: Enable audio by default
-    description: Optional. Include audio on camera streams unless a camera-specific setting overrides it.
+    name: MFA TOTP key
+    description: Optional. Only fill this in if your Wyze account uses app-based two-factor codes.
   ON_DEMAND:
     name: Connect on demand
-    description: Recommended. Keep cameras disconnected until someone watches or requests a stream. Turn off only if you want persistent camera connections.
-  MOTION_API:
-    name: Use Wyze motion events
-    description: Optional. Monitor motion events reported by Wyze cameras. This sets the default for all cameras.
-  MOTION_INT:
-    name: Motion Check Interval
-    description: Number of seconds between motion checks. Defaults to 1.1 
-  MOTION_START:
-    name: Start Stream when Motion Detected
-    description: If true, the camera stream will be automatically started when motion events occur
-  MOTION_WEBHOOKS:
-    name: API Motion Webhook
-    description: Optional. Send a webhook when motion is detected. Example: http://localhost/motion?cam={cam_name}. This sets the default for all cameras.
-  SUBSTREAM:
-    name: Create substream by default
-    description: Optional. Publish an extra lower-bandwidth stream at /camera-name-sub for cameras that support it.
-  AUDIO_CODEC:
-    name: Audio Codec
-    description: Cams with PCM audio will be re-encoded to AAC by default for RTSP compatibility.
-  AUDIO_FILTER:
-    name: FFmpeg Audio Filter
-    description: Requires audio codec to be set to AAC or MP3.
-  LLHLS:
-    name: Low Latency HLS
-    description: If enabled, creates HLS streams that have low-latency protocol active. If true, the HLS stream must be served via https not http
-  DISABLE_CONTROL:
-    name: Disable Control
-    description: Disable camera control from the API/MQTT.
-  RTSP_FW:
-    name: Firmware RTSP
-    description: Proxy additional RTSP stream from official RTSP firmware.
-  RECORD_ALL:
-    name: Record all cameras by default
-    description: Optional. Record camera streams with MediaMTX unless a camera-specific setting overrides it.
-  RECORD_KEEP:
-    name: Recording Retention
-    description: How long to retain recordings (e.g. 10h for 10 hours, 5d for 5 days). Defaults to 0s (never discard)
-  RECORD_LENGTH:
-    name: Recording Length
-    description: How long each recording is before starting a new file. Defaults to 60s
-  RECORD_PATH:
-    name: Recording Directory Pattern
-    description: The directory pattern for saved recordings. This defaults to /media/wyze/recordings/{cam_name}/%Y/%m/%d
-  RECORD_FILE_NAME:
-    name: Recording File Name Pattern
-    description: The file name pattern for saved recordings. Use {cam_name} or {CAM_NAME} to insert the camera slug. Defaults to %Y-%m-%d-%H-%M-%S
-  MQTT:
-    name: Enable MQTT
-    description: Optional. Publish device state, events, and motion updates to MQTT.
-  MQTT_HOST:
-    name: MQTT host
-    description: Optional. MQTT broker address, for example 192.168.1.10:1883. Leave blank to rely on the Home Assistant MQTT service when available.
-  MQTT_AUTH:
-    name: MQTT Login
-    description: Optional. MQTT username and password in the format user:password.
-  MQTT_TOPIC:
-    name: MQTT Topic
-    description: The topic where camera states and motion are announced. Defaults to wyzebridge
-  MQTT_DTOPIC:
-    name: MQTT Discovery Topic
-    description: The topic where MQTT discovery messages for cameras is announced. If blank, no discovery messages are emitted
-  MQTT_RETRIES:
-    name: MQTT Retries
-    description: How many attempts to publish messages. Defaults to 3
-  FILTER_NAMES:
-    name: Filter cameras by name
-    description: Optional. If set, only cameras with these names will be managed.
-  FILTER_MODELS:
-    name: Filter cameras by camera model
-    description: Optional. If set, only cameras with these model names will be managed.
-  FILTER_MACS:
-    name: Filter cameras by MAC address
-    description: Optional. If set, only cameras with these MAC addresses will be managed.
-  FILTER_BLOCK:
-    name: Invert Filter
-    description: Block cameras in filter lists (instead of enabling)
-  ROTATE_DOOR:
-    name: Rotate Doorbells
-    description: Will rotate video 90 degrees clockwise.
-  H264_ENC:
-    name: H.264 Encoder
-    description: Specify a hardware encoder for FFmpeg
-  FORCE_ENCODE:
-    name: Force Re-encoding
-    description: Ensure the streams are encoded in compatible format
-  IGNORE_OFFLINE:
-    name: Ignore Offline Camera
-  OFFLINE_TIME:
-    name: Cooldown for Offline
-    description: How long in seconds to wait between checks of an offline camera. Defaults to 10
-  FRESH_DATA:
-    name: Refresh API Camera
-    description: Ignores local cache of cameras and grabs the list from the API
-  URI_MAC:
-    name: Add MAC to Camera Name
-    description: Adds the last 4 characters of the Camera's MAC to the camera URI
-  URI_SEPARATOR:
-    name: URI Separator
-    description: Replace all whitespace or hyphens with this character in URI
+    description: Recommended. Only connect to cameras when someone is actively watching or requesting a stream. This saves bandwidth and camera resources. Default is on.
+  ENABLE_AUDIO:
+    name: Enable audio by default
+    description: Optional. Include audio on streams unless a camera-specific override changes it. Default is on.
   QUALITY:
-    name: Default main stream quality
-    description: Optional. Requested main stream quality for all cameras. Use values like SD30 or HD180.
+    name: Preferred video quality
+    description: Optional. Requested quality for the main feed on all cameras, such as HD180 or SD30. The camera may still deliver a lower resolution if Wyze does not expose the higher profile.
   SUB_QUALITY:
-    name: Default substream quality
-    description: Optional. Requested quality for supported substreams. Use values like SD30 or HD180.
+    name: Preferred lower-bandwidth quality
+    description: Optional. Requested quality for substreams or lower-bandwidth feeds, such as SD30. Leave blank to use the built-in default.
+  SUBSTREAM:
+    name: Create SD substream by default
+    description: Optional. Publish an extra lower-bandwidth stream at /camera-name-sub for cameras that support it. Default is off.
+  NET_MODE:
+    name: How cameras connect
+    description: Optional. Choose whether cameras may connect over LAN only, P2P only, or either. Leave this at ANY unless you are troubleshooting a connection problem.
   FORCE_FPS:
-    name: Force FPS
-    description: Sets the default frames-per-second for all cameras
-  SUB_RECORD:
-    name: Record substream by default
-    description: Optional. Record supported substreams when they are enabled.
-  FFMPEG_FLAGS:
-    name: FFmpeg Flags
-    description: Additional flags to pass FFmpeg for all cameras
-  FFMPEG_CMD:
-    name: FFmpeg Command
-    description: Set a custom FFmpeg command instead of the default. Use {cam_name} or {CAM_NAME} or {audio_in} to insert the camera slug
-  LOG_LEVEL:
-    name: Log Level
-    description: Sets the level of logging from FATAL (only terminal errors) to DEBUG (excessive detail)
-  LOG_FILE:
-    name: Write log file
-    description: Optional. Save bridge logs to /config/logs/wyze-bridge.log.
-  LOG_TIME:
-    name: Show timestamps in logs
-    description: Optional. Add timestamps to log lines.
-  FFMPEG_LOGLEVEL:
-    name: FFmpeg Log Level
-    description: Sets the level of logging for the FFmpeg helper from quiet (almost nothing) to debug (excessive detail)
-  IGNORE_RES:
-    name: Frame Size Override
-    description: Allows additional frame sizes for video stream
-  BOA_ENABLED:
-    name: Enable BOA HTTP
-    description: Advanced. Enable the camera HTTP server on supported cameras. Requires LAN access and an SD card.
-  BOA_INTERVAL:
-    name: Boa Keep Alive
-    description: The number of seconds between photos/keep alive. Defaults to 20
-  BOA_TAKE_PHOTO:
-    name: Interval Photo
-    description: Take a photo on the camera on Boa Keep Alive Interval.
-  BOA_PHOTO:
-    name: Pull Photo (MQTT Motion Alerts)
-    description: Pull the HQ photo from the SD card via BOA.
-  BOA_ALARM:
-    name: Pull Alarm (MQTT Motion Alerts)
-    description: Pull alarm image from the SD card via BOA.
-  BOA_MOTION:
-    name: Webhook on BOA Motion
-    description: Make a Webhook/HTTP request to any url. e.g., http://localhost/motion?cam={cam_name}
-  BOA_COOLDOWN:
-    name: Motion Cooldown
-    description: Number of seconds to keep the motion flag set to true before resetting it. Defaults to 20
+    name: Default frame rate
+    description: Optional. Request a specific frames-per-second value for all cameras. Leave blank unless you have a reason to tune frame rate.
   CAM_OPTIONS:
-    name: Camera Specific Options
-    description: Optional. Per-camera overrides. Use this for camera-specific stream mode, quality, recording, or motion settings.
-  MEDIAMTX:
-    name: MediaMTX config
-    description: Use `=` to specify the value and use `_` in place of spaces. For example MTX_LOGLEVEL. See documentation for details
-  WB_HLS_URL:
-    name: Custom HLS URL
-  WB_RTMP_URL:
-    name: Custom RTMP URL
-  WB_RTSP_URL:
-    name: Custom RTSP URL
-  WB_WEBRTC_URL:
-    name: Custom WebRTC URL
+    name: Per-camera settings
+    description: Optional. Add one entry per camera when a specific camera needs different feed, recording, motion, or network settings than the global defaults.
+    fields:
+      CAM_NAME:
+        name: Camera name
+        description: Enter the camera name exactly as it appears in the Wyze app.
+      HD:
+        name: Enable HD feed
+        description: Optional. Turn on the high-definition feed for this camera. Use the Web UI if you want to see live capability and resolution labels first.
+      SD:
+        name: Enable SD feed
+        description: Optional. Turn on the lower-bandwidth feed for this camera. Useful for Frigate detect roles, remote viewing, or slower links.
+      HD_KBPS:
+        name: HD bitrate target
+        description: Optional. Target bitrate for the HD feed in kilobits per second. Leave blank to let the camera or bridge decide.
+      SD_KBPS:
+        name: SD bitrate target
+        description: Optional. Target bitrate for the SD feed in kilobits per second. Leave blank to use the default behavior.
+      AUDIO:
+        name: Enable audio
+        description: Optional. Override the global audio setting for this one camera.
+      STREAM:
+        name: Legacy stream mode
+        description: Optional. Older shortcut for main, both, or sub. Prefer the HD and SD feed toggles above for new setups.
+      QUALITY:
+        name: HD quality request
+        description: Optional. Override the global main-feed quality request for this camera only.
+      SUB_QUALITY:
+        name: SD quality request
+        description: Optional. Override the global lower-bandwidth quality request for this camera only.
+      FORCE_FPS:
+        name: Frame rate
+        description: Optional. Override the global frame-rate request for this camera.
+      RECORD:
+        name: Record HD feed
+        description: Optional. Save this camera's main or HD feed to disk.
+      SUB_RECORD:
+        name: Record SD feed
+        description: Optional. Save this camera's lower-bandwidth feed to disk when it exists.
+      SUBSTREAM:
+        name: Publish /camera-name-sub
+        description: Optional. Force this camera to expose a separate -sub path when the model supports it.
+      NET_MODE:
+        name: Connection mode
+        description: Optional. Override the global LAN, P2P, or ANY connection mode for this camera.
+      ROTATE:
+        name: Rotate video
+        description: Optional. Rotate this camera 90 degrees clockwise.
+      LIVESTREAM:
+        name: Livestream target URL
+        description: Advanced. Rebroadcast this camera to an external livestream destination such as RTMP.
+      MOTION_WEBHOOKS:
+        name: Motion webhook
+        description: Optional. Send a webhook when this camera detects motion.
+      FFMPEG:
+        name: Custom FFmpeg command
+        description: Advanced. Replace the default FFmpeg command for this camera only.
   WB_AUTH:
     name: Require Web UI login
-    description: Recommended. Require a username and password for the Web UI and bridge APIs.
+    description: Recommended. Protect the Web UI and API with a username and password. Default is off.
   WB_USERNAME:
-    name: WebUI Username
-    description: Optional. Used only when Web UI authentication is enabled.
+    name: Web UI username
+    description: Optional. Username for the Web UI and API. Only used when Web UI login is enabled.
   WB_PASSWORD:
-    name: WebUI Password
-    description: Optional. Used only when Web UI authentication is enabled.
+    name: Web UI password
+    description: Optional. Password for the Web UI and API. Only used when Web UI login is enabled.
   STREAM_AUTH:
-    name: Add stream users
-    description: Advanced. Add stream-only users for specific cameras. See the examples in the docs for the required format.
+    name: Extra stream users
+    description: Advanced. Add stream-only usernames and passwords using the format described in the add-on docs.
+  MOTION_API:
+    name: Use Wyze motion events
+    description: Optional. Listen for motion events reported by Wyze and expose them through the bridge. Default is on.
+  MOTION_INT:
+    name: Motion check interval
+    description: Optional. How often to poll for motion, in seconds. Lower values can react faster but use more resources. Default is 1.1 seconds.
+  MOTION_START:
+    name: Start stream on motion
+    description: Optional. Automatically wake or start a stream when motion is detected.
+  MOTION_WEBHOOKS:
+    name: Global motion webhook
+    description: Optional. Send a webhook when any camera reports motion. Camera-specific webhooks can override this.
+  SNAPSHOT:
+    name: Snapshot mode
+    description: Optional. Choose whether snapshots come from the Wyze API or from the live RTSP stream. Modes like RTSP15 or RTSP60 control how often a fresh image is captured.
+  SNAPSHOT_FORMAT:
+    name: Snapshot path pattern
+    description: Optional. Directory and filename pattern for saved snapshots. You can use {cam_name} or {CAM_NAME} in the path.
+  SNAPSHOT_KEEP:
+    name: Snapshot retention
+    description: Optional. How long to keep saved snapshots, such as 10h or 5d.
+  IMG_TYPE:
+    name: Snapshot image type
+    description: Optional. Save snapshots as jpg or png. Default is jpg.
+  IMG_DIR:
+    name: Snapshot base folder
+    description: Optional. Base folder for snapshots under /media/wyze. Default is img.
+  RECORD_ALL:
+    name: Record all cameras by default
+    description: Optional. Save streams to disk unless a camera-specific override changes it. Default is off.
+  SUB_RECORD:
+    name: Record SD feeds by default
+    description: Optional. Also record lower-bandwidth feeds when they are enabled. Default is off.
+  RECORD_KEEP:
+    name: Recording retention
+    description: Optional. How long to keep recordings, such as 10h or 5d. Default is 0s, which means keep everything until you delete it.
+  RECORD_LENGTH:
+    name: Recording segment length
+    description: Optional. Length of each recording file before a new one is started. Default is 60 seconds.
+  RECORD_PATH:
+    name: Recording folder pattern
+    description: Optional. Folder pattern for saved recordings. The default is /media/wyze/recordings/{cam_name}/%Y/%m/%d.
+  RECORD_FILE_NAME:
+    name: Recording file name pattern
+    description: Optional. Filename pattern for recordings. You can use {cam_name} or {CAM_NAME}. Default is %Y-%m-%d-%H-%M-%S.
+  MQTT:
+    name: Enable MQTT
+    description: Optional. Publish camera state, events, and motion updates to MQTT. Default is off unless your setup enables it.
+  MQTT_HOST:
+    name: MQTT broker address
+    description: Optional. MQTT server address such as 192.168.1.10:1883. Leave blank to use Home Assistant's MQTT service when available.
+  MQTT_AUTH:
+    name: MQTT username and password
+    description: Optional. Login for your MQTT broker in the format user:password.
+  MQTT_TOPIC:
+    name: MQTT topic prefix
+    description: Optional. Base topic for camera states and events. Default is wyzebridge.
+  MQTT_DTOPIC:
+    name: MQTT discovery topic
+    description: Optional. Topic used for Home Assistant MQTT discovery messages. Leave blank to disable discovery messages.
+  MQTT_RETRIES:
+    name: MQTT publish retries
+    description: Optional. Number of times to retry sending MQTT messages. Default is 3.
+  FILTER_NAMES:
+    name: Only include these camera names
+    description: Optional. Comma-separated list of camera names to manage. Leave blank to include every camera on the account.
+  FILTER_MODELS:
+    name: Only include these camera models
+    description: Optional. Comma-separated list of model codes to manage.
+  FILTER_MACS:
+    name: Only include these camera MAC addresses
+    description: Optional. Comma-separated list of MAC addresses to manage.
+  FILTER_BLOCK:
+    name: Treat filters as block lists
+    description: Optional. Flip the filter behavior so listed cameras are excluded instead of included. Default is off.
+  AUDIO_CODEC:
+    name: Audio format
+    description: Optional. Choose how audio is published to clients. Leave this at the default unless a player or downstream app needs a different codec.
+  ROTATE_DOOR:
+    name: Rotate doorbells upright
+    description: Optional. Rotate doorbell video 90 degrees clockwise so tall video displays correctly.
+  H264_ENC:
+    name: Hardware H.264 encoder
+    description: Advanced. Set an FFmpeg hardware encoder name if your host supports one.
+  FORCE_ENCODE:
+    name: Force video re-encoding
+    description: Optional. Re-encode video for compatibility when a downstream app struggles with the original stream. This uses more CPU.
+  WB_IP:
+    name: WebRTC advertised IP
+    description: Advanced. Override the IP address announced to WebRTC clients. Leave blank unless local playback works but other devices cannot connect.
   STUN_SERVER:
-    name: STUN Server
-    description: Optional. Override the STUN server used for WebRTC. Example: stun:stun.l.google.com:19302.
-  LATITUDE:
-    name: Local Latitude
-    description: Used to compute sunset/sunrise for snapshots
-  LONGITUDE:
-    name: Local Longitude
-    description: Used to compute sunset/sunrise for snapshots
+    name: STUN server
+    description: Optional. Override the STUN server used for WebRTC NAT traversal. Leave blank unless you know you need a different one.
+  DOMAIN:
+    name: Host name shown in URLs
+    description: Optional. Host name the Web UI uses when it shows stream URLs. Default is your Home Assistant host name.
+  CONNECT_TIMEOUT:
+    name: Camera connect timeout
+    description: Optional. How long to wait for a camera connection before giving up, in seconds. Default is 60.
+  CONNECT_RETRIES:
+    name: Camera connect retries
+    description: Optional. Number of times to retry connecting to a camera before marking it failed. Default is 3.
+  CONNECT_RETRY_DELAY:
+    name: Delay between retries
+    description: Optional. Seconds to wait between camera connection retries. Default is 2.0.
+  IGNORE_OFFLINE:
+    name: Ignore offline cameras
+    description: Optional. Stop repeatedly trying cameras that are currently offline. Useful if some cameras are often unplugged or powered off. Default is off.
+  OFFLINE_TIME:
+    name: Offline retry cooldown
+    description: Optional. How long to wait before checking an offline camera again, in seconds. Default is 10.
+  LOG_LEVEL:
+    name: Bridge log level
+    description: Optional. Choose how much detail the bridge writes to its logs. INFO is the normal default. DEBUG is noisy but useful for troubleshooting.
+  LOG_FILE:
+    name: Save logs to file
+    description: Optional. Also write bridge logs to /config/logs/wyze-bridge.log.
+  LOG_TIME:
+    name: Add timestamps to logs
+    description: Optional. Include timestamps on each bridge log line.
+  FFMPEG_LOGLEVEL:
+    name: FFmpeg log level
+    description: Optional. Choose how much detail FFmpeg helpers log. Leave this quiet or warning unless you are troubleshooting media problems.
+  FRESH_DATA:
+    name: Refresh camera list from Wyze
+    description: Advanced. Ignore the local camera cache and pull a fresh device list from the Wyze API on startup.
+  LLHLS:
+    name: Low-latency HLS
+    description: Optional. Enable low-latency HLS output. This is mainly useful for specialized players and usually expects HTTPS.
+  DISABLE_CONTROL:
+    name: Disable camera controls
+    description: Optional. Turn off camera control actions from the API and MQTT.
+  RTSP_FW:
+    name: Expose firmware RTSP stream
+    description: Advanced. Proxy the official Wyze firmware RTSP feed for cameras that provide one.
+  URI_SEPARATOR:
+    name: Camera URL separator
+    description: Optional. Character used when camera names are converted into stream paths. Default is a hyphen.
