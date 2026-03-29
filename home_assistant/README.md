@@ -1,6 +1,6 @@
 # Docker Wyze Bridge
 
-This Home Assistant add-on provides local WebRTC, RTSP, RTMP, and HLS access for Wyze cameras. The `4.2` release line keeps the established bridge path, bundles a native `go2rtc` sidecar for Home Assistant, and documents the model-specific limits now known for newer Wyze cameras.
+This Home Assistant add-on provides local WebRTC, RTSP, RTMP, and HLS access for Wyze cameras. The `4.2` release line keeps the established bridge path, bundles a native `go2rtc` sidecar for Home Assistant, and documents the model-specific limits now known for newer Wyze cameras. The `4.2.1` patch line also prevents the bundled sidecar from silently taking Frigate's default `8555` port on Home Assistant hosts.
 
 ## Installation
 
