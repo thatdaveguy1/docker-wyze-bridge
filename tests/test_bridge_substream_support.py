@@ -4,12 +4,20 @@ import os
 import pathlib
 import sys
 import unittest
+import types
 from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(
     0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
 )
+
+sys.modules.setdefault("xxtea", types.ModuleType("xxtea"))
+
+fake_wyzecam_iotc = types.ModuleType("wyzecam.iotc")
+fake_wyzecam_iotc.WyzeIOTC = object
+fake_wyzecam_iotc.WyzeIOTCSession = object
+sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
 from wyzecam.api_models import WyzeCamera
 from wyzebridge.wyze_stream import StreamStatus, WyzeStream

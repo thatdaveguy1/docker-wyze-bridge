@@ -6,10 +6,20 @@ from wyzebridge.logging import logger
 
 SETTINGS_PATH = Path("/config/wyze_camera_settings.json")
 VALID_STREAM_MODES = {"main", "sub", "both"}
+VALID_SETTING_KEYS = {"stream", "hd", "sd", "hd_kbps", "sd_kbps"}
 
 
 def _normalize_cam_name(cam_name: str) -> str:
     return clean_cam_name(cam_name or "")
+
+
+def _normalize_bool(value) -> str:
+    return "1" if str(value).strip().lower() in {"1", "true", "yes", "on"} else ""
+
+
+def _normalize_kbps(value) -> str:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    return digits.lstrip("0") or ("0" if digits else "")
 
 
 def load_camera_settings() -> dict[str, dict[str, str]]:
@@ -29,9 +39,20 @@ def load_camera_settings() -> dict[str, dict[str, str]]:
         slug = _normalize_cam_name(cam_name)
         if not slug or not isinstance(config, dict):
             continue
+        entry: dict[str, str] = {}
         stream = str(config.get("stream", "")).strip().lower()
         if stream in VALID_STREAM_MODES:
-            normalized[slug] = {"stream": stream}
+            entry["stream"] = stream
+        for key in ("hd", "sd"):
+            if key in config:
+                entry[key] = _normalize_bool(config.get(key))
+        for key in ("hd_kbps", "sd_kbps"):
+            if key in config:
+                kbps = _normalize_kbps(config.get(key))
+                if kbps:
+                    entry[key] = kbps
+        if entry:
+            normalized[slug] = entry
     return normalized
 
 
@@ -61,3 +82,32 @@ def set_camera_stream_mode(cam_name: str, stream_mode: str) -> str:
     entry["stream"] = mode
     save_camera_settings(settings)
     return mode
+
+
+def update_camera_settings(cam_name: str, values: dict[str, object]) -> dict[str, str]:
+    slug = _normalize_cam_name(cam_name)
+    if not slug:
+        raise ValueError("Invalid camera name")
+
+    settings = load_camera_settings()
+    entry = settings.setdefault(slug, {})
+    for key, value in values.items():
+        if key not in VALID_SETTING_KEYS:
+            continue
+        if key == "stream":
+            mode = str(value or "").strip().lower()
+            if mode not in VALID_STREAM_MODES:
+                raise ValueError("Invalid camera stream mode")
+            entry[key] = mode
+        elif key in {"hd", "sd"}:
+            entry[key] = _normalize_bool(value)
+        elif key in {"hd_kbps", "sd_kbps"}:
+            kbps = _normalize_kbps(value)
+            if kbps:
+                entry[key] = kbps
+            else:
+                entry.pop(key, None)
+
+    settings[slug] = entry
+    save_camera_settings(settings)
+    return entry.copy()

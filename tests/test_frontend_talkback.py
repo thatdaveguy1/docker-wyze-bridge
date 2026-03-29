@@ -94,6 +94,12 @@ sys.modules["wyze_bridge"] = fake_wyze_bridge
 
 import frontend
 
+# The frontend import needed the lightweight wyzebridge stubs above, but other
+# tests in the same pytest process need the real module later. Drop the stubs
+# after import so future imports resolve the actual implementation.
+sys.modules.pop("wyzebridge.wyze_stream", None)
+sys.modules.pop("wyzebridge.wyze_events", None)
+
 
 class TestFrontendTalkback(unittest.TestCase):
     def create_client(self):

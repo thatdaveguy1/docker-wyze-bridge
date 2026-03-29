@@ -12,6 +12,8 @@ requests_exceptions = types.ModuleType("requests.exceptions")
 requests_stub.RequestException = Exception
 requests_stub.ConnectionError = Exception
 requests_stub.HTTPError = Exception
+requests_stub.PreparedRequest = object
+requests_stub.Response = object
 requests_stub.get = lambda *args, **kwargs: None
 requests_stub.post = lambda *args, **kwargs: None
 requests_stub.put = lambda *args, **kwargs: None
@@ -26,6 +28,12 @@ sys.modules.setdefault(
     "dotenv",
     SimpleNamespace(load_dotenv=lambda *args, **kwargs: False),
 )
+sys.modules.setdefault("xxtea", types.ModuleType("xxtea"))
+
+fake_wyzecam_iotc = types.ModuleType("wyzecam.iotc")
+fake_wyzecam_iotc.WyzeIOTC = object
+fake_wyzecam_iotc.WyzeIOTCSession = object
+sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
 sys.path.insert(
     0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
@@ -164,6 +172,36 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertFalse(info["talkback_supported"])
         self.assertEqual(info["talkback_alias"], "garage")
         self.assertIn("native-selected cameras", info["talkback_reason"])
+
+    @patch("wyzebridge.go2rtc.requests.get")
+    def test_hl_bc_reports_sd_resolution_for_main_feed(self, mock_get):
+        user = SimpleNamespace()
+        camera = make_camera()
+        camera.product_model = "HL_BC"
+        camera.model_name = "Wyze Bulb Cam"
+        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+        mock_get.return_value = response
+
+        with patch("wyzebridge.wyze_stream.publish_discovery"):
+            stream = WyzeStream(
+                user,
+                DummyApi(),
+                camera,
+                SimpleNamespace(
+                    quality="sd30",
+                    audio=True,
+                    record=False,
+                    reconnect=True,
+                    substream=False,
+                    frame_size=1,
+                    bitrate=30,
+                    update_quality=lambda hq: None,
+                ),
+            )
+
+        info = stream.get_info()
+
+        self.assertEqual(info["actual_resolution"], "640x360")
 
 
 if __name__ == "__main__":
