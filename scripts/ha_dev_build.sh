@@ -480,6 +480,11 @@ payload = data.get("options")
 if not payload:
     raise SystemExit("Production add-on info did not include an options payload to copy.")
 
+for key in ("WYZE_EMAIL", "WYZE_PASSWORD", "API_ID", "API_KEY", "TOTP_KEY"):
+    value = payload.get(key)
+    if isinstance(value, str):
+        payload[key] = value.strip()
+
 
 def pick_host(options):
     candidates = [
@@ -503,26 +508,16 @@ def pick_host(options):
 
 host = pick_host(payload)
 payload["DOMAIN"] = host
-payload["MEDIAMTX"] = [
-    f"MTX_APIADDRESS=:{os.environ['DEV_API_PORT']}",
-    f"MTX_HLSADDRESS=:{os.environ['DEV_HLS_PORT']}",
-    f"MTX_METRICSADDRESS=:{os.environ['DEV_METRICS_PORT']}",
-    f"MTX_PLAYBACKADDRESS=:{os.environ['DEV_PLAYBACK_PORT']}",
-    f"MTX_PPROFADDRESS=:{os.environ['DEV_PPROF_PORT']}",
-    f"MTX_RTCPADDRESS=:{os.environ['DEV_RTCP_PORT']}",
-    f"MTX_RTMPADDRESS=:{os.environ['DEV_RTMP_PORT']}",
-    f"MTX_RTMPSADDRESS=:{os.environ['DEV_RTMPS_PORT']}",
-    f"MTX_RTPADDRESS=:{os.environ['DEV_RTP_PORT']}",
-    f"MTX_RTSPADDRESS=:{os.environ['DEV_RTSP_PORT']}",
-    f"MTX_RTSPSADDRESS=:{os.environ['DEV_RTSPS_PORT']}",
-    f"MTX_SRTADDRESS=:{os.environ['DEV_SRT_PORT']}",
-    f"MTX_WEBRTCADDRESS=:{os.environ['DEV_WEBRTC_PORT']}",
-    f"MTX_WEBRTCLOCALUDPADDRESS=:{os.environ['DEV_WEBRTC_UDP_PORT']}",
-]
-payload["WB_RTSP_URL"] = f"rtsp://{host}:{os.environ['DEV_RTSP_PORT']}"
-payload["WB_WEBRTC_URL"] = f"http://{host}:{os.environ['DEV_WEBRTC_PORT']}"
-payload["WB_HLS_URL"] = f"http://{host}:{os.environ['DEV_HLS_PORT']}"
-payload["WB_RTMP_URL"] = f"rtmp://{host}:{os.environ['DEV_RTMP_PORT']}"
+
+for hidden_key in (
+    "MEDIAMTX",
+    "WB_RTSP_URL",
+    "WB_WEBRTC_URL",
+    "WB_HLS_URL",
+    "WB_RTMP_URL",
+    "WB_HLS_URL",
+):
+    payload.pop(hidden_key, None)
 
 json.dump({"options": payload}, sys.stdout, separators=(",", ":"))
 PY
