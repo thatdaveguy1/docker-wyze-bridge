@@ -1,8 +1,8 @@
 # What's Changed
 
-## Planned for v4.2.1
+## What's Changed in v4.2.1
 
-Documentation and bugfix prep for the next patch release. Not released yet.
+Patch release focused on Home Assistant defaults, Frigate compatibility, and release-surface cleanup.
 
 ### Major Changes
 
@@ -10,6 +10,7 @@ Documentation and bugfix prep for the next patch release. Not released yet.
 - Add focused regression coverage for that precedence rule and validate it live in the dev add-on without a saved runtime settings file.
 - Record the production-safe outcome: production restored with the intended `SD`-only camera defaults after validation.
 - Fix the bundled Home Assistant native `go2rtc` sidecar so it no longer keeps the upstream default WebRTC listener on `:8555`, which blocked Frigate startup on shared hosts.
+- Normalize preserved `/config/go2rtc_wyze.yaml` listener blocks on startup so stale `api`, `rtsp`, or `webrtc` settings cannot keep the old `:8555` bind alive across rebuilds.
 - Add packaging regression coverage to ensure the generated sidecar config always overrides that default listener in all three runtime trees.
 
 ## What's Changed in v4.1.1
