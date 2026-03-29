@@ -9,14 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
-## Planned 4.2.1 Follow-up
+## 4.2.1 Patch Release
 
-This repository also includes an unreleased `4.2.1` patch candidate.
+`4.2.1` is the follow-up patch for the `4.2` release line.
 
 - Home Assistant now treats explicit per-camera `CAM_OPTIONS` `HD` and `SD` values as the runtime default feed state.
 - That means an `SD`-only camera setup no longer depends on a hidden `/config/wyze_camera_settings.json` file just to match the visible add-on config.
 - The fix was validated in the dev add-on with the runtime settings file removed, then production was restored with the intended `SD`-only defaults.
 - The bundled Home Assistant native `go2rtc` sidecar now writes an explicit `webrtc.listen` override so it does not keep upstream's default `8555` listener and block Frigate from starting on the same host.
+- Preserved `/config/go2rtc_wyze.yaml` files are also normalized on startup so an older listener block cannot quietly reintroduce the `8555` conflict after rebuilds.
 
 ## Biggest Changes
 
