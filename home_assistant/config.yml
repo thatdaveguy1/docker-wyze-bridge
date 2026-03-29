@@ -1,8 +1,8 @@
-name: Docker Wyze Bridge V4.0.2
-description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cams with V4 support and Home Assistant optimizations.
+name: Docker Wyze Bridge
+description: WebRTC/RTSP/RTMP/LL-HLS bridge for Wyze cameras with Home Assistant support and a native go2rtc sidecar.
 slug: docker_wyze_bridge_v4
 url: https://github.com/thatdaveguy1/docker-wyze-bridge
-version: 4.0.2
+version: 4.1.0
 stage: stable
 arch:
   - armv7
@@ -19,12 +19,14 @@ ports:
   58889/tcp: 58889
   59997/tcp: 59997
   5000/tcp: 5000
+  19554/tcp: 19554
 ports_description:
   58554/tcp: RTSP (WebRTC-backed) rtsp://localhost:58554/camera-name
   58888/tcp: HLS http://localhost:58888/camera-name/stream.m3u8
   58889/tcp: WebRTC/WHEP http://localhost:58889/camera-name
   59997/tcp: MediaMTX API
   5000/tcp: Web UI http://localhost:5000
+  19554/tcp: go2rtc RTSP rtsp://localhost:19554/camera-name
 map:
   - addon_config:rw
   - media:rw

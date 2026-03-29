@@ -1,46 +1,44 @@
-# Docker Wyze Bridge V4.0.2 (thatdaveguy fork)
+# Docker Wyze Bridge
 
-This Home Assistant add-on provides a local WebRTC, RTSP, RTMP, or HLS/Low-Latency HLS stream for your Wyze cameras. This fork is tuned for modern Wyze cameras and a smoother Home Assistant setup experience.
+This Home Assistant add-on provides local WebRTC, RTSP, RTMP, and HLS access for Wyze cameras. The `4.1` release line keeps the established bridge path, adds a bundled native `go2rtc` sidecar for Home Assistant, and documents the model-specific limits now known for newer Wyze cameras.
 
-## 🚀 Installation
+## Installation
 
-1.  Add the repository to Home Assistant: `https://github.com/thatdaveguy1/docker-wyze-bridge`
-2.  Install the **Docker Wyze Bridge (V4.0.2)** add-on.
-3.  Fill in the default visible login fields: **Wyze Email**, **Wyze Password**, **Key ID**, and **API Key**.
-4.  **API Key and API ID:** Required as of April 2024. Get them from the [Wyze Support Article](https://support.wyze.com/hc/en-us/articles/16129834216731).
-5.  Click **Start**.
+1. Add the repository to Home Assistant: `https://github.com/thatdaveguy1/docker-wyze-bridge`
+2. Install the `Docker Wyze Bridge` add-on.
+3. Fill in the visible login fields: `Wyze Email`, `Wyze Password`, `Key ID`, and `API Key`.
+4. Start the add-on and open the Web UI.
 
-## 🆕 What's New in V4.0.2
+## Home Assistant Features
 
-- **Safer startup:** The WHEP proxy now waits for real upstream media readiness before exposing downstream output tracks.
-- **Crash-resistant init:** If Wyze account login works but profile lookup fails, the bridge now falls back to the configured email instead of aborting startup.
-- **Home Assistant ready:** The V4 add-on keeps the optimized slug, ingress behavior, and conflict-aware ports while tightening runtime stability.
-- **Focused patch:** This release is about reliability and release hardening, not a major feature reset.
+- Standard bridge ports remain available for Web UI, RTSP, HLS, and WHEP.
+- The add-on now bundles a native `go2rtc` sidecar and exposes supported RTSP output on `:19554`.
+- The internal sidecar API on `:11984` is not part of the stable public interface.
 
-## Why Use This Add-on
+## Camera Limits
 
-- Better defaults for current Wyze cameras, especially V3, V3 Pro, and V4.
-- Cleaner install and setup flow for Home Assistant users.
-- Easier stream copying and protocol visibility from the web UI.
-- Reliability work aimed at real long-running use, not just first boot.
+Public `4.1` behavior is documented by model, including current resolution ceilings and whether a meaningful main/sub split is available.
 
----
+- Wyze Cam V3: bridge path validated up to `1920x1080`, with firmware-gated substream support.
+- Wyze Cam V3 Pro: bridge main validated up to `2560x1440`; `4.1` does not promise a fixed substream ceiling on every install.
+- Wyze Cam V4: Home Assistant native `go2rtc` is the best-documented RTSP path in `4.1`; validated native output reached `2560x1440` main and `640x360` substream.
+- Wyze Bulb Cam: supported, but current public `4.1` validation keeps both main and `-sd` feeds at `640x360`.
 
-## 🛠 Documentation & Support
+See [Camera Support](../docs/user_guide/camera_support.md) for the full matrix.
 
-- 📖 [User Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/README.md)
-- ❓ [Troubleshooting](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/troubleshooting.md)
-- 🆙 [Upgrade Guide](https://github.com/thatdaveguy1/docker-wyze-bridge/blob/main/docs/user_guide/upgrade.md)
+## Documentation
 
----
+- [Main README](../README.md)
+- [Home Assistant Docs](./DOCS.md)
+- [Install Guide](../docs/user_guide/install_ha.md)
+- [Upgrade Guide](../docs/user_guide/upgrade.md)
+- [Troubleshooting](../docs/user_guide/troubleshooting.md)
 
-## 💖 Credits & Attribution
+## Attribution
 
-This fork is built on the excellent work of the original authors and contributors:
-- `idisposable/docker-wyze-bridge`
-- `akeslo/docker-wyze-bridge`
-- `kroo/wyzecam`
-- `aler9/mediamtx`
+This fork builds on work from `idisposable/docker-wyze-bridge`, `akeslo/docker-wyze-bridge`, `kroo/wyzecam`, `aler9/mediamtx`, and `AlexxIT/go2rtc`.
+
+The bundled Home Assistant native sidecar uses `go2rtc` from `AlexxIT/go2rtc` under the MIT license. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 > [!IMPORTANT]
 > This project is not affiliated with Wyze Labs, Inc. Use at your own risk.

@@ -49,6 +49,16 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             "home_assistant/app/build.env VERSION should match home_assistant/config.yml version for source-built add-ons",
         )
 
+    def test_prod_addon_exposes_native_go2rtc_rtsp_port(self):
+        config_text = (ADDON_DIR / "config.yml").read_text()
+        self.assertIn("  19554/tcp: 19554", config_text)
+        self.assertIn("  19554/tcp: go2rtc RTSP rtsp://localhost:19554/camera-name", config_text)
+
+    def test_prod_addon_downloads_go2rtc_binary(self):
+        dockerfile_text = (ADDON_DIR / "Dockerfile").read_text()
+        self.assertIn("go2rtc_linux_${GO2RTC_ARCH}", dockerfile_text)
+        self.assertIn("usr/local/bin/go2rtc", dockerfile_text)
+
     def test_local_dev_addon_has_distinct_identity(self):
         prod_config = (ADDON_DIR / "config.yml").read_text()
         dev_config = (ROOT / ".ha_live_addon" / "config.yml").read_text()
@@ -74,7 +84,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.0.2")
+        self.assertEqual(dev_version.group(1).strip(), "4.1.0-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()
