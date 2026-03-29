@@ -81,6 +81,51 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         self.assertIn("go2rtc_linux_${GO2RTC_ARCH}", dockerfile_text)
         self.assertIn("usr/local/bin/go2rtc", dockerfile_text)
 
+    def test_go2rtc_sidecar_disables_default_webrtc_listener(self):
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        expected_lines = [
+            '        "webrtc:",',
+            "        '  listen: \"127.0.0.1:0\"',",
+        ]
+
+        for helper_path in helper_files:
+            helper_text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                for expected in expected_lines:
+                    self.assertIn(
+                        expected,
+                        helper_text,
+                        "go2rtc sidecar config should explicitly override the default 8555 WebRTC listener",
+                    )
+
+    def test_go2rtc_sidecar_normalizes_preserved_config_listeners(self):
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        expected_lines = [
+            "normalize_go2rtc_config() {",
+            'managed = {"api", "rtsp", "webrtc"}',
+            "normalize_go2rtc_config",
+        ]
+
+        for helper_path in helper_files:
+            helper_text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                for expected in expected_lines:
+                    self.assertIn(
+                        expected,
+                        helper_text,
+                        "go2rtc sidecar should rewrite preserved configs so old listener blocks cannot keep host port 8555",
+                    )
+
     def test_root_dockerfiles_download_go2rtc_binary(self):
         dockerfiles = [
             ROOT / "docker" / "Dockerfile",
@@ -118,7 +163,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.2.0-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.2.1-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()

@@ -9,6 +9,8 @@ Documentation and bugfix prep for the next patch release. Not released yet.
 - Fix Home Assistant per-camera feed defaults so explicit `CAM_OPTIONS` `HD` and `SD` values apply at runtime even when `/config/wyze_camera_settings.json` is absent.
 - Add focused regression coverage for that precedence rule and validate it live in the dev add-on without a saved runtime settings file.
 - Record the production-safe outcome: production restored with the intended `SD`-only camera defaults after validation.
+- Fix the bundled Home Assistant native `go2rtc` sidecar so it no longer keeps the upstream default WebRTC listener on `:8555`, which blocked Frigate startup on shared hosts.
+- Add packaging regression coverage to ensure the generated sidecar config always overrides that default listener in all three runtime trees.
 
 ## What's Changed in v4.1.1
 

@@ -21,7 +21,7 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - Camera metadata, `/health/details`, and the Web UI now expose per-camera native-vs-bridge selection plus granular `HD` and `SD` feed publishing controls.
 - `frontend.py`, `site.js`, and `index.html` are normalized across the three runtime trees where behavior should match, while preserving the intentional dev add-on `:55000` talkback loopback port.
 - API-first native talkback remains limited to native-selected cameras, with uploaded-audio talkback validated on native-selected V4 paths.
-- Public docs and add-on/package version surfaces are aligned for the `4.2.0` release.
+- Public docs and add-on/package version surfaces are aligned for the `4.2.1` release.
 
 ## Quick Start
 
@@ -52,6 +52,7 @@ Full caveats, firmware notes, and public limitations live in [Camera Support](./
 - The visible add-on name is `Docker Wyze Bridge`, while the existing Home Assistant slug stays in place for migration stability.
 - The Home Assistant add-on now keeps required login fields at the top, trims the HA form down to common day-to-day settings, uses much clearer optional-setting descriptions, and supports per-camera feed selection through `CAM_OPTIONS` and the Web UI with independent `HD` and `SD` toggles, per-feed kbps targets, surfaced feed resolution labels, and disabled controls for unsupported feeds. Rare power-user knobs are kept out of the HA form so the page stays manageable. On the March 29, 2026 validation host, the live dev add-on at `:55000` now shows Bulb Cam style `HD disabled / SD enabled` state correctly and completed a browser-driven settings round-trip on a supported camera.
 - The March 29, 2026 `4.2.1` bugfix follow-up also fixed an important Home Assistant defaulting gap: explicit per-camera `CAM_OPTIONS` `HD` and `SD` values now apply as the runtime defaults even when `/config/wyze_camera_settings.json` is absent, so an `SD`-only setup no longer depends on a hidden saved-settings file.
+- The March 29, 2026 `4.2.1` release also fixes a Home Assistant Frigate startup conflict: the bundled native `go2rtc` sidecar now disables its default WebRTC listener so it no longer silently grabs host port `8555`.
 
 ## Documentation
 

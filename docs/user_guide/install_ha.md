@@ -36,6 +36,8 @@ https://github.com/thatdaveguy1/docker-wyze-bridge
 
 The sidecar API on `:11984` exists internally but is not part of the stable public interface.
 
+The `4.2.1` patch also keeps the bundled native `go2rtc` sidecar off the default external WebRTC port, so it no longer collides with Frigate's standard `8555` listener on the same Home Assistant host.
+
 ## Camera Notes
 
 The add-on supports the broader Wyze lineup, but the `4.2` release now publishes model-specific limits more explicitly:
