@@ -22,6 +22,7 @@ from wyzebridge.stream import Stream
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CONNECT_TIMEOUT, COOLDOWN, DISABLE_CONTROL, MQTT_TOPIC
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
+from wyzebridge.go2rtc import native_stream_info
 from wyzebridge.logging import logger, isDebugEnabled
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
@@ -41,6 +42,13 @@ KVS_ONLY_CMDS = {
     "motion",
     "motion_ts",
 }
+
+HL_CAM4_MAIN_PROBE_MODES = {"kvs", "tutk_dtls", "tutk_parallel"}
+
+
+def hl_cam4_main_probe_mode() -> str:
+    mode = os.getenv("HL_CAM4_MAIN_PROBE_MODE", "kvs").strip().lower()
+    return mode if mode in HL_CAM4_MAIN_PROBE_MODES else "kvs"
 
 
 def connect_watchdog_timeout() -> int:
@@ -113,9 +121,17 @@ class WyzeStream(Stream):
             )
             self.state = StreamStatus.DISABLED
 
-        if self.options.substream and not self.camera.can_substream:
+        if self.options.substream and not self.camera.bridge_can_substream:
             logger.error(f"❗ {self.camera.nickname} may not support multiple streams!")
             self.state = StreamStatus.DISABLED
+        elif self.uses_tutk_source:
+            logger.info(
+                f"[TUTK] Using mixed-protocol substream path for {self.camera.nickname}"
+            )
+        elif self.camera.product_model == "HL_CAM4" and not self.options.substream:
+            logger.info(
+                f"[HL_CAM4] {self.camera.nickname} main probe mode={hl_cam4_main_probe_mode()} source={'tutk' if self.uses_tutk_source else 'kvs'}"
+            )
 
         hq_size = 4 if self.camera.is_floodlight else 3 if self.camera.is_2k else 0
 
@@ -160,6 +176,20 @@ class WyzeStream(Stream):
     def enabled(self) -> bool:
         return self.state != StreamStatus.DISABLED
 
+    @property
+    def uses_kvs_source(self) -> bool:
+        return not self.uses_tutk_source
+
+    @property
+    def uses_tutk_source(self) -> bool:
+        if not (self.camera.product_model == "HL_CAM4" and self.camera.is_kvs):
+            return False
+
+        if self.options.substream:
+            return not self.camera.can_substream
+
+        return hl_cam4_main_probe_mode() in {"tutk_dtls", "tutk_parallel"}
+
     def init(self) -> bool:
         self.state = StreamStatus.INITIALIZING
         logger.info(
@@ -169,25 +199,57 @@ class WyzeStream(Stream):
         return True
 
     def start(self) -> bool:
-        if not self.camera.is_kvs:
+        if self.health_check(False) != StreamStatus.STOPPED:
+            return False
+        if self.uses_tutk_source and self.camera.ip is None:
             logger.warning(
-                f"Skipping {self.camera.nickname}: model {self.camera.product_model} does not support KVS-only mode."
+                f"Skipping {self.camera.nickname}: no IP available for TUTK substream."
             )
             self.state = StreamStatus.DISABLED
             return False
-        if self.health_check(False) != StreamStatus.STOPPED:
-            return False
         self.start_time = time()
         self.state = StreamStatus.CONNECTING
-        if not self.api.setup_mtx_proxy(self.camera.name_uri, self.uri):
+        if self.uses_kvs_source:
+            if not self.api.setup_mtx_proxy(self.uri):
+                self.state = StreamStatus.STOPPED
+                self.start_time = 0
+                return False
+            self.state = StreamStatus.CONNECTED
+            return True
+
+        logger.info(
+            f"🎉 Connecting to WyzeCam {self.camera.model_name} - {self.camera.nickname} on {self.camera.ip} via TUTK"
+        )
+        self.cam_resp = mp.Queue(1)
+        self.cam_cmd = mp.Queue(1)
+        self.tutk_stream_process = mp.Process(
+            target=start_tutk_stream,
+            args=(
+                self.uri,
+                StreamTuple(self.user, self.camera, self.options),
+                QueueTuple(self.cam_resp, self.cam_cmd),
+                self._state,
+            ),
+            name=self.uri,
+        )
+        self.tutk_stream_process.start()
+        if not self.tutk_stream_process.is_alive():
             self.state = StreamStatus.STOPPED
             self.start_time = 0
             return False
-        self.state = StreamStatus.CONNECTED
         return True
 
     def stop(self) -> bool:
+        self._clear_mp_queue()
         self.start_time = 0
+        if self.uses_tutk_source:
+            self.state = StreamStatus.STOPPING
+            if self.tutk_stream_process and self.tutk_stream_process.is_alive():
+                with contextlib.suppress(ValueError, AttributeError, RuntimeError):
+                    if self.tutk_stream_process.is_alive():
+                        self.tutk_stream_process.terminate()
+                        self.tutk_stream_process.join(5)
+            self.tutk_stream_process = None
         self.state = StreamStatus.STOPPED
         return True
 
@@ -214,7 +276,9 @@ class WyzeStream(Stream):
                 self.disable()
                 return self.state
             logger.info(f"👻 {self.camera.nickname} is offline.")
-        if self.state < StreamStatus.DISABLED:
+        if self.uses_tutk_source and self.state in {-13, -19, -68}:
+            self.refresh_camera()
+        elif self.state < StreamStatus.DISABLED:
             state = self.state
             self.stop()
             if state < StreamStatus.STOPPING:
@@ -259,6 +323,8 @@ class WyzeStream(Stream):
             return self.boa_info()
         data = {
             "name_uri": self.uri,
+            "camera_uri": self.camera.name_uri,
+            "source": "kvs" if self.uses_kvs_source else "tutk",
             "status": self.state,
             "connected": self.connected,
             "enabled": self.enabled,
@@ -277,12 +343,18 @@ class WyzeStream(Stream):
             "start_time": self.start_time,
             "req_frame_size": self.options.frame_size,
             "req_bitrate": self.options.bitrate,
+            "bridge_can_substream": self.camera.bridge_can_substream,
+            "camera_can_substream": self.camera.can_substream,
         }
         if self.connected and not self.camera.camera_info:
             self.update_cam_info()
         if self.camera.camera_info and "boa_info" in self.camera.camera_info:
             data["boa_url"] = f"http://{self.camera.ip}/cgi-bin/hello.cgi?name=/"
-        return data | self.camera.model_dump(exclude={"p2p_id", "enr", "parent_enr"})
+        return (
+            data
+            | native_stream_info(self.camera, self.options.substream)
+            | self.camera.model_dump(exclude={"p2p_id", "enr", "parent_enr"})
+        )
 
     def update_cam_info(self) -> None:
         if not self.connected:
@@ -377,7 +449,7 @@ class WyzeStream(Stream):
         if DISABLE_CONTROL:
             return {"response": "control disabled"}
 
-        if self.camera.is_kvs and cmd not in KVS_ONLY_CMDS:
+        if self.uses_kvs_source and cmd not in KVS_ONLY_CMDS:
             return {"response": f"{cmd} unsupported in KVS-only mode"}
 
         if cmd == "time_zone" and payload and isinstance(payload, str):

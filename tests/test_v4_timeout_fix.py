@@ -67,6 +67,9 @@ class FakeTutkLib:
     def TUTK_SDK_Set_Region(self, *_args, **_kwargs):
         return 0
 
+    def IOTC_Set_Log_Attr(self, *_args, **_kwargs):
+        return 0
+
     def avClientSetMaxBufSize(self, *_args, **_kwargs):
         return None
 
@@ -102,6 +105,15 @@ class TestV4TimeoutFix(unittest.TestCase):
             patch.object(session, "session_check") as session_check,
             patch.object(session, "_disconnect", return_value=None),
             patch("wyzecam.iotc.time.sleep", return_value=None),
+            patch.dict(
+                "os.environ",
+                {
+                    "HL_CAM4_MAIN_PROBE_MODE": "kvs",
+                    "TUTK_TRACE_STREAM": "",
+                    "HL_CAM4_CONNECT_WATCHDOG_SECS": "0",
+                },
+                clear=False,
+            ),
         ):
             session_check.return_value.mode = 2
             session._connect()
@@ -123,6 +135,30 @@ class TestV4TimeoutFix(unittest.TestCase):
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
             patch.dict("os.environ", {"FORCE_V4_PARALLEL": "true"}, clear=False),
+        ):
+            session_check.return_value.mode = 2
+            session._connect()
+
+        connect_parallel.assert_called_once()
+        connect_ex.assert_not_called()
+
+    def test_hl_cam4_substream_uses_parallel_connect_without_env_flag(self):
+        session = WyzeIOTCSession(
+            FakeTutkLib(), make_account(), make_camera("HL_CAM4"), substream=True
+        )
+
+        with (
+            patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
+            patch(
+                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
+            ) as connect_parallel,
+            patch(
+                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
+            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
+            patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
+            patch.object(session, "session_check") as session_check,
+            patch.dict("os.environ", {"FORCE_V4_PARALLEL": "false"}, clear=False),
         ):
             session_check.return_value.mode = 2
             session._connect()

@@ -159,8 +159,6 @@ class WyzeIOTC:
 
     def session(self, stream, state) -> "WyzeIOTCSession":
         logger.info(f"[DEBUG] Creating session for {stream.camera.nickname}")
-        if stream.options.substream:
-            stream.user.phone_id = stream.user.phone_id[2:]
         return WyzeIOTCSession(
             self.tutk_platform_lib,
             stream.user,
@@ -781,7 +779,10 @@ class WyzeIOTCSession:
             force_v4_parallel_raw = os.getenv("FORCE_V4_PARALLEL", "")
             force_v4_parallel = (
                 self.camera.product_model == "HL_CAM4"
-                and force_v4_parallel_raw.lower() in {"1", "true", "yes"}
+                and (
+                    self.substream
+                    or force_v4_parallel_raw.lower() in {"1", "true", "yes"}
+                )
             )
             print(
                 f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel}",

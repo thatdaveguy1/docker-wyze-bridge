@@ -104,7 +104,10 @@ func (stream *WebRTCStream) outputTracks() []*webrtc.TrackLocalStaticRTP {
 	defer stream.mediaMu.RUnlock()
 
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0, 2)
-	if stream.videoTrack != nil && stream.videoReady.Load() {
+	if stream.videoTrack != nil {
+		if !stream.videoReady.Load() {
+			return tracks
+		}
 		tracks = append(tracks, stream.videoTrack)
 	}
 	if stream.audioTrack != nil && stream.audioReady.Load() {

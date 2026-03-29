@@ -29,6 +29,7 @@ ARG BUILD_VERSION
 COPY /app/ /build/app/
 
 RUN chmod +x /build/app/run
+RUN chmod +x /build/app/go2rtc_sidecar.sh
 
 RUN set -eux; pip3 install --disable-pip-version-check --prefix=/build/usr/local -r /build/app/requirements.txt
 

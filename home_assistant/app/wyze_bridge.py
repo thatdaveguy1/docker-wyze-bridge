@@ -17,6 +17,7 @@ from wyzebridge.config import (
 )
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool, env_cam, is_livestream, migrate_path
+from wyzebridge.camera_settings import get_camera_setting
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
 from wyzebridge.hass import setup_hass
 from wyzebridge.logging import logger
@@ -66,7 +67,8 @@ class WyzeBridge(Thread):
         }
 
     def health_details(self, stream_name: str | None = None):
-        return self.health() | collect_bridge_diagnostics(stream_name)
+        stream_info = self.streams.get_info(stream_name) if stream_name else None
+        return self.health() | collect_bridge_diagnostics(stream_name, stream_info)
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)
@@ -126,20 +128,38 @@ class WyzeBridge(Thread):
                 reconnect=(not ON_DEMAND) or is_livestream(cam.name_uri),
             )
 
-            stream = WyzeStream(user, self.api, cam, options)
-            if not cam.is_kvs:
-                stream.rtsp_fw_enabled = self.rtsp_fw_proxy(cam, stream)
-            elif not self.api.setup_mtx_proxy(cam.name_uri, stream.uri):
-                logger.warning(
-                    f"⚠️ Failed to initialize KVS proxy for {cam.nickname}; keeping path enabled so it can retry"
-                )
-            self.mtx.add_path(stream.uri, not options.reconnect, cam.is_kvs)
-            self.streams.add(stream)
+            stream_mode = self.camera_stream_mode(cam)
+            create_main = stream_mode in {"", "main", "both"}
+            create_sub = self.camera_substream_enabled(cam, stream_mode)
 
-            if env_cam("record", cam.name_uri):
-                self.mtx.record(stream.uri)
+            if create_main:
+                stream = WyzeStream(user, self.api, cam, options)
+                if not cam.is_kvs:
+                    stream.rtsp_fw_enabled = self.rtsp_fw_proxy(cam, stream)
+                self.mtx.add_path(stream.uri, not options.reconnect, stream.uses_kvs_source)
+                self.streams.add(stream)
 
-            self.add_substream(user, self.api, cam, options)
+                if env_cam("record", cam.name_uri):
+                    self.mtx.record(stream.uri)
+
+            if create_sub:
+                self.add_substream(user, self.api, cam, options)
+
+    def camera_stream_mode(self, cam: WyzeCamera) -> str:
+        mode = get_camera_setting(cam.name_uri, "stream") or env_cam(
+            "stream", cam.name_uri
+        )
+        return str(mode or "").strip().lower()
+
+    def camera_substream_enabled(self, cam: WyzeCamera, stream_mode: str = "") -> bool:
+        mode = (stream_mode or self.camera_stream_mode(cam)).lower()
+        if mode in {"sub", "both"}:
+            return cam.bridge_can_substream
+        if mode == "main":
+            return False
+        return env_bool(f"SUBSTREAM_{cam.name_uri}") or (
+            env_bool("SUBSTREAM") and cam.bridge_can_substream
+        )
 
     def rtsp_fw_proxy(self, cam: WyzeCamera, stream: WyzeStream) -> bool:
         if rtsp_fw := env_bool("rtsp_fw").lower():
@@ -158,9 +178,7 @@ class WyzeBridge(Thread):
         options: WyzeStreamOptions,
     ):
         """Setup and add substream if enabled for camera."""
-        if env_bool(f"SUBSTREAM_{cam.name_uri}") or (
-            env_bool("SUBSTREAM") and cam.can_substream
-        ):
+        if self.camera_substream_enabled(cam):
             quality = env_cam("sub_quality", cam.name_uri, "sd30")
             record = bool(env_cam("sub_record", cam.name_uri))
             sub_opt = replace(options, substream=True, quality=quality, record=record)
@@ -168,7 +186,7 @@ class WyzeBridge(Thread):
                 f"[++] Adding {cam.name_uri} substream quality: {quality} record: {record}"
             )
             sub = WyzeStream(user, api, cam, sub_opt)
-            self.mtx.add_path(sub.uri, not options.reconnect, cam.is_kvs)
+            self.mtx.add_path(sub.uri, not options.reconnect, sub.uses_kvs_source)
             self.streams.add(sub)
 
     def clean_up(self, *_):

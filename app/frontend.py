@@ -1,13 +1,17 @@
 import json
 import os
+import re
+import socket
+import tempfile
 import time
-from functools import wraps
+from functools import lru_cache, wraps
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlsplit
 
 from flask import (
     Flask,
     Response,
+    abort,
     make_response,
     redirect,
     render_template,
@@ -20,18 +24,197 @@ from wyzebridge.build_config import VERSION
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
+from wyzebridge.go2rtc import send_native_talkback
+from wyzebridge.camera_settings import set_camera_stream_mode
 from wyzebridge.web_ui import url_for
+
+WYZE_DNS_URLS = (
+    "https://auth-prod.api.wyze.com",
+    "https://api.wyzecam.com/app",
+    "https://app-core.cloud.wyze.com/app",
+    "https://app.wyzecam.com/app",
+    "https://devicemgmt-service.wyze.com",
+    "https://webrtc.api.wyze.com",
+)
+WEBRTC_SIGNAL_API = "https://webrtc.api.wyze.com"
+TUTK_HOST_SCAN_PATHS = (
+    "/usr/local/lib/libIOTCAPIs_ALL.so",
+    "/usr/local/lib/libAVAPIs.so",
+)
+TUTK_HOST_KEYWORDS = ("iotc", "tutk", "throughtek", "kalay")
+HOSTNAME_PATTERN = re.compile(rb"(?<![A-Za-z0-9-])([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+
+
+def _truthy_query_value(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_resolv_conf(path: str = "/etc/resolv.conf") -> dict:
+    data = {"path": path, "nameservers": [], "search": [], "options": []}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                key, *values = line.split()
+                if key == "nameserver" and values:
+                    data["nameservers"].append(values[0])
+                elif key == "search":
+                    data["search"] = values
+                elif key == "options":
+                    data["options"] = values
+    except OSError as ex:
+        data["error"] = f"{type(ex).__name__}: {ex}"
+    return data
+
+
+def _decode_route_ipv4(hex_value: str) -> str:
+    return socket.inet_ntoa(bytes.fromhex(hex_value)[::-1])
+
+
+def _parse_default_routes(path: str = "/proc/net/route") -> dict:
+    routes = {"path": path, "default": []}
+    try:
+        with open(path, encoding="utf-8") as handle:
+            next(handle, None)
+            for raw_line in handle:
+                fields = raw_line.split()
+                if len(fields) < 4:
+                    continue
+                iface, destination_hex, gateway_hex, flags_hex = fields[:4]
+                if destination_hex != "00000000":
+                    continue
+                routes["default"].append(
+                    {
+                        "interface": iface,
+                        "gateway": _decode_route_ipv4(gateway_hex),
+                        "flags": flags_hex,
+                    }
+                )
+    except OSError as ex:
+        routes["error"] = f"{type(ex).__name__}: {ex}"
+    return routes
+
+
+def _detect_outbound_ipv4(target: tuple[str, int] = ("8.8.8.8", 53)) -> dict:
+    probe = {"target": f"{target[0]}:{target[1]}", "source_ip": None}
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(target)
+        probe["source_ip"] = sock.getsockname()[0]
+    except OSError as ex:
+        probe["error"] = f"{type(ex).__name__}: {ex}"
+    finally:
+        sock.close()
+    return probe
+
+
+def _host_from_url(value: str) -> str | None:
+    host = urlsplit(value).hostname
+    return host.lower() if host else None
+
+
+def _is_plausible_hostname(host: str) -> bool:
+    labels = [label for label in host.split(".") if label]
+    if len(labels) < 2:
+        return False
+    tld = labels[-1]
+    return len(tld) >= 2 and tld.isalpha()
+
+
+@lru_cache(maxsize=1)
+def _tutk_library_hosts() -> tuple[str, ...]:
+    hosts: set[str] = set()
+    for path in TUTK_HOST_SCAN_PATHS:
+        try:
+            with open(path, "rb") as handle:
+                data = handle.read()
+        except OSError:
+            continue
+        for match in HOSTNAME_PATTERN.finditer(data):
+            host = match.group(1).decode("ascii", "ignore").lower().strip(".")
+            if _is_plausible_hostname(host) and any(
+                keyword in host for keyword in TUTK_HOST_KEYWORDS
+            ):
+                hosts.add(host)
+    return tuple(sorted(hosts))
+
+
+def _candidate_dns_targets() -> list[str]:
+    hosts = {"homeassistant.local"}
+    for url in WYZE_DNS_URLS:
+        if host := _host_from_url(url):
+            hosts.add(host)
+    hosts.update(_tutk_library_hosts())
+    return sorted(hosts)
+
+
+def _socket_enum_name(value: int, prefix: str) -> str:
+    for name in dir(socket):
+        if name.startswith(prefix) and getattr(socket, name, object()) == value:
+            return name
+    return str(value)
+
+
+def _resolve_dns_target(host: str, port: int = 443) -> dict:
+    result = {"host": host, "port": port, "addresses": []}
+    started = time.perf_counter()
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        seen: set[tuple[int, int, int, str | None]] = set()
+        for family, socktype, proto, _canonname, sockaddr in infos:
+            address = sockaddr[0] if sockaddr else None
+            key = (family, socktype, proto, address)
+            if key in seen:
+                continue
+            seen.add(key)
+            result["addresses"].append(
+                {
+                    "family": _socket_enum_name(family, "AF_"),
+                    "socktype": _socket_enum_name(socktype, "SOCK_"),
+                    "proto": proto,
+                    "address": address,
+                }
+            )
+        result["reachable"] = bool(result["addresses"])
+    except OSError as ex:
+        result["reachable"] = False
+        result["error"] = f"{type(ex).__name__}: {ex}"
+    result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    return result
+
+
+def network_snapshot() -> dict:
+    return {
+        "hostname": socket.gethostname(),
+        "wb_ip": os.getenv("WB_IP"),
+        "outbound_ipv4": _detect_outbound_ipv4(),
+        "resolv_conf": _parse_resolv_conf(),
+        "routes": _parse_default_routes(),
+        "dns": {
+            "targets": [_resolve_dns_target(host) for host in _candidate_dns_targets()],
+            "tutk_library_hosts": list(_tutk_library_hosts()),
+        },
+    }
 
 
 def create_app():
     app = Flask(__name__)
     wb = WyzeBridge()
+    talkback_dir = Path(tempfile.gettempdir()) / "wyze-talkback-http"
+    talkback_dir.mkdir(parents=True, exist_ok=True)
     try:
         wb.start()
     except RuntimeError as ex:
         print(ex)
         print("Please ensure your host is up to date.")
         exit()
+    if _truthy_query_value(os.getenv("NETWORK_TRACE")):
+        print(
+            f"[NETWORK_TRACE] {json.dumps(network_snapshot(), sort_keys=True)}",
+            flush=True,
+        )
 
     def auth_required(view):
         @wraps(view)
@@ -151,6 +334,8 @@ def create_app():
     @app.route("/health/details")
     def health_details():
         details = wb.health_details(request.args.get("stream"))
+        if _truthy_query_value(request.args.get("network")):
+            details["network"] = network_snapshot()
         return Response(json.dumps(details), mimetype="application/json")
 
     @app.route("/api/sse_status")
@@ -188,6 +373,112 @@ def create_app():
         if cam := wb.streams.get_info(cam_name):
             return cam | web_ui.format_stream(cam_name)
         return {"error": f"Could not find camera [{cam_name}]"}
+
+    @app.route("/api/<string:cam_name>/stream-mode", methods=["GET", "PUT", "POST"])
+    @auth_required
+    def api_cam_stream_mode(cam_name: str):
+        camera = wb.api.get_camera(cam_name)
+        if not camera:
+            return {"status": "error", "response": f"Camera [{cam_name}] not found"}, 404
+
+        if request.method == "GET":
+            mode = wb.camera_stream_mode(camera) or (
+                "both" if wb.camera_substream_enabled(camera) else "main"
+            )
+            return {
+                "status": "success",
+                "camera": camera.name_uri,
+                "mode": mode,
+                "supports_substream": bool(camera.bridge_can_substream),
+            }
+
+        payload = request.get_json(silent=True) or {}
+        mode = str(
+            payload.get("mode") or request.values.get("mode") or request.args.get("mode") or ""
+        ).strip().lower()
+        if mode == "sub" and not camera.bridge_can_substream:
+            return {
+                "status": "error",
+                "response": "Sub stream is not available for this camera",
+            }, 409
+
+        try:
+            saved_mode = set_camera_stream_mode(camera.name_uri, mode)
+        except ValueError:
+            return {"status": "error", "response": "Invalid stream mode"}, 400
+
+        wb.refresh_cams()
+        return {
+            "status": "success",
+            "camera": camera.name_uri,
+            "mode": saved_mode,
+            "supports_substream": bool(camera.bridge_can_substream),
+        }
+
+    @app.route("/api/<string:cam_name>/talkback", methods=["POST"])
+    @auth_required
+    def api_cam_talkback(cam_name: str):
+        if not (stream := wb.streams.get(cam_name)):
+            return {"status": "error", "response": f"Camera [{cam_name}] not found"}, 404
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return {
+                "status": "error",
+                "response": "Talkback requires a JSON object payload",
+            }, 400
+
+        stream_info = stream.get_info()
+        if not stream_info.get("talkback_supported"):
+            return {
+                "status": "error",
+                "response": stream_info.get("talkback_reason")
+                or "Talkback is not available for this camera",
+            }, 409
+
+        alias = stream_info.get("talkback_alias") or stream_info.get("native_alias")
+        if not alias:
+            return {
+                "status": "error",
+                "response": "Talkback alias is unavailable for this camera",
+            }, 500
+
+        if payload.get("audio_b64") and not payload.get("audio_url"):
+            suffix = str(payload.get("file_ext") or payload.get("format") or "wav").strip().lower()
+            suffix = "".join(ch for ch in suffix if ch.isalnum()) or "wav"
+            token = next(tempfile._get_candidate_names())
+            path = talkback_dir / f"{token}.{suffix}"
+            try:
+                path.write_text(str(payload["audio_b64"]), encoding="ascii")
+            except OSError as ex:
+                return {
+                    "status": "error",
+                    "response": f"Unable to stage talkback upload: {ex}",
+                }, 500
+            payload = dict(payload)
+            payload.pop("audio_b64", None)
+            payload["audio_url"] = f"http://127.0.0.1:5000/api/talkback-file/{path.name}"
+
+        result = send_native_talkback(payload, alias)
+        status_code = 200 if result.get("status") == "success" else 502
+        return result, status_code
+
+    @app.route("/api/talkback-file/<string:file_name>")
+    def api_talkback_file(file_name: str):
+        if request.remote_addr not in {"127.0.0.1", "::1"}:
+            abort(404)
+        path = talkback_dir / Path(file_name).name
+        if not path.is_file():
+            abort(404)
+        try:
+            import base64
+
+            audio_bytes = base64.b64decode(path.read_text(encoding="ascii"), validate=True)
+        except (OSError, ValueError):
+            abort(404)
+        response = make_response(audio_bytes)
+        response.headers["Content-Type"] = "audio/wav"
+        return response
 
     @app.route("/api/<cam_name>/<cam_cmd>", methods=["GET", "PUT", "POST"])
     @app.route("/api/<cam_name>/<cam_cmd>/<path:payload>")
@@ -227,7 +518,7 @@ def create_app():
     @auth_required
     def rtsp_snapshot(img_file: str):
         """Use ffmpeg to take a snapshot from the rtsp stream."""
-        if wb.streams.get_rtsp_snap(Path(img_file).stem):
+        if wb.streams.get_snapshot(Path(img_file).stem)["ok"]:
             return send_from_directory(config.IMG_PATH, img_file)
 
         return thumbnail(img_file)

@@ -117,6 +117,7 @@ def load_wyze_api_module(token_path: str):
 
     bridge_utils = types.ModuleType("wyzebridge.bridge_utils")
     bridge_utils.env_bool = lambda *args, default="", **kwargs: default
+    bridge_utils.env_cam = lambda *args, default="", **kwargs: default
     bridge_utils.env_list = lambda *args, **kwargs: []
 
     config_module = types.ModuleType("wyzebridge.config")

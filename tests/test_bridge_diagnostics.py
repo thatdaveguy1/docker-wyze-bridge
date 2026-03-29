@@ -7,7 +7,11 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
-from wyzebridge.bridge_diagnostics import mediamtx_probe, whep_proxy_probe
+from wyzebridge.bridge_diagnostics import (
+    DEFAULT_WHEP_PROXY_PORT,
+    mediamtx_probe,
+    whep_proxy_probe,
+)
 
 
 class TestBridgeDiagnostics(unittest.TestCase):
@@ -70,10 +74,10 @@ class TestBridgeDiagnostics(unittest.TestCase):
         result = whep_proxy_probe("dog-run")
 
         mock_get.assert_called_once_with(
-            "http://127.0.0.1:8080/status/dog-run", timeout=1.5
+            f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}/status/dog-run", timeout=1.5
         )
         self.assertTrue(result["reachable"])
-        self.assertEqual(result["listener"], "http://127.0.0.1:8080")
+        self.assertEqual(result["listener"], f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}")
         self.assertEqual(result["data"], {"upstream_alive": True})
 
     @patch("wyzebridge.bridge_diagnostics.requests.get")

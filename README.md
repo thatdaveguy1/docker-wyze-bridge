@@ -13,11 +13,13 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - No camera firmware mods required.
 - Home Assistant add-on with visible Wyze login fields by default.
 - WebRTC/KVS-backed bridge path for modern Wyze models.
-- Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 4.1 workflows.
+- Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 4.1.1 workflows.
 
-## 4.1 Highlights
+## 4.1.1 Highlights
 
 - Home Assistant now ships with a bundled native `go2rtc` sidecar and supported RTSP output on `:19554`.
+- Root Docker runtimes now bootstrap the same native `go2rtc` sidecar path instead of leaving the feature HA-only.
+- Camera metadata and `/health/details` now explain native-vs-bridge selection, native snapshots, and API-first native talkback readiness per camera, with uploaded-audio talkback validated on native-selected V4 paths.
 - Startup is more reliable: downstream WHEP/RTSP output is not exposed until upstream media is actually ready.
 - Bridge auth/bootstrap is more resilient when Wyze account profile lookup is missing or temporarily empty.
 - Public docs now describe model-specific stream ceilings and substream limits for `V3`, `V3 Pro`, `V4`, and `Wyze Bulb Cam`.
@@ -50,6 +52,7 @@ Full caveats, firmware notes, and public limitations live in [Camera Support](./
 - Native `-sd` aliases may be available when the camera exposes a meaningful second stream.
 - The sidecar API on `:11984` is an internal implementation detail and is not part of the stable public interface.
 - The visible add-on name is `Docker Wyze Bridge`, while the existing Home Assistant slug stays in place for migration stability.
+- The Home Assistant add-on now keeps required login fields at the top, uses clearer optional-setting descriptions, and supports per-camera stream mode selection (`Main`, `Both`, or `Sub`) through `CAM_OPTIONS` and the Web UI. On the March 29, 2026 validation host, the live dev add-on rebuild and Web UI/API round-trip were verified on `:55000`.
 
 ## Documentation
 

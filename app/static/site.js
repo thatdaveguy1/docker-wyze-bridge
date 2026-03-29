@@ -754,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // cam control
   document.querySelectorAll(".cam-control").forEach((e) => {
     let { cam } = e.dataset;
-    e.querySelectorAll(".button").forEach((button) => {
+    e.querySelectorAll(".button[data-cmd]").forEach((button) => {
       button.addEventListener("click", () => {
         button.classList.add("is-loading");
         const { payload } = button.dataset
@@ -818,6 +818,49 @@ document.addEventListener("DOMContentLoaded", () => {
         iconElement.parentElement.title = `Battery Level: ${batteryLevel}%`;
       })
   }
+  function applyStreamModeState(group, mode) {
+    group.querySelectorAll(".stream-mode-button").forEach((button) => {
+      const active = button.dataset.mode === mode;
+      button.classList.toggle("is-primary", active);
+      button.classList.toggle("is-selected", active);
+    });
+  }
+
+  document.querySelectorAll(".stream-mode-group[data-cam]").forEach((group) => {
+    let { cam } = group.dataset;
+    fetch(`api/${cam}/stream-mode`, { cache: "no-store" })
+      .then((resp) => resp.json())
+      .then((data) => {
+        if (data.status === "success") {
+          applyStreamModeState(group, data.mode);
+        }
+      })
+      .catch((error) => { console.error(error); });
+
+    group.querySelectorAll(".stream-mode-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (button.disabled) { return; }
+        button.classList.add("is-loading");
+        fetch(`api/${cam}/stream-mode`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: button.dataset.mode }),
+        })
+          .then((resp) => resp.json())
+          .then((data) => {
+            if (data.status === "success") {
+              applyStreamModeState(group, data.mode);
+              sendNotification(cam, `Stream mode: ${data.mode}`, "success");
+              setTimeout(() => { window.location.reload(); }, 1200);
+            } else {
+              sendNotification(cam, data.response || "Unable to change stream mode", "danger");
+            }
+          })
+          .catch((error) => { sendNotification(cam, `stream mode: ${error.message}`, "danger") })
+          .finally(() => { button.classList.remove("is-loading"); });
+      })
+    })
+  })
   document.querySelectorAll('div.camera[data-battery="True"]').forEach((card) => {
     card.querySelector(".icon.battery").addEventListener("click", () => updateBatteryLevel(card));
   });

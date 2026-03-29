@@ -8,6 +8,28 @@ ADDON_DIR = ROOT / "home_assistant"
 
 
 class TestHomeAssistantAddonPackaging(unittest.TestCase):
+    def test_all_runtime_entrypoints_source_go2rtc_helper(self):
+        run_files = [
+            ROOT / "app" / "run",
+            ROOT / "home_assistant" / "app" / "run",
+            ROOT / ".ha_live_addon" / "app" / "run",
+        ]
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        for helper_path in helper_files:
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                self.assertTrue(helper_path.exists())
+
+        for run_path in run_files:
+            run_text = run_path.read_text()
+            with self.subTest(run=str(run_path.relative_to(ROOT))):
+                self.assertIn(". /app/go2rtc_sidecar.sh", run_text)
+                self.assertIn("start_go2rtc_sidecar", run_text)
+
     def test_all_ha_dockerfiles_avoid_hidden_env_dependency(self):
         dockerfiles = [
             ADDON_DIR / "Dockerfile",
@@ -59,6 +81,18 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         self.assertIn("go2rtc_linux_${GO2RTC_ARCH}", dockerfile_text)
         self.assertIn("usr/local/bin/go2rtc", dockerfile_text)
 
+    def test_root_dockerfiles_download_go2rtc_binary(self):
+        dockerfiles = [
+            ROOT / "docker" / "Dockerfile",
+            ROOT / "docker" / "Dockerfile.multiarch",
+            ROOT / "docker" / "Dockerfile.hwaccel",
+        ]
+        for dockerfile_path in dockerfiles:
+            dockerfile_text = dockerfile_path.read_text()
+            with self.subTest(dockerfile=str(dockerfile_path.relative_to(ROOT))):
+                self.assertIn("usr/local/bin/go2rtc", dockerfile_text)
+                self.assertIn("go2rtc_linux_", dockerfile_text)
+
     def test_local_dev_addon_has_distinct_identity(self):
         prod_config = (ADDON_DIR / "config.yml").read_text()
         dev_config = (ROOT / ".ha_live_addon" / "config.yml").read_text()
@@ -84,7 +118,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.1.0-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.1.1-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()
@@ -129,6 +163,16 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                         config_text,
                         f"{addon_name} add-on should treat {field_name} as part of the standard visible login path",
                     )
+
+    def test_camera_options_expose_stream_selector(self):
+        addon_configs = {
+            "prod": (ADDON_DIR / "config.yml").read_text(),
+            "dev": (ROOT / ".ha_live_addon" / "config.yml").read_text(),
+        }
+
+        for addon_name, config_text in addon_configs.items():
+            with self.subTest(addon=addon_name):
+                self.assertIn("      STREAM: list(main|both|sub)?", config_text)
 
 
 if __name__ == "__main__":

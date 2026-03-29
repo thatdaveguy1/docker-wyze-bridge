@@ -8,6 +8,25 @@ As of April 2024, Wyze developer credentials are required. See the official guid
 
 `https://support.wyze.com/hc/en-us/articles/16129834216731`
 
+## Recommended Setup Order
+
+Fill these in first:
+
+- `Wyze email`
+- `Wyze password`
+- `Key ID`
+- `API key`
+
+Common optional defaults near the top of the add-on form:
+
+- `Connect on demand`
+- `Enable audio by default`
+- `Use Wyze motion events`
+- `Create substream by default`
+- `Camera Specific Options`
+
+Most other fields are optional and only needed for custom integrations, troubleshooting, or advanced network setups.
+
 ## Stream Surfaces
 
 ### Standard bridge ports
@@ -55,6 +74,7 @@ Camera-specific options can be passed using `CAM_OPTIONS`.
 
 ```yaml
 - CAM_NAME: Front
+  STREAM: both
   AUDIO: true
   ROTATE: true
 - CAM_NAME: Back door
@@ -69,6 +89,7 @@ Available options:
 - `LIVESTREAM` sends that camera to an RTMP target.
 - `NET_MODE` overrides the allowed network mode.
 - `ROTATE` rotates the camera clockwise.
+- `STREAM` chooses `main`, `both`, or `sub` for that camera. `sub` and `both` only work when the camera exposes a supported substream.
 - `QUALITY` adjusts the requested main-stream quality.
 - `SUB_QUALITY` adjusts the requested substream quality when supported.
 - `FORCE_FPS` sets frames per second.
@@ -76,3 +97,5 @@ Available options:
 - `SUB_RECORD` enables recording for the substream when supported.
 - `SUBSTREAM` enables a substream only when the camera path supports it.
 - `MOTION_WEBHOOKS` posts to a webhook when motion is detected.
+
+The Web UI also exposes a per-camera stream mode control for `Main`, `Both`, or `Sub`. Cameras without supported substreams keep the `Sub` option disabled in the UI.

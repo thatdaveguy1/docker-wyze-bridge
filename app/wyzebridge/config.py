@@ -1,4 +1,5 @@
 from os import environ, getenv
+from pathlib import Path
 
 from wyzebridge.build_config import BUILD_STR
 from wyzebridge.bridge_utils import env_bool, split_int_str
@@ -21,9 +22,19 @@ MQTT_RETRIES: int = int(getenv("MQTT_RETRIES", "3"))
 ON_DEMAND: bool = bool(env_bool("on_demand") if getenv("ON_DEMAND") else True)
 CONNECT_TIMEOUT: int = env_bool("CONNECT_TIMEOUT", "20", style="int")
 
+def _runtime_dir(preferred: str, fallback: str) -> str:
+    if Path(preferred).exists():
+        return preferred
+    Path(fallback).mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 # TODO: change TOKEN_PATH  to /config for all:
-TOKEN_PATH: str = "/config/" if HASS_TOKEN else "/tokens/"
-IMG_PATH: str = f'/{env_bool("IMG_DIR", r"/media/wyze/img").strip("/")}/'
+TOKEN_PATH: str = _runtime_dir("/config/" if HASS_TOKEN else "/tokens/", ".runtime/tokens/")
+IMG_PATH: str = _runtime_dir(
+    f'/{env_bool("IMG_DIR", r"/media/wyze/img").strip("/")}/',
+    ".runtime/img/",
+)
 
 LATITUDE: float = float(getenv("LATITUDE", "0"))
 LONGITUDE: float = float(getenv("LONGITUDE", "0"))
