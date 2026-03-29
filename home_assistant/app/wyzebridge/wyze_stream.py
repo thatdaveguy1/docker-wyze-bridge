@@ -15,6 +15,7 @@ from time import sleep, time
 from typing import Optional
 
 from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
+from wyzecam.tutk import tutk
 from wyzecam.tutk.tutk import TutkError
 from wyzecam.api_models import WyzeAccount, WyzeCamera
 from wyzebridge.wyze_stream_options import WyzeStreamOptions
@@ -42,6 +43,27 @@ KVS_ONLY_CMDS = {
     "motion",
     "motion_ts",
 }
+
+FRAME_SIZE_LABELS = {
+    tutk.FRAME_SIZE_2K: "2560x1440",
+    tutk.FRAME_SIZE_1080P: "1920x1080",
+    tutk.FRAME_SIZE_360P: "640x360",
+    tutk.FRAME_SIZE_DOORBELL_HD: "1296x1728",
+    tutk.FRAME_SIZE_DOORBELL_SD: "480x640",
+}
+
+
+def frame_size_to_resolution(frame_size: int | None) -> str | None:
+    if frame_size is None:
+        return None
+    return FRAME_SIZE_LABELS.get(frame_size, str(frame_size))
+
+HL_CAM4_MAIN_PROBE_MODES = {"kvs", "tutk_dtls", "tutk_parallel"}
+
+
+def hl_cam4_main_probe_mode() -> str:
+    mode = os.getenv("HL_CAM4_MAIN_PROBE_MODE", "kvs").strip().lower()
+    return mode if mode in HL_CAM4_MAIN_PROBE_MODES else "kvs"
 
 
 def connect_watchdog_timeout() -> int:
@@ -121,6 +143,10 @@ class WyzeStream(Stream):
             logger.info(
                 f"[TUTK] Using mixed-protocol substream path for {self.camera.nickname}"
             )
+        elif self.camera.product_model == "HL_CAM4" and not self.options.substream:
+            logger.info(
+                f"[HL_CAM4] {self.camera.nickname} main probe mode={hl_cam4_main_probe_mode()} source={'tutk' if self.uses_tutk_source else 'kvs'}"
+            )
 
         hq_size = 4 if self.camera.is_floodlight else 3 if self.camera.is_2k else 0
 
@@ -171,11 +197,13 @@ class WyzeStream(Stream):
 
     @property
     def uses_tutk_source(self) -> bool:
-        return (
-            self.camera.product_model == "HL_CAM4"
-            and self.camera.is_kvs
-            and (self.options.substream and not self.camera.can_substream)
-        )
+        if not (self.camera.product_model == "HL_CAM4" and self.camera.is_kvs):
+            return False
+
+        if self.options.substream:
+            return not self.camera.can_substream
+
+        return hl_cam4_main_probe_mode() in {"tutk_dtls", "tutk_parallel"}
 
     def init(self) -> bool:
         self.state = StreamStatus.INITIALIZING
@@ -330,6 +358,7 @@ class WyzeStream(Stream):
             "start_time": self.start_time,
             "req_frame_size": self.options.frame_size,
             "req_bitrate": self.options.bitrate,
+            "actual_resolution": frame_size_to_resolution(self.options.frame_size),
             "bridge_can_substream": self.camera.bridge_can_substream,
             "camera_can_substream": self.camera.can_substream,
         }
