@@ -1,69 +1,75 @@
 # Troubleshooting Guide
 
-This guide covers common issues and questions for the **Docker Wyze Bridge V4.0.2**.
+This guide covers common issues for Docker Wyze Bridge.
 
 ## Login and API Issues
 
-### "Invalid API Key ID or API Key"
-- **Problem:** The bridge fails to log in with an API key error.
-- **Solution:** 
-  1.  Ensure you have followed the [Wyze Support Article](https://support.wyze.com/hc/en-us/articles/16129834216731) to generate your developer keys.
-  2.  Double-check for extra spaces before or after the API ID and API Key.
-  3.  Verify that your Wyze Email and Password are correct.
+### Invalid API credentials
 
-### "No Cameras Found"
-- **Problem:** The bridge logs in successfully but doesn't list any cameras.
-- **Solution:** 
-  1.  Ensure your cameras are connected to the same Wyze account you used to log in.
-  2.  Check the logs for any `Wyze API Pull Error`.
-  3.  Verify your account has at least one supported Wyze camera.
+- Confirm the `API ID` and `API Key` were generated from Wyze developer access.
+- Recheck for whitespace before or after the values.
+- Confirm the Wyze account email and password match the same account.
 
-## Stream and Connection Issues
+### No cameras found
 
-### "RTSP Stream Not Loading"
-- **Problem:** The RTSP stream fails to load in VLC or other players.
-- **Solution:** 
-  1.  Check the logs for `Stream Timeout` or `Connection Failed`.
-  2.  If you are running in Docker, ensure you have mapped the correct RTSP port (`8554` or `58554` in HA).
-  3.  Verify that your camera is online in the Wyze app.
-  4.  Try switching to the **WebRTC (WHEP)** or **HLS** stream in the Web UI to see if it works.
+- Confirm your cameras are attached to the same Wyze account.
+- Check the logs for Wyze API errors.
+- Verify the account actually contains supported Wyze cameras.
 
-### "WebRTC (WHEP) Lag or Latency"
-- **Problem:** The WebRTC stream has significant delay or stuttering.
-- **Solution:** 
-  1.  Check your camera's Wi-Fi signal strength in the Wyze app.
-  2.  Ensure you have enabled `WB_IP` or `network_mode: host` in your configuration.
-  3.  Try decreasing the `QUALITY` setting for that camera in the `CAM_OPTIONS`.
+## Stream Issues
 
-### "V4, V3, or Wyze Bulb Cam Connection Issues"
-- **Problem:** A Wyze Cam V4, V3, V3 Pro, or Wyze Bulb Cam fails to connect or has frequent disconnects.
-- **Solution:** 
-  1.  These cameras default to the KVS/WebRTC path in the current codebase.
-  2.  Check for `deadline exceeded while waiting tracks` in the logs. If this appears, your camera's Wi-Fi may be unstable or too far from the bridge.
+### RTSP stream does not load
 
-## Web UI and Authentication
+- Check the add-on logs for startup or connection failures.
+- Confirm you are using the intended RTSP surface:
+  - `:58554` for the standard bridge path
+  - `:19554` for the Home Assistant native sidecar path
+- Verify the camera is online in the Wyze app.
 
-### "401 Unauthorized"
-- **Problem:** Accessing the Web UI or a stream results in a 401 error.
-- **Solution:** 
-  1.  If `WB_AUTH` is enabled, ensure you are using the correct username and password.
-  2.  The default username is `wb` (or `admin` if configured), and the password is your unique `WB_PASSWORD` (or API key by default).
-  3.  If you are using Home Assistant Ingress, auth is handled automatically, but relative paths may fail if accessed via the direct URL.
+### Camera only shows lower resolution than expected
 
-### "Copy Buttons Not Working"
-- **Problem:** Clicking the copy icon in the Web UI doesn't copy the URL to the clipboard.
-- **Solution:** 
-  1.  Clipboard access requires a secure connection (HTTPS) in most browsers.
-  2.  If you are using plain HTTP, the bridge will fallback to a manual prompt where you can copy the URL manually.
+- `QUALITY` values are requests, not guarantees.
+- Newer Wyze cameras can still publish lower-resolution KVS/WebRTC output than their advertised sensor resolution.
+- A native Home Assistant sidecar path may improve RTSP behavior for some cameras, but it does not guarantee a higher ceiling for every model.
 
-## Logging and Debugging
+### Main and substream look identical
 
-If you are still having issues, please enable debug logging:
-- Set `LOG_LEVEL` to `DEBUG`.
-- Set `FFMPEG_LOGLEVEL` to `verbose`.
-- Check the logs for specific error codes or stack traces.
+- A `-sub` alias can exist without exposing a truly different stream profile.
+- This is a known `4.1` limitation for some newer cameras, especially when Wyze firmware only exposes one effective KVS/WebRTC profile.
 
-When reporting an issue on GitHub, please include:
-- Your camera model and firmware version.
-- Your bridge configuration (redact secrets!).
-- A snippet of the logs during the failure.
+## Model-Specific Notes
+
+### Wyze Cam V3
+
+- Bridge substream support depends on firmware `4.36.10+`.
+- Current public V3-class validation reached `1920x1080`, but higher output is not guaranteed.
+
+### Wyze Cam V3 Pro
+
+- Public `4.1` validation reached `2560x1440` main-stream output.
+- `4.1` does not promise a fixed public substream ceiling on every host.
+
+### Wyze Cam V4
+
+- Standard bridge RTSP can still remain `640x360`.
+- The best documented RTSP path in `4.1` is the Home Assistant native sidecar on `:19554`.
+- TUTK fallback is not documented as a reliable quality-rescue path.
+
+### Wyze Bulb Cam
+
+- Supported, but current public `4.1` validation keeps both main and `-sd` feeds at `640x360`.
+- If you need a guaranteed higher RTSP ceiling, `4.1` does not currently provide one for this model.
+
+## Debugging
+
+If you need deeper logs:
+
+- Set `LOG_LEVEL=DEBUG`
+- Set `FFMPEG_LOGLEVEL=verbose`
+
+When filing a GitHub issue, include:
+
+- camera model and firmware version
+- redacted bridge configuration
+- the exact RTSP surface used (`:58554` or `:19554`)
+- a short log excerpt around the failure

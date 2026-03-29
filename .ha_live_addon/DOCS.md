@@ -6,7 +6,7 @@ This add-on is the local staging build for SSH-driven validation. It is not the 
 
 - Keep the production add-on installed and unchanged.
 - Copy production settings into this dev add-on before testing.
-- Stop production before starting this add-on because both add-ons intentionally share the same ports.
+- The dev add-on uses its own host-network port block, but stop production first when you need exact parity checks or want to avoid split-environment confusion.
 - Restore production after each test cycle.
 
 ## Wyze Authentication
@@ -22,7 +22,7 @@ See the official help documentation on how to generate your developer keys: http
 Note that all streams and the REST API will necessitate authentication when WebUI Auth `WB_AUTH` is enabled.
 
 - REST API will require an `api` query parameter.
-  - Example: `http://homeassistant.local:5000/api/<camera-name>/state?api=<your-wb-api-key>`
+  - Example: `http://homeassistant.local:55000/api/<camera-name>/state?api=<your-wb-api-key>`
 - Streams will also require authentication.
   - username: `wb`
   - password: your unique wb api key
@@ -69,32 +69,32 @@ e.g. 'Front Door' would be `/front-door`
 - RTMP:
 
 ```
-rtmp://homeassistant.local:1935/camera-nickname
+rtmp://homeassistant.local:52935/camera-nickname
 ```
 
 - RTSP:
 
 ```
-rtsp://homeassistant.local:58554/camera-nickname
+rtsp://homeassistant.local:59554/camera-nickname
 ```
 
 - WebRTC / WHEP:
 
 ```
-http://homeassistant.local:58889/camera-nickname
-http://homeassistant.local:58889/camera-nickname/whep
+http://homeassistant.local:59889/camera-nickname
+http://homeassistant.local:59889/camera-nickname/whep
 ```
 
 - HLS:
 
 ```
-http://homeassistant.local:58888/camera-nickname/stream.m3u8
+http://homeassistant.local:59888/camera-nickname/stream.m3u8
 ```
 
 - HLS can also be viewed in the browser using:
 
 ```
-http://homeassistant.local:58888/camera-nickname
+http://homeassistant.local:59888/camera-nickname
 ```
 
 For local staging workflow details, use the gitignored maintainer docs in this workspace under `docs/maintainer/`.

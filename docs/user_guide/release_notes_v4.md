@@ -1,68 +1,46 @@
-# Release Notes V4.0.2
+# Release Notes 4.1
 
-The **Docker Wyze Bridge V4.0.2** is a focused patch release for the V4 fork line. It keeps the broader platform direction from `4.0.0` and the Home Assistant cleanup from `4.0.1`, then adds startup hardening around the real bridge/runtime issues found during Home Assistant live validation.
+`4.1` is a public feature release for Docker Wyze Bridge. It keeps the modern bridge path for newer Wyze cameras, adds a supported Home Assistant native `go2rtc` RTSP sidecar, and updates the public documentation to reflect the real model-specific limits now known.
 
-## Why this Fork Exists?
+## What's New
 
-The original upstream bridge (`idisposable/docker-wyze-bridge` and `mrlt8/docker-wyze-bridge`) provided the foundation for local Wyze streaming. However, as Wyze introduced newer cameras like the **Wyze Cam V4**, the bridge needed a more robust and scalable backend for WebRTC and KVS (Kinesis Video Streams).
+### Home Assistant native `go2rtc` sidecar
 
-This fork aims to:
-- Provide first-class support for **Wyze Cam V4** and other newer models.
-- Improve the beginner experience in Home Assistant.
-- Stabilize the bridge for 24/7 streaming reliability.
-- Support modern WebRTC-backed RTSP and HLS delivery.
+- The Home Assistant add-on now bundles `go2rtc`.
+- Supported native RTSP output is exposed on `:19554`.
+- The sidecar API on `:11984` remains internal and is not part of the stable public contract.
 
-## What's New in V4.0.2
+### Startup and runtime hardening
 
-### Startup stability hardening
-- **Ready-only downstream tracks:** The WHEP proxy no longer treats preallocated local RTP tracks as usable output. Downstream clients only see tracks after upstream audio/video media is actually ready.
-- **Better startup behavior:** This reduces the chance that on-demand WHEP and RTSP consumers attach during the earliest startup gap and trigger failures like `deadline exceeded while waiting tracks`.
+- WHEP output is now gated on real upstream media readiness.
+- Bridge startup no longer crashes when Wyze login succeeds but `get_user_info` is missing or empty.
+- Stream iteration and bridge startup behavior are more defensive around live stream registration.
 
-### Bridge init hardening
-- **Fallback user profile:** If Wyze authentication succeeds but `get_user_info` fails or returns empty, the bridge now derives the minimum local account context from the configured Wyze email instead of crashing during startup.
-- **Safer local auth setup:** Home Assistant startup can continue far enough to initialize streams and diagnostics even when the richer Wyze account profile is temporarily unavailable.
+### Documentation reset
 
-### Home Assistant validation workflow
-- **Minimal swap helper:** The prod/dev handoff helper stays intentionally small and reversible instead of taking on stream-specific diagnostics logic.
-- **In-app diagnostics first:** The release workflow now leans on `/health/details` and focused live logs for runtime validation inside the add-on namespace.
+- The visible app name is now simply `Docker Wyze Bridge`.
+- Public docs now include model-specific limits for `V3`, `V3 Pro`, `V4`, and `Wyze Bulb Cam`.
+- Home Assistant docs now separate the supported native RTSP surface from the internal sidecar API.
 
-### Scope and notes for this patch
-- **Patch-level release:** `4.0.2` is a runtime reliability release, not a feature expansion release.
-- **Validated path:** The auth/init crash was fixed and the follow-up Home Assistant dev-lane validation completed cleanly with `dog-run` reaching `video_ready=true`, `audio_ready=true`, and `upstream_alive=true` during the successful startup pass.
-- **Compatibility note:** The **Wyze Bulb Cam** is now confirmed compatible with this fork's RTC/WHEP pipeline and should follow the same WebRTC-backed path as the other newer supported cameras.
+## Camera Support Summary
 
-## What V4.0 and V4.0.1 already introduced
+| Model | 4.1 public summary |
+| :--- | :--- |
+| Wyze Cam V3 | Bridge path remains the primary documented path. Validated V3-class paths have reached `1920x1080`; firmware-gated substream support remains in place. |
+| Wyze Cam V3 Pro | Bridge main validated at `2560x1440`. `4.1` does not promise a fixed substream ceiling on every installation. |
+| Wyze Cam V4 | Standard bridge RTSP can still remain `640x360`. The supported Home Assistant native sidecar path is the best documented RTSP path for validated `4.1` installs, with validated native output at `2560x1440` main and `640x360` substream. |
+| Wyze Bulb Cam | Supported, but current public validation keeps both main and `-sd` feeds at `640x360`. |
 
-### Wyze Cam V4 Support
-- **New KVS/WebRTC Backend:** In the current code, the KVS/WebRTC path is the default for all WebRTC-capable cameras, not just V4. That includes V3, V3 Pro, V4, Pan, Pan V2, Pan V3, Floodlight V2, Floodlight Pro, OG, Wyze Bulb Cam, and other models that are not in the `NO_WEBRTC` list.
-- **Improved Authentication:** Added support for modern Wyze API and signaling protocols.
+For the full matrix, see [Camera Support](./camera_support.md).
 
-### Home Assistant Integration
-- **Polished Add-on:** The Home Assistant add-on has been redesigned with a clean configuration UI and better logging.
-- **Ingress Support:** The Web UI is now fully integrated into Home Assistant with automatic authentication.
-- **Port Conflict Resolution:** Default ports for Home Assistant users are now `58554` (RTSP), `58888` (HLS), and `58889` (WebRTC) to avoid common conflicts with other add-ons.
+## Attribution
 
-### Web UI and Usability
-- **One-Click Copy Buttons:** Every stream in the Web UI now has a copy icon for easy URL retrieval.
-- **Smart Protocol Availability:** The bridge now correctly identifies which protocols (RTSP, RTMP, HLS, WebRTC) are available for each camera.
-- **Improved Status Reporting:** Clearer logs and status indicators in the Web UI for better troubleshooting.
+This release continues to build on work from:
 
-### Stability and Performance
-- **MediaMTX V1.16.3:** Upgraded to the latest MediaMTX release for better WebRTC track gathering and lower latency.
-- **Process and Thread Safety:** Fixed several child-process and threading bugs to reduce CPU and memory leaks during long-running sessions.
-- **Session Lifetime Fixes:** Improved handling of Wyze session contexts to ensure streams stay open during bridge reads.
+- `idisposable/docker-wyze-bridge`
+- `akeslo/docker-wyze-bridge`
+- `kroo/wyzecam`
+- `aler9/mediamtx`
+- `AlexxIT/go2rtc`
 
-## What's Inherited?
-The V4 fork line builds on the excellent work of:
-- **`idisposable/docker-wyze-bridge`**: For the core bridge architecture and Home Assistant packaging.
-- **`akeslo/docker-wyze-bridge`**: For the initial KVS/WebRTC signaling and architectural direction.
-- **`kroo/wyzecam`**: For the fundamental Wyze API and TUTK implementation.
-- **`aler9/mediamtx`**: For the high-performance streaming server.
-
-## Current Limits and Known Issues
-- **H264 PPS Warnings:** `ffprobe` may still show transient H264 PPS warnings on the first cold attach. The stream will still work after a few seconds.
-- **Wi-Fi Stability:** Newer KVS-backed streams are sensitive to Wi-Fi stability. If your camera is far from your router, you may experience connection timeouts.
-- **Legacy Camera Support:** Some older Wyze models (e.g., V1, some doorbells) may still use the original TUTK path.
-
-## Attribution and Provenance
-Detailed file-by-file attribution and provenance records are maintained internally. For questions about specific changes or upstream contributions, please open an issue.
+The bundled Home Assistant native sidecar uses `go2rtc` from `AlexxIT/go2rtc`, licensed under MIT. See [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
