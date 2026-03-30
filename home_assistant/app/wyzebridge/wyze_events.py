@@ -32,11 +32,12 @@ class WyzeEvents:
         return resp
 
     def set_motion(self, mac: str, files: list) -> None:
+        received_ts = int(time.time())
         for stream in self.streams.values():
             if stream.camera.mac == mac and not stream.options.substream:
                 if img := next((f["url"] for f in files if f["type"] == 1), None):
                     stream.camera.thumbnail = img
-                stream.motion = self.last_ts
+                stream.motion = received_ts
                 event_time = datetime.fromtimestamp(self.last_ts)
                 msg = f"Motion detected on {stream.uri} at {event_time: %H:%M:%S}"
                 logger.info(f"[EVENTS] {msg}")

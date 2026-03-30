@@ -47,6 +47,8 @@ Important:
 - `:19554` is the supported public sidecar surface in `4.2`.
 - `:11984` is an internal implementation detail and not part of the stable public interface.
 - A `-sd` alias may exist for some cameras, but it is only useful when the camera exposes a meaningful second stream.
+- The `4.2.1` patch line keeps the bundled sidecar off Home Assistant's default external `:8555` WebRTC port.
+- The `4.2.2` patch line hardens MQTT motion topic shape, payload shape, and expiry behavior for Home Assistant and Scrypted automations.
 
 ## Camera-Specific Limits
 

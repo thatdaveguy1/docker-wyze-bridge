@@ -9,6 +9,16 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.2 Patch Release
+
+`4.2.2` is the MQTT motion hardening follow-up for the `4.2` release line.
+
+- Fix the BOA/LAN motion publish path so MQTT uses the correct `wyzebridge/<camera>/motion` topic instead of a doubled prefix.
+- Normalize BOA/LAN motion payloads to `1` and `2` so they match the API motion contract already expected by Home Assistant and Scrypted helpers.
+- Use bridge receipt time for cloud/API motion latching instead of the original event timestamp so motion windows stay predictable.
+- Check motion expiry from the monitor loop so `motion=2` is published deterministically instead of waiting for a later status read.
+- Add focused regression coverage for BOA topic shape, BOA payload shape, receipt-time latching, and deterministic expiry checks.
+
 ## 4.2.1 Patch Release
 
 `4.2.1` is the follow-up patch for the `4.2` release line.
