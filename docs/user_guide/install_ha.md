@@ -36,7 +36,7 @@ https://github.com/thatdaveguy1/docker-wyze-bridge
 
 The sidecar API on `:11984` exists internally but is not part of the stable public interface.
 
-The `4.2.1` patch also keeps the bundled native `go2rtc` sidecar off the default external WebRTC port, so it no longer collides with Frigate's standard `8555` listener on the same Home Assistant host.
+The `4.2.1` patch keeps the bundled native `go2rtc` sidecar off the default external WebRTC port, so it no longer collides with Frigate's standard `8555` listener on the same Home Assistant host. The `4.2.2` patch also hardens MQTT motion topic shape, payload shape, and expiry behavior for Home Assistant and Scrypted workflows.
 
 ## Camera Notes
 

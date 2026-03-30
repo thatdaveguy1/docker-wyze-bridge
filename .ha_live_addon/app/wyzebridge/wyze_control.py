@@ -373,7 +373,7 @@ def motion_alarm(cam: dict):
         cam["cooldown"] = datetime.now() + timedelta(seconds=BOA_COOLDOWN)
         cam["last_alarm"] = cam["last_photo"]
 
-    publish_topic(f"{MQTT_TOPIC}/{cam['uri']}/motion", motion)
+    publish_topic(f"{cam['uri']}/motion", 1 if motion else 2, True)
 
     if motion and (http := BOA_MOTION):
         try:

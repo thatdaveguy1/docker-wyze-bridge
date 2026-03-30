@@ -1,5 +1,17 @@
 # What's Changed
 
+## What's Changed in v4.2.2
+
+Patch release focused on MQTT motion correctness and deterministic expiry behavior.
+
+### Major Changes
+
+- Fix the BOA/LAN MQTT motion path so publishes land on `wyzebridge/<camera>/motion` instead of the wrong double-prefixed topic.
+- Normalize BOA/LAN motion payloads to `1` and `2` so Home Assistant and Scrypted helpers see the same contract as the API motion path.
+- Use bridge receipt time for event-driven motion latching instead of the original event timestamp.
+- Force motion expiry checks through the stream monitor loop so `motion=2` is published deterministically.
+- Add focused regression coverage for topic shape, payload shape, receipt-time latching, and expiry behavior.
+
 ## What's Changed in v4.2.1
 
 Patch release focused on Home Assistant defaults, Frigate compatibility, and release-surface cleanup.
