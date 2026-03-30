@@ -88,6 +88,8 @@ class StreamManager:
         while not self.stop_flag:
             event.read(timeout=1)
             self.snap_all(self.active_streams())
+            for stream in list(self.streams.values()):
+                _ = stream.motion
 
             if events:
                 events.check_motion()
