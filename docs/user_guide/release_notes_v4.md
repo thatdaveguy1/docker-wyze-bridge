@@ -9,6 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.4 Patch Release
+
+`4.2.4` is the Home Assistant feed-selection correctness follow-up for the `4.2` release line.
+
+- Explicit Home Assistant `CAM_OPTIONS` `HD` and `SD` booleans now override stale saved per-camera feed settings in `/config/wyze_camera_settings.json`.
+- Native-selected SD feeds no longer create a competing bridge-managed `-sub` path.
+- This specifically removes the stray `north-yard-sub` bridge startup path when `NORTH YARD` is configured with `SD=false`.
+- Focused regression coverage now locks in both the precedence rule and the bridge-substream skip for native SD feeds.
+
 ## 4.2.2 Patch Release
 
 `4.2.2` is the MQTT motion hardening follow-up for the `4.2` release line.
