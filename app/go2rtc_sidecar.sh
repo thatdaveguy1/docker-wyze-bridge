@@ -162,10 +162,6 @@ PY
     GO2RTC_PID=$!
     printf '%s\n' "${GO2RTC_PID}" > "${GO2RTC_PID_FILE}"
 
-    if [ "${GO2RTC_HAS_PERSISTED_STREAMS}" = "1" ]; then
-        return
-    fi
-
     (
         add_host_candidate() {
             candidate_value=$1
@@ -232,7 +228,7 @@ PY
             echo "[GO2RTC] WARNING: /api/wyze?id=${WYZE_EMAIL} still empty after retries - check credentials and camera list" >&2
             exit 0
         fi
-        echo "[GO2RTC] Camera list received, rebuilding config with native Wyze aliases..." >&2
+        echo "[GO2RTC] Camera list received, refreshing native Wyze aliases..." >&2
         GO2RTC_CAM_JSON_FILE=/tmp/go2rtc_cam_sources.json
         printf '%s\n' "${CAM_JSON}" > "${GO2RTC_CAM_JSON_FILE}"
         GO2RTC_CONFIG="${GO2RTC_CONFIG}" GO2RTC_API_PORT="${GO2RTC_API_PORT}" GO2RTC_RTSP_PORT="${GO2RTC_RTSP_PORT}" GO2RTC_CAM_JSON_FILE="${GO2RTC_CAM_JSON_FILE}" WYZE_EMAIL="${WYZE_EMAIL}" API_ID="${API_ID}" API_KEY="${API_KEY}" WYZE_PASSWORD="${WYZE_PASSWORD}" python3 - <<'PY'
