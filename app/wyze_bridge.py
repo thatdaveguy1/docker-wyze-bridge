@@ -23,6 +23,7 @@ from wyzebridge.hass import setup_hass
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxServer
 from wyzebridge.stream_manager import StreamManager
+from wyzebridge.go2rtc import native_stream_info
 from wyzebridge.wyze_api import WyzeApi
 from wyzebridge.wyze_stream import WyzeStream, WyzeStreamOptions
 from wyzecam.api_models import WyzeAccount, WyzeCamera
@@ -130,7 +131,7 @@ class WyzeBridge(Thread):
             )
 
             create_main = stream_config["feeds"]["hd"]["enabled"]
-            create_sub = stream_config["feeds"]["sd"]["enabled"]
+            create_sub = self.camera_substream_enabled(cam)
 
             if create_main:
                 stream = WyzeStream(user, self.api, cam, options)
@@ -149,7 +150,8 @@ class WyzeBridge(Thread):
         return self.camera_stream_config(cam)["mode"]
 
     def camera_substream_enabled(self, cam: WyzeCamera, stream_mode: str = "") -> bool:
-        return self.camera_stream_config(cam)["feeds"]["sd"]["enabled"]
+        feed = self.camera_stream_config(cam)["feeds"]["sd"]
+        return bool(feed["enabled"] and feed["path"] == "sub")
 
     def camera_hd_supported(self, cam: WyzeCamera) -> bool:
         if cam.product_model == "HL_BC":
@@ -211,17 +213,17 @@ class WyzeBridge(Thread):
             env_bool("SUBSTREAM") and cam.bridge_can_substream
         )
         hd_enabled = (
-            bool(hd_enabled_saved)
-            if hd_enabled_saved != "__missing__"
-            else env_cam("hd", cam.name_uri, style="bool")
+            env_cam("hd", cam.name_uri, style="bool")
             if hd_env_configured
+            else bool(hd_enabled_saved)
+            if hd_enabled_saved != "__missing__"
             else legacy_mode not in {"sub"}
         ) and hd_supported
         sd_enabled = (
-            bool(sd_enabled_saved)
-            if sd_enabled_saved != "__missing__"
-            else env_cam("sd", cam.name_uri, style="bool")
+            env_cam("sd", cam.name_uri, style="bool")
             if sd_env_configured
+            else bool(sd_enabled_saved)
+            if sd_enabled_saved != "__missing__"
             else legacy_mode in {"sub", "both"} or (legacy_mode == "" and default_sd_enabled)
         ) and sd_supported
         if not hd_enabled and not sd_enabled:
@@ -229,6 +231,14 @@ class WyzeBridge(Thread):
                 hd_enabled = True
             elif sd_supported:
                 sd_enabled = True
+
+        sd_path = "main"
+        if sd_enabled and sd_supported:
+            sd_path = "sub" if cam.bridge_can_substream else "main"
+            if env_bool("GO2RTC_RTSP_PORT") and native_stream_info(cam, True).get(
+                "native_selected"
+            ):
+                sd_path = "native"
 
         hd_kbps = int(get_camera_setting(cam.name_uri, "hd_kbps") or env_cam("quality", cam.name_uri, "hd180")[2:] or 180)
         sd_kbps = int(get_camera_setting(cam.name_uri, "sd_kbps") or env_cam("sub_quality", cam.name_uri, "sd30")[2:] or 30)
@@ -249,7 +259,7 @@ class WyzeBridge(Thread):
                     "supported": sd_supported,
                     "kbps": sd_kbps,
                     "resolution": self.camera_feed_resolution(cam, "sd"),
-                    "path": "sub" if cam.bridge_can_substream else "main",
+                    "path": sd_path,
                     "reason": "" if sd_supported else "SD stream is not available for this camera",
                 },
             },

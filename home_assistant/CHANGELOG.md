@@ -1,5 +1,16 @@
 # What's Changed
 
+## What's Changed in v4.2.4
+
+Patch release focused on Home Assistant feed-selection correctness for native-selected cameras.
+
+### Major Changes
+
+- Let explicit Home Assistant `CAM_OPTIONS` `HD` and `SD` booleans override stale saved per-camera feed settings in `/config/wyze_camera_settings.json`.
+- Stop creating a competing bridge-managed `-sub` path when the SD feed is native-selected.
+- Add focused regression coverage for env-over-saved precedence and for skipping bridge substream creation when SD is routed through the native sidecar.
+- Validate live in the Home Assistant dev add-on that `north-yard-sub` is no longer created when `NORTH YARD` is configured with `SD=false`.
+
 ## What's Changed in v4.2.2
 
 Patch release focused on MQTT motion correctness and deterministic expiry behavior.
