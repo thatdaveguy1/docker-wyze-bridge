@@ -9,6 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.5 Patch Release
+
+`4.2.5` is the native alias refresh follow-up for the `4.2` release line.
+
+- Preserved `go2rtc_wyze.yaml` aliases are now refreshed from the current `/api/wyze` helper output at startup instead of being frozen just because the config file already contains seeded aliases.
+- The runtime images now include `curl`, which the sidecar refresh helper needs in the running add-on to talk to its own local `go2rtc` API.
+- On the live Home Assistant validation host, this rewrote North Yard from the stale `192.168.1.176` helper URL to the current `192.168.1.185` helper URL.
+- After that refresh, both `north-yard` and `north-yard-sd` became active native producers again on `:19554`.
+
 ## 4.2.4 Patch Release
 
 `4.2.4` is the Home Assistant feed-selection correctness follow-up for the `4.2` release line.

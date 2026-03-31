@@ -126,6 +126,29 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                         "go2rtc sidecar should rewrite preserved configs so old listener blocks cannot keep host port 8555",
                     )
 
+    def test_go2rtc_sidecar_refreshes_preserved_wyze_aliases(self):
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        stale_return = '    if [ "${GO2RTC_HAS_PERSISTED_STREAMS}" = "1" ]; then\n        return\n    fi\n'
+
+        for helper_path in helper_files:
+            helper_text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                self.assertNotIn(
+                    stale_return,
+                    helper_text,
+                    "go2rtc sidecar should not skip the /api/wyze refresh just because persisted aliases already exist",
+                )
+                self.assertIn(
+                    "Camera list received, refreshing native Wyze aliases...",
+                    helper_text,
+                    "go2rtc sidecar should refresh preserved Wyze aliases after fetching the current helper URLs",
+                )
+
     def test_root_dockerfiles_download_go2rtc_binary(self):
         dockerfiles = [
             ROOT / "docker" / "Dockerfile",
@@ -137,6 +160,23 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             with self.subTest(dockerfile=str(dockerfile_path.relative_to(ROOT))):
                 self.assertIn("usr/local/bin/go2rtc", dockerfile_text)
                 self.assertIn("go2rtc_linux_", dockerfile_text)
+
+    def test_runtime_dockerfiles_include_curl_for_go2rtc_refresh(self):
+        dockerfiles = [
+            ROOT / "home_assistant" / "Dockerfile",
+            ROOT / "docker" / "Dockerfile",
+            ROOT / "docker" / "Dockerfile.multiarch",
+            ROOT / "docker" / "Dockerfile.hwaccel",
+        ]
+
+        for dockerfile_path in dockerfiles:
+            dockerfile_text = dockerfile_path.read_text()
+            with self.subTest(dockerfile=str(dockerfile_path.relative_to(ROOT))):
+                self.assertIn(
+                    "apt-get install -y --no-install-recommends curl",
+                    dockerfile_text,
+                    "runtime image should include curl because go2rtc_sidecar.sh refreshes preserved aliases via curl at startup",
+                )
 
     def test_local_dev_addon_has_distinct_identity(self):
         prod_config = (ADDON_DIR / "config.yml").read_text()
@@ -163,7 +203,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.2.2-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.2.4-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()

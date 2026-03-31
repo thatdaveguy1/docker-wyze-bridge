@@ -1,5 +1,15 @@
 # What's Changed
 
+## What's Changed in v4.2.5
+
+Patch release focused on refreshing preserved native Wyze aliases on Home Assistant hosts.
+
+### Major Changes
+
+- Refresh preserved `go2rtc_wyze.yaml` Wyze aliases after startup instead of returning early just because seeded aliases already exist.
+- Install `curl` in the runtime images so the sidecar refresh helper can actually reach the local `go2rtc` API from the running add-on.
+- Validate in the Home Assistant dev add-on that North Yard aliases are rewritten from the stale `192.168.1.176` helper URL to the live `192.168.1.185` helper URL and that `rtsp://...:19554/north-yard(-sd)` becomes readable again.
+
 ## What's Changed in v4.2.4
 
 Patch release focused on Home Assistant feed-selection correctness for native-selected cameras.
