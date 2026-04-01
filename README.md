@@ -21,9 +21,14 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - Camera metadata, `/health/details`, and the Web UI now expose per-camera native-vs-bridge selection plus granular `HD` and `SD` feed publishing controls.
 - `frontend.py`, `site.js`, and `index.html` are normalized across the three runtime trees where behavior should match, while preserving the intentional dev add-on `:55000` talkback loopback port.
 - API-first native talkback remains limited to native-selected cameras, with uploaded-audio talkback validated on native-selected V4 paths.
-- Public docs and add-on/package version surfaces are aligned for the `4.2.6` release.
+- Public docs and add-on/package version surfaces are aligned for the `4.2.7` release.
 
 ## 4.2 Patch Releases
+
+### 4.2.7
+
+- Fixes Home Assistant `HL_CAM3P` SD-only routing so validated native `go2rtc` `-sd` feeds can stay available even when the bridge-managed `-sub` path is intentionally absent or unreliable.
+- Keeps ordinary V3-class substreams on the established bridge WebRTC/KVS path instead of broadly forcing them onto the TUTK fallback, while still letting `HL_CAM3P` and `HL_CAM4` take the special-case paths that were actually validated.
 
 ### 4.2.6
 
@@ -73,7 +78,7 @@ The `4.2` release documents the current validated ceilings rather than promising
 | Model | Default path | Main stream | Substream | Current 4.2 limit |
 | :--- | :--- | :--- | :--- | :--- |
 | Wyze Cam V3 | Bridge WebRTC/KVS | Validated up to `1920x1080` on V3-class paths | Supported on firmware `4.36.10+`; validated V3-class substream paths have reached `1920x1080` | `QUALITY` values do not force a higher resolution than the camera/firmware actually provides |
-| Wyze Cam V3 Pro | Bridge WebRTC/KVS | Validated up to `2560x1440` | Supported on firmware `4.58.0+`; no fixed public `4.2` substream ceiling is promised | Native `go2rtc` did not show a proven public improvement on the validation host |
+| Wyze Cam V3 Pro | Bridge WebRTC/KVS | Validated up to `2560x1440` | Supported on firmware `4.58.0+`; a bridge `-sub` alias is not proof of a true low-bandwidth split on every install | On the Home Assistant validation host, the native `go2rtc` `-sd` alias reached `640x360` while bridge-managed `-sub` remained unreliable |
 | Wyze Cam V4 | Bridge WebRTC/KVS, plus HA native `go2rtc` on `:19554` | Standard bridge path may remain `640x360`; validated HA native `go2rtc` main reached `2560x1440` | Standard bridge substream is not a reliable high/low split; validated HA native `go2rtc` sub reached `640x360` | TUTK fallback is not a reliable quality-rescue path in `4.2` |
 | Wyze Bulb Cam | Bridge RTC/WHEP, plus HA native `go2rtc` on `:19554` | Validated compatibility, with current `4.2` main ceiling of `640x360` | No validated distinct main/sub split in `4.2`; `-sd` may mirror the same `640x360` feed | No software-only 2K path has been validated in this release |
 

@@ -174,6 +174,60 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertIn("native-selected cameras", info["talkback_reason"])
 
     @patch("wyzebridge.go2rtc.requests.get")
+    def test_hl_cam3p_selects_only_native_sd_feed(self, mock_get):
+        user = SimpleNamespace()
+        camera = make_camera()
+        camera.product_model = "HL_CAM3P"
+        camera.model_name = "Wyze Cam V3 Pro"
+        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
+        mock_get.return_value = response
+
+        with patch("wyzebridge.wyze_stream.publish_discovery"):
+            main_stream = WyzeStream(
+                user,
+                DummyApi(),
+                camera,
+                SimpleNamespace(
+                    quality="hd180",
+                    audio=True,
+                    record=False,
+                    reconnect=True,
+                    substream=False,
+                    frame_size=3,
+                    bitrate=180,
+                    update_quality=lambda hq: None,
+                ),
+            )
+            sub_stream = WyzeStream(
+                user,
+                DummyApi(),
+                camera,
+                SimpleNamespace(
+                    quality="sd30",
+                    audio=True,
+                    record=False,
+                    reconnect=True,
+                    substream=True,
+                    frame_size=1,
+                    bitrate=30,
+                    update_quality=lambda hq: None,
+                ),
+            )
+
+        main_info = main_stream.get_info()
+        sub_info = sub_stream.get_info()
+
+        self.assertTrue(main_info["native_supported"])
+        self.assertFalse(main_info["native_selected"])
+        self.assertEqual(main_info["snapshot_source"], "rtsp")
+        self.assertFalse(main_info["talkback_supported"])
+        self.assertTrue(sub_info["native_supported"])
+        self.assertTrue(sub_info["native_selected"])
+        self.assertEqual(sub_info["native_alias"], "garage-sd")
+        self.assertEqual(sub_info["snapshot_source"], "go2rtc")
+        self.assertFalse(sub_info["talkback_supported"])
+
+    @patch("wyzebridge.go2rtc.requests.get")
     def test_hl_bc_reports_sd_resolution_for_main_feed(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()

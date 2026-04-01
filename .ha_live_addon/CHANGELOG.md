@@ -1,5 +1,16 @@
 # What's Changed
 
+## What's Changed in v4.2.7
+
+Patch release focused on Home Assistant V3 Pro SD-feed correctness.
+
+### Major Changes
+
+- Keep Home Assistant `HL_CAM3P` SD-only setups on the validated native `go2rtc` `-sd` alias instead of a misleading or broken bridge-managed `-sub` path.
+- Narrow the special TUTK substream routing so ordinary V3-class substreams stay on the established bridge WebRTC/KVS path.
+- Fix the native alias refresh helper so native-only feeds are not dropped just because the bridge's live published `/api` catalog no longer contains a matching bridge stream entry.
+- Validate live on the Home Assistant box that `hamster-sd` returns `640x360` on `:19554` and that Frigate can record from that feed after cutover.
+
 ## What's Changed in v4.2.6
 
 Patch release focused on the last Home Assistant ingress asset-path gap and on keeping native `go2rtc` aliases aligned with the bridge's live published feeds.

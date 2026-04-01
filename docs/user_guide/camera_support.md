@@ -12,7 +12,7 @@ Two important rules:
 | Model | Bridge main | Bridge substream | Home Assistant native `go2rtc` RTSP (`:19554`) | Current public limit |
 | :--- | :--- | :--- | :--- | :--- |
 | Wyze Cam V3 (`WYZE_CAKP2JFUS`) | Supported | Supported on firmware `4.36.10+` | Available, but not the primary documented path for `4.2` | Validated V3-class bridge paths have reached `1920x1080` for both main and substream. Higher output is not promised. |
-| Wyze Cam V3 Pro (`HL_CAM3P`) | Supported | Supported on firmware `4.58.0+` | Available, but no public `4.2` improvement over the standard bridge path is claimed | Validated main stream reached `2560x1440`. `4.2` does not promise a fixed native or substream ceiling for every installation. |
+| Wyze Cam V3 Pro (`HL_CAM3P`) | Supported | Supported on firmware `4.58.0+`, but a bridge `-sub` alias is not proof of a true lower-bandwidth split | Supported Home Assistant feature in `4.2` | Validated main stream reached `2560x1440`. On the Home Assistant validation host, the native `go2rtc` `-sd` alias reached `640x360` while the bridge-managed `-sub` path remained unreliable. |
 | Wyze Cam V4 (`HL_CAM4`) | Supported, but standard bridge RTSP can remain `640x360` on some KVS/WebRTC paths | Exposed by the bridge, but not a reliable high/low split in `4.2` | Supported Home Assistant feature in `4.2` | Validated Home Assistant native `go2rtc` path reached `2560x1440` main and `640x360` substream. TUTK fallback is not a reliable way to recover higher RTSP resolution. |
 | Wyze Bulb Cam (`HL_BC`) | Supported | No validated distinct substream in `4.2` | Supported surface exists, but no validated quality gain over the bridge path is claimed | Public `4.2` validation kept both main and `-sd` feeds at `640x360`. No software-only 2K path has been validated. |
 
@@ -28,7 +28,8 @@ Two important rules:
 
 - V3 Pro remains one of the strongest standard-bridge outcomes in the current codebase.
 - The public `4.2` docs only claim the validated main-stream ceiling of `2560x1440`.
-- Native `go2rtc` is included in the Home Assistant add-on, but `4.2` does not promise a better V3 Pro result than the standard bridge path.
+- Native `go2rtc` is included in the Home Assistant add-on, and `4.2.7` now documents the validated V3 Pro SD-only path: `:19554/<camera>-sd` reached `640x360` on the release host.
+- That result does not turn every bridge-managed `-sub` alias into a reliable low-bandwidth feed. The important distinction is whether the feed is the native `-sd` alias or just a bridge `-sub` name.
 
 ### Wyze Cam V4
 

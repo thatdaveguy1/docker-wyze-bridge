@@ -777,24 +777,31 @@ class WyzeIOTCSession:
             print(f"[DEBUG-IOTC] Got session ID: {session_id}", flush=True)
 
             force_v4_parallel_raw = os.getenv("FORCE_V4_PARALLEL", "")
+            force_parallel_substream = self.substream and self.camera.product_model in {
+                "HL_CAM3P",
+                "HL_CAM4",
+            }
             force_v4_parallel = (
                 self.camera.product_model == "HL_CAM4"
-                and (
-                    self.substream
-                    or force_v4_parallel_raw.lower() in {"1", "true", "yes"}
-                )
+                and force_v4_parallel_raw.lower() in {"1", "true", "yes"}
             )
             print(
-                f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel}",
+                f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel or force_parallel_substream}",
                 flush=True,
             )
 
-            if force_v4_parallel or (
+            if force_parallel_substream or force_v4_parallel or (
                 not self.camera.dtls and not self.camera.parent_dtls
             ):
                 print(
                     "[DEBUG-IOTC] Using IOTC_Connect_ByUID_Parallel"
-                    + (" (forced HL_CAM4)" if force_v4_parallel else " (no DTLS)"),
+                    + (
+                        " (forced substream)"
+                        if force_parallel_substream
+                        else " (forced HL_CAM4)"
+                        if force_v4_parallel
+                        else " (no DTLS)"
+                    ),
                     flush=True,
                 )
                 connect_started = time.monotonic()

@@ -112,7 +112,7 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
             self.assertTrue(stream.uses_kvs_source)
             self.assertFalse(stream.uses_tutk_source)
 
-    def test_kvs_substream_start_prefers_tutk_process(self):
+    def test_hl_cam4_substream_start_prefers_tutk_process(self):
         camera = make_camera("HL_CAM4")
         process = SimpleNamespace(start=lambda: None, is_alive=lambda: True)
 
@@ -132,7 +132,22 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         proc_cls.assert_called_once()
         self.assertIs(stream.tutk_stream_process, process)
 
-    def test_non_hl_cam4_kvs_substream_stays_on_kvs_path(self):
+    def test_v3_substream_stays_on_kvs_path(self):
+        camera = make_camera("WYZE_CAKP2JFUS", "Deck")
+
+        with patch("wyzebridge.wyze_stream.publish_discovery"):
+            stream = WyzeStream(
+                SimpleNamespace(),
+                SimpleNamespace(setup_mtx_proxy=lambda uri: True),
+                camera,
+                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+            )
+
+        self.assertTrue(camera.can_substream)
+        self.assertFalse(stream.uses_tutk_source)
+        self.assertTrue(stream.uses_kvs_source)
+
+    def test_hl_cam3p_kvs_substream_prefers_tutk_path(self):
         camera = make_camera("HL_CAM3P", "Hamster")
         camera.firmware_ver = "4.58.11.1234"
 
@@ -144,8 +159,9 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
                 WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
 
-        self.assertFalse(stream.uses_tutk_source)
-        self.assertTrue(stream.uses_kvs_source)
+        self.assertTrue(camera.can_substream)
+        self.assertTrue(stream.uses_tutk_source)
+        self.assertFalse(stream.uses_kvs_source)
 
     def test_non_kvs_camera_without_substream_support_stays_blocked(self):
         camera = make_camera("WYZEC1", "Old Cam")

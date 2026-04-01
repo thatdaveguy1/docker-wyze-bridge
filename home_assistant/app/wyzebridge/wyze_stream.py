@@ -197,11 +197,13 @@ class WyzeStream(Stream):
 
     @property
     def uses_tutk_source(self) -> bool:
+        if self.options.substream:
+            return self.camera.product_model == "HL_CAM3P" or (
+                self.camera.product_model == "HL_CAM4" and self.camera.is_kvs
+            )
+
         if not (self.camera.product_model == "HL_CAM4" and self.camera.is_kvs):
             return False
-
-        if self.options.substream:
-            return not self.camera.can_substream
 
         return hl_cam4_main_probe_mode() in {"tutk_dtls", "tutk_parallel"}
 
