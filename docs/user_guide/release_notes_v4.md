@@ -9,6 +9,17 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.6 Patch Release
+
+`4.2.6` is the ingress-finish and native-alias correctness follow-up for the `4.2` release line.
+
+- The last hardcoded Web UI JavaScript includes now use ingress-aware `url_for('static', ...)` calls, including the dedicated `/webrtc/<camera>` page.
+- Focused frontend regression coverage now locks in ingress-prefixed JavaScript URLs on both the main page and the dedicated WebRTC page.
+- `webrtc.js` now refreshes signaling from the root-relative `/signaling/<camera>` path instead of resolving a broken nested `/webrtc/signaling/...` URL.
+- The native `go2rtc` sidecar now waits for the authenticated bridge `/api` surface before it trusts bridge state.
+- Native alias prep now follows the bridge's live published camera catalog, so filtered cameras and unsupported `HL_BC` HD feeds are skipped instead of being prepared just because the helper returned a URL.
+- On the live Home Assistant validation host, the styled ingress page came back and the sidecar kept only the expected aliases: `deck-sd`, `garage-sd`, `hamster-sd`, `north-yard`, and `south-yard-sd`.
+
 ## 4.2.5 Patch Release
 
 `4.2.5` is the native alias refresh follow-up for the `4.2` release line.

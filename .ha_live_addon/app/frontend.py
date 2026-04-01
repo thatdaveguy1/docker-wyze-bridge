@@ -200,7 +200,13 @@ def network_snapshot() -> dict:
 
 
 def create_app():
-    app = Flask(__name__)
+    app_root = Path(__file__).resolve().parent
+    app = Flask(
+        __name__,
+        static_folder=str(app_root / "static"),
+        template_folder=str(app_root / "templates"),
+    )
+    app.jinja_env.globals["url_for"] = url_for
     wb = WyzeBridge()
     talkback_dir = Path(tempfile.gettempdir()) / "wyze-talkback-http"
     talkback_dir.mkdir(parents=True, exist_ok=True)
