@@ -963,16 +963,19 @@ class WyzeIOTCSession:
 
             force_v4_parallel_raw = os.getenv("FORCE_V4_PARALLEL", "")
             probe_mode = _hl_cam4_main_probe_mode()
+            force_parallel_substream = self.substream and self.camera.product_model in {
+                "HL_CAM3P",
+                "HL_CAM4",
+            }
             force_v4_parallel = (
                 self.camera.product_model == "HL_CAM4"
                 and (
-                    self.substream
-                    or probe_mode == "tutk_parallel"
+                    probe_mode == "tutk_parallel"
                     or force_v4_parallel_raw.lower() in {"1", "true", "yes"}
                 )
             )
             print(
-                f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel}",
+                f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel or force_parallel_substream}",
                 flush=True,
             )
             _log_tutk_trace(
@@ -981,7 +984,7 @@ class WyzeIOTCSession:
                 attempt_no=attempt_no,
                 av_chan_id=None,
                 dtls=self.camera.dtls,
-                force_v4_parallel=force_v4_parallel,
+                force_v4_parallel=force_v4_parallel or force_parallel_substream,
                 max_retries=max_retries,
                 main_probe_mode=probe_mode,
                 parent_dtls=self.camera.parent_dtls,
@@ -989,13 +992,19 @@ class WyzeIOTCSession:
                 substream=self.substream,
             )
 
-            if force_v4_parallel or (
+            if force_parallel_substream or force_v4_parallel or (
                 not self.camera.dtls and not self.camera.parent_dtls
             ):
                 connect_mode = "parallel"
                 print(
                     "[DEBUG-IOTC] Using IOTC_Connect_ByUID_Parallel"
-                    + (" (forced HL_CAM4)" if force_v4_parallel else " (no DTLS)"),
+                    + (
+                        " (forced substream)"
+                        if force_parallel_substream
+                        else " (forced HL_CAM4)"
+                        if force_v4_parallel
+                        else " (no DTLS)"
+                    ),
                     flush=True,
                 )
                 connect_started = time.monotonic()

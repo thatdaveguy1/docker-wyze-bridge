@@ -9,6 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.7 Patch Release
+
+`4.2.7` is the Home Assistant V3 Pro SD-feed follow-up for the `4.2` release line.
+
+- Home Assistant `HL_CAM3P` SD-only setups now prefer the validated native `go2rtc` `-sd` alias instead of exposing a misleading or broken bridge-managed `-sub` path.
+- The native alias refresh helper now keeps native-only feeds even when they are intentionally absent from the bridge's live published stream catalog.
+- Ordinary V3-class substreams stay on the established bridge WebRTC/KVS path instead of being broadly rerouted through the TUTK fallback.
+- On the live Home Assistant validation host, the V3 Pro `-sd` alias became readable again at `640x360` on `:19554`, and the Frigate `hamster` camera was cut over to that feed.
+
 ## 4.2.6 Patch Release
 
 `4.2.6` is the ingress-finish and native-alias correctness follow-up for the `4.2` release line.
@@ -96,7 +105,7 @@ The short version:
 | Model | Plain-English summary |
 | :--- | :--- |
 | Wyze Cam V3 | Still one of the safer bets. The bridge path is the main documented option, and tested V3-class results have reached `1920x1080`. |
-| Wyze Cam V3 Pro | Can do better than V3 in the main stream. Tested results reached `2560x1440`, but substream results can still vary by setup. |
+| Wyze Cam V3 Pro | Can do better than V3 in the main stream. Tested results reached `2560x1440`, and the Home Assistant native `-sd` alias now validates at `640x360` on the release host. Bridge `-sub` behavior can still vary by setup. |
 | Wyze Cam V4 | The normal bridge path can still get stuck at `640x360`. In Home Assistant, the native `go2rtc` path is the best-documented way to get the better tested result: `2560x1440` main and `640x360` substream. |
 | Wyze Bulb Cam | Supported, but still limited in practice. Current tested results keep both main and `-sd` at `640x360`. |
 
