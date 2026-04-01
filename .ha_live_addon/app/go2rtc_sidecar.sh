@@ -110,12 +110,13 @@ start_go2rtc_sidecar() {
     : "${GO2RTC_RTSP_PORT:=19554}"
     : "${GO2RTC_CONFIG:=/config/go2rtc_wyze.yaml}"
     : "${GO2RTC_PID_FILE:=/tmp/go2rtc.pid}"
+    : "${WB_APP_PORT:=55000}"
     GO2RTC_HAS_PERSISTED_STREAMS=0
 
     if [ ! -d /config ] && [ "${GO2RTC_CONFIG}" = "/config/go2rtc_wyze.yaml" ]; then
         GO2RTC_CONFIG=/tmp/go2rtc_wyze.yaml
     fi
-    export GO2RTC_API_PORT GO2RTC_RTSP_PORT GO2RTC_CONFIG GO2RTC_PID_FILE
+    export GO2RTC_API_PORT GO2RTC_RTSP_PORT GO2RTC_CONFIG GO2RTC_PID_FILE WB_APP_PORT
 
     if [ -f "${GO2RTC_CONFIG}" ] && grep -A999 '^streams:$' "${GO2RTC_CONFIG}" | grep -q '^  [a-z0-9][a-z0-9_-]*:$'; then
         GO2RTC_HAS_PERSISTED_STREAMS=1
@@ -229,13 +230,48 @@ PY
             exit 0
         fi
         echo "[GO2RTC] Camera list received, refreshing native Wyze aliases..." >&2
+        WB_APP_API_BASE=""
+        BRIDGE_API_TOKEN=$(WYZE_EMAIL="${WYZE_EMAIL}" python3 - <<'PY'
+import base64
+import hashlib
+import os
+from pathlib import Path
+
+email = os.environ.get("WYZE_EMAIL", "")
+for path in ("/config/wb_api", "/tokens/wb_api", ".runtime/tokens/wb_api"):
+    try:
+        token = Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    if token:
+        print(token)
+        raise SystemExit
+print(base64.urlsafe_b64encode(hashlib.sha256(email.encode()).digest()).decode()[:40])
+PY
+)
+        for retry in $(seq 1 30); do
+            candidate="http://127.0.0.1:${WB_APP_PORT}"
+            if curl -sf "${candidate}/api?api=${BRIDGE_API_TOKEN}" > /dev/null 2>&1; then
+                WB_APP_API_BASE="${candidate}"
+                echo "[GO2RTC] Bridge API ready after ${retry}x2s via ${WB_APP_API_BASE}" >&2
+                break
+            fi
+            sleep 2
+        done
+        if [ -z "${WB_APP_API_BASE}" ]; then
+            echo "[GO2RTC] WARNING: authenticated bridge API did not become reachable on http://127.0.0.1:${WB_APP_PORT}; falling back to helper-only alias filtering" >&2
+        fi
         GO2RTC_CAM_JSON_FILE=/tmp/go2rtc_cam_sources.json
         printf '%s\n' "${CAM_JSON}" > "${GO2RTC_CAM_JSON_FILE}"
-        GO2RTC_CONFIG="${GO2RTC_CONFIG}" GO2RTC_API_PORT="${GO2RTC_API_PORT}" GO2RTC_RTSP_PORT="${GO2RTC_RTSP_PORT}" GO2RTC_CAM_JSON_FILE="${GO2RTC_CAM_JSON_FILE}" WYZE_EMAIL="${WYZE_EMAIL}" API_ID="${API_ID}" API_KEY="${API_KEY}" WYZE_PASSWORD="${WYZE_PASSWORD}" python3 - <<'PY'
+        GO2RTC_CONFIG="${GO2RTC_CONFIG}" GO2RTC_API_PORT="${GO2RTC_API_PORT}" GO2RTC_RTSP_PORT="${GO2RTC_RTSP_PORT}" GO2RTC_CAM_JSON_FILE="${GO2RTC_CAM_JSON_FILE}" WB_APP_API_BASE="${WB_APP_API_BASE}" WYZE_EMAIL="${WYZE_EMAIL}" API_ID="${API_ID}" API_KEY="${API_KEY}" WYZE_PASSWORD="${WYZE_PASSWORD}" python3 - <<'PY'
+import base64
 import json
 import os
 import re
+import hashlib
 import urllib.parse
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 
@@ -253,6 +289,121 @@ def with_subtype(url: str, subtype: str) -> str:
     filtered = [(key, value) for key, value in query if key != "subtype"]
     filtered.append(("subtype", subtype))
     return urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(filtered)))
+
+
+def parse_model(info: str, url: str) -> str:
+    if info:
+        model = str(info).split("|", 1)[0].strip()
+        if model:
+            return model
+    parsed = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qs(parsed.query)
+    return (query.get("model") or [""])[0].strip()
+
+
+def helper_flag(cam: dict, key: str):
+    if key not in cam:
+        return None
+    value = cam.get(key)
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def bridge_api_token(email: str) -> str:
+    for path in ("/config/wb_api", "/tokens/wb_api", ".runtime/tokens/wb_api"):
+        try:
+            token = Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            token = ""
+        if token:
+            return token
+    return base64.urlsafe_b64encode(hashlib.sha256(email.encode()).digest()).decode()[:40]
+
+
+def fetch_json(url: str, timeout: float = 2.0):
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return json.load(response)
+    except (OSError, ValueError, urllib.error.HTTPError, urllib.error.URLError):
+        return None
+
+
+_BRIDGE_CAMERA_CATALOG = None
+
+
+def bridge_camera_catalog() -> dict | None:
+    global _BRIDGE_CAMERA_CATALOG
+    if _BRIDGE_CAMERA_CATALOG is not None:
+        return _BRIDGE_CAMERA_CATALOG
+
+    base_url = os.environ.get("WB_APP_API_BASE", "").rstrip("/")
+    if not base_url:
+        return None
+
+    api_token = urllib.parse.quote(bridge_api_token(os.environ["WYZE_EMAIL"]), safe="")
+    payload = fetch_json(f"{base_url}/api?api={api_token}")
+    if not isinstance(payload, dict):
+        return None
+    cameras = payload.get("cameras") if isinstance(payload, dict) else None
+    _BRIDGE_CAMERA_CATALOG = cameras if isinstance(cameras, dict) else {}
+    return _BRIDGE_CAMERA_CATALOG
+
+
+def bridge_published_entries(cam_uri: str):
+    catalog = bridge_camera_catalog()
+    if catalog is None:
+        return None
+
+    published = []
+    for uri, camera in catalog.items():
+        if not isinstance(camera, dict):
+            continue
+        base_uri = clean_cam_name(camera.get("camera_uri") or camera.get("name_uri") or "")
+        if base_uri == cam_uri:
+            published.append((uri, camera))
+    return published
+
+
+def bridge_camera_state(cam_uri: str) -> dict:
+    base_url = os.environ.get("WB_APP_API_BASE", "").rstrip("/")
+    if not base_url:
+        return {}
+
+    api_token = urllib.parse.quote(bridge_api_token(os.environ["WYZE_EMAIL"]), safe="")
+    cam_path = urllib.parse.quote(cam_uri, safe="")
+    state = {}
+
+    published = bridge_published_entries(cam_uri)
+    if published is not None:
+        enabled_entries = [(uri, camera) for uri, camera in published if bool(camera.get("enabled"))]
+        state["published"] = bool(enabled_entries)
+        state["enabled"] = bool(enabled_entries)
+        state["hd"] = any(
+            clean_cam_name(camera.get("name_uri") or uri) == cam_uri
+            and not bool(camera.get("substream"))
+            for uri, camera in enabled_entries
+        )
+        state["sd"] = any(
+            bool(camera.get("substream")) or clean_cam_name(camera.get("name_uri") or uri) != cam_uri
+            for uri, camera in enabled_entries
+        )
+
+    config = fetch_json(f"{base_url}/api/{cam_path}/stream-config?api={api_token}")
+    feeds = config.get("feeds") if isinstance(config, dict) else None
+    if isinstance(feeds, dict):
+        for feed_name in ("hd", "sd"):
+            feed = feeds.get(feed_name)
+            if not isinstance(feed, dict):
+                continue
+            if "enabled" in feed:
+                if published is None:
+                    state[feed_name] = feed.get("enabled")
+                elif not state.get(feed_name, False):
+                    state[feed_name] = False
+            if "supported" in feed:
+                state[f"{feed_name}_supported"] = feed.get("supported")
+    return state
 
 
 with open(os.environ["GO2RTC_CAM_JSON_FILE"], encoding="utf-8") as fh:
@@ -287,7 +438,39 @@ for cam in cams:
     if not uri or uri in seen:
         continue
     seen.add(uri)
-    for alias, subtype in ((uri, "hd"), (f"{uri}-sd", "sd")):
+    bridge_state = bridge_camera_state(uri)
+    for key, value in bridge_state.items():
+        cam.setdefault(key, value)
+    published = helper_flag(cam, "published")
+    if published is False:
+        print(f"[GO2RTC] Skipping camera not published by bridge: {name}", flush=True)
+        continue
+    enabled = helper_flag(cam, "enabled")
+    if enabled is False:
+        print(f"[GO2RTC] Skipping disabled camera from helper: {name}", flush=True)
+        continue
+    model = parse_model(info, url)
+    hd_enabled = helper_flag(cam, "hd")
+    sd_enabled = helper_flag(cam, "sd")
+    hd_supported = helper_flag(cam, "hd_supported")
+    sd_supported = helper_flag(cam, "sd_supported")
+
+    if hd_supported is None and model == "HL_BC":
+        hd_supported = False
+    if sd_supported is None and model == "HL_BC":
+        sd_supported = True
+
+    aliases = []
+    if hd_enabled is not False and hd_supported is not False:
+        aliases.append((uri, "hd"))
+    if sd_enabled is not False and sd_supported is not False:
+        aliases.append((f"{uri}-sd", "sd"))
+
+    if not aliases:
+        print(f"[GO2RTC] Skipping camera with no enabled native feeds: {name} ({info})", flush=True)
+        continue
+
+    for alias, subtype in aliases:
         lines.append(f"  {alias}:")
         lines.append(f"    - {with_subtype(url, subtype)}")
         print(f"[GO2RTC] Prepared stream: {alias} ({info}) subtype={subtype}", flush=True)

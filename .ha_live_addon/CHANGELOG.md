@@ -1,5 +1,28 @@
 # What's Changed
 
+## What's Changed in v4.2.6
+
+Patch release focused on the last Home Assistant ingress asset-path gap and on keeping native `go2rtc` aliases aligned with the bridge's live published feeds.
+
+### Major Changes
+
+- Switch the remaining hardcoded Web UI JavaScript includes to ingress-aware `url_for('static', ...)` calls, including the dedicated `/webrtc/<camera>` page.
+- Add focused frontend regression coverage for ingress-prefixed JavaScript asset URLs and for the root-relative signaling refresh path used by `webrtc.js`.
+- Make the native `go2rtc` sidecar wait for the authenticated bridge `/api` surface instead of trusting `/health` alone.
+- Filter native alias prep against the bridge's live published camera catalog so disabled or filtered cameras and unsupported `HL_BC` HD feeds are skipped instead of being seeded just because `/api/wyze` returned a helper URL.
+- Validate live on the Home Assistant box that the ingress page loads styled again and that the sidecar keeps only the expected active aliases (`deck-sd`, `garage-sd`, `hamster-sd`, `north-yard`, and `south-yard-sd`).
+
+## What's Changed in v4.2.4
+
+Patch release focused on Home Assistant feed-selection correctness for native-selected cameras.
+
+### Major Changes
+
+- Let explicit Home Assistant `CAM_OPTIONS` `HD` and `SD` booleans override stale saved per-camera feed settings in `/config/wyze_camera_settings.json`.
+- Stop creating a competing bridge-managed `-sub` path when the SD feed is native-selected.
+- Add focused regression coverage for env-over-saved precedence and for skipping bridge substream creation when SD is routed through the native sidecar.
+- Validate live in the Home Assistant dev add-on that `north-yard-sub` is no longer created when `NORTH YARD` is configured with `SD=false`.
+
 ## What's Changed in v4.2.2
 
 Patch release focused on MQTT motion correctness and deterministic expiry behavior.
