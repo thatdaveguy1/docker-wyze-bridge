@@ -16,6 +16,11 @@ from wyzebridge.config import IMG_PATH, IMG_TYPE
 DEFAULT_GO2RTC_API_PORT = 11984
 DEFAULT_GO2RTC_RTSP_PORT = 19554
 _VALIDATED_NATIVE_MODELS = {
+    "HL_CAM3P": {
+        "reason": "HL_CAM3P validated on native go2rtc for the SD feed while the main alias remains unproven on this host",
+        "selected": False,
+        "sub_selected": True,
+    },
     "HL_CAM4": {
         "reason": "HL_CAM4 validated on native go2rtc with higher-resolution main stream",
         "selected": True,
@@ -73,13 +78,16 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     model_support = _validated_native_model(camera)
     api_reachable = _go2rtc_api_reachable()
     supported = bool(model_support and not getattr(camera, "is_gwell", False))
-    selected = bool(supported and model_support.get("selected") and api_reachable)
+    selected_flag = (
+        model_support.get("sub_selected") if substream else model_support.get("selected")
+    ) if model_support else False
+    selected = bool(supported and selected_flag and api_reachable)
 
     if getattr(camera, "is_gwell", False):
         reason = "GW_* remains blocked until a real Gwell model validates end-to-end"
     elif model_support:
         reason = model_support["reason"]
-        if model_support.get("selected") and not api_reachable:
+        if selected_flag and not api_reachable:
             reason = f"{reason}; go2rtc sidecar is not reachable"
     else:
         reason = "bridge remains the default until native go2rtc is validated for this model"
@@ -90,7 +98,7 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     elif selected:
         talkback_supported = True
         talkback_reason = "API-first talkback is available through the native go2rtc alias"
-    elif supported and model_support and model_support.get("selected") and not api_reachable:
+    elif supported and model_support and selected_flag and not api_reachable:
         talkback_supported = False
         talkback_reason = "talkback requires a reachable go2rtc sidecar"
     elif supported:

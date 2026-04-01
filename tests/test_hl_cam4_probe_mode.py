@@ -152,6 +152,30 @@ class TestHlCam4ProbeMode(unittest.TestCase):
         connect_parallel.assert_called_once()
         connect_ex.assert_not_called()
 
+    def test_hl_cam3p_substream_uses_parallel_connect(self):
+        session = WyzeIOTCSession(
+            FakeTutkLib(), make_account(), make_camera("HL_CAM3P"), substream=True
+        )
+
+        with (
+            patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
+            patch(
+                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
+            ) as connect_parallel,
+            patch(
+                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
+            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
+            patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
+            patch.object(session, "session_check") as session_check,
+            patch.dict(os.environ, {"FORCE_V4_PARALLEL": "false"}, clear=False),
+        ):
+            session_check.return_value.mode = 2
+            session._connect()
+
+        connect_parallel.assert_called_once()
+        connect_ex.assert_not_called()
+
     def test_connect_watchdog_stops_wedged_dtls_connect(self):
         session = WyzeIOTCSession(FakeTutkLib(), make_account(), make_camera("HL_CAM4"))
         release_connect = threading.Event()

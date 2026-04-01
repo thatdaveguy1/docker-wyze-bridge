@@ -168,9 +168,13 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             'state["hd"] = any(',
             'state["sd"] = any(',
             'fetch_json(f"{base_url}/api/{cam_path}/stream-config?api={api_token}")',
+            'if published is None or feed.get("path") == "native":',
+            'if "enabled" not in state:',
+            'state["enabled"] = bool(state.get("hd") or state.get("sd"))',
             'for key, value in bridge_state.items():',
             'cam.setdefault(key, value)',
             'published = helper_flag(cam, "published")',
+            'if published is False and helper_flag(cam, "hd") is False and helper_flag(cam, "sd") is False:',
             'Skipping camera not published by bridge',
             'enabled = helper_flag(cam, "enabled")',
             'if enabled is False:',
@@ -245,7 +249,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.2.6-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.2.7-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()

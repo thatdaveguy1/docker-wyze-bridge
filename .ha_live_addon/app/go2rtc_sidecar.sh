@@ -397,12 +397,16 @@ def bridge_camera_state(cam_uri: str) -> dict:
             if not isinstance(feed, dict):
                 continue
             if "enabled" in feed:
-                if published is None:
+                if published is None or feed.get("path") == "native":
                     state[feed_name] = feed.get("enabled")
                 elif not state.get(feed_name, False):
                     state[feed_name] = False
             if "supported" in feed:
                 state[f"{feed_name}_supported"] = feed.get("supported")
+    if "enabled" not in state:
+        state["enabled"] = bool(state.get("hd") or state.get("sd"))
+    elif not state.get("enabled") and (state.get("hd") or state.get("sd")):
+        state["enabled"] = True
     return state
 
 
@@ -442,7 +446,7 @@ for cam in cams:
     for key, value in bridge_state.items():
         cam.setdefault(key, value)
     published = helper_flag(cam, "published")
-    if published is False:
+    if published is False and helper_flag(cam, "hd") is False and helper_flag(cam, "sd") is False:
         print(f"[GO2RTC] Skipping camera not published by bridge: {name}", flush=True)
         continue
     enabled = helper_flag(cam, "enabled")
