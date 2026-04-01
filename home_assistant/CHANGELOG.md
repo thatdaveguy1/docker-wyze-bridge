@@ -1,5 +1,17 @@
 # What's Changed
 
+## What's Changed in v4.2.6
+
+Patch release focused on the last Home Assistant ingress asset-path gap and on keeping native `go2rtc` aliases aligned with the bridge's live published feeds.
+
+### Major Changes
+
+- Switch the remaining hardcoded Web UI JavaScript includes to ingress-aware `url_for('static', ...)` calls, including the dedicated `/webrtc/<camera>` page.
+- Add focused frontend regression coverage for ingress-prefixed JavaScript asset URLs and for the root-relative signaling refresh path used by `webrtc.js`.
+- Make the native `go2rtc` sidecar wait for the authenticated bridge `/api` surface instead of trusting `/health` alone.
+- Filter native alias prep against the bridge's live published camera catalog so disabled or filtered cameras and unsupported `HL_BC` HD feeds are skipped instead of being seeded just because `/api/wyze` returned a helper URL.
+- Validate live on the Home Assistant box that the ingress page loads styled again and that the sidecar keeps only the expected active aliases (`deck-sd`, `garage-sd`, `hamster-sd`, `north-yard`, and `south-yard-sd`).
+
 ## What's Changed in v4.2.5
 
 Patch release focused on refreshing preserved native Wyze aliases on Home Assistant hosts.

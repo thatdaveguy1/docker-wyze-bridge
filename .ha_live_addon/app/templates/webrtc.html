@@ -22,7 +22,7 @@
 
 <body>
     <video id="video" data-cam="{{ webrtc.cam }}" muted controls autoplay playsinline></video>
-    <script src="{{ '../static/webrtc.js' if hass else url_for('static', filename='webrtc.js') }}"></script>
+    <script src="{{ url_for('static', filename='webrtc.js') }}"></script>
     <script>
         window.addEventListener('load', new Receiver({{ webrtc| tojson | safe }}));
     </script>

@@ -149,6 +149,48 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                     "go2rtc sidecar should refresh preserved Wyze aliases after fetching the current helper URLs",
                 )
 
+    def test_go2rtc_sidecar_can_skip_helper_disabled_or_unsupported_feeds(self):
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        expected_snippets = [
+            'WB_APP_API_BASE=""',
+            'BRIDGE_API_TOKEN=$(WYZE_EMAIL="${WYZE_EMAIL}" python3 - <<\'PY\'',
+            'candidate="http://127.0.0.1:${WB_APP_PORT}"',
+            'curl -sf "${candidate}/api?api=${BRIDGE_API_TOKEN}"',
+            'WB_APP_API_BASE="${candidate}"',
+            'def bridge_published_entries(cam_uri: str):',
+            'def bridge_camera_state(cam_uri: str) -> dict:',
+            'state["published"] = bool(enabled_entries)',
+            'state["hd"] = any(',
+            'state["sd"] = any(',
+            'fetch_json(f"{base_url}/api/{cam_path}/stream-config?api={api_token}")',
+            'for key, value in bridge_state.items():',
+            'cam.setdefault(key, value)',
+            'published = helper_flag(cam, "published")',
+            'Skipping camera not published by bridge',
+            'enabled = helper_flag(cam, "enabled")',
+            'if enabled is False:',
+            'hd_supported = helper_flag(cam, "hd_supported")',
+            'sd_supported = helper_flag(cam, "sd_supported")',
+            'if hd_supported is None and model == "HL_BC":',
+            'aliases.append((f"{uri}-sd", "sd"))',
+            'Skipping camera with no enabled native feeds',
+        ]
+
+        for helper_path in helper_files:
+            helper_text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                for expected in expected_snippets:
+                    self.assertIn(
+                        expected,
+                        helper_text,
+                        "go2rtc sidecar should honor explicit helper feed flags and avoid fake native aliases for unsupported feeds",
+                    )
+
     def test_root_dockerfiles_download_go2rtc_binary(self):
         dockerfiles = [
             ROOT / "docker" / "Dockerfile",
@@ -203,7 +245,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.2.4-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.2.6-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()
