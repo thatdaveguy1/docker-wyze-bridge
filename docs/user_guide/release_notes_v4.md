@@ -9,6 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.8 Patch Release
+
+`4.2.8` is the Home Assistant WHEP stability follow-up for the `4.2` release line.
+
+- The bundled `whep_proxy` now treats `/kvs-config/<camera>` `404 camera [x] not found` as a terminal refresh failure instead of reconnecting forever.
+- WHEP startup sessions are only reused while they are fresh or once media is actually flowing, so stale `upstream_state="new"` sessions with no audio/video are replaced instead of wedging future readers.
+- Matching Go coverage now locks in the terminal-refresh and stale-session rules in both Home Assistant WHEP proxy trees.
+- On the live Home Assistant validation host, `deck-sub`, `garage-sub`, `south-yard-sub`, and `hamster` all returned to connected audio/video state, and the final bridge/Scrypted/Frigate log sweep cleared the old `400 Bad Request` / `503` churn.
+
 ## 4.2.7 Patch Release
 
 `4.2.7` is the Home Assistant V3 Pro SD-feed follow-up for the `4.2` release line.

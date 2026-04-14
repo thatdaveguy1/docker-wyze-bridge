@@ -15,6 +15,8 @@ from wyzebridge.config import IMG_PATH, IMG_TYPE
 
 DEFAULT_GO2RTC_API_PORT = 11984
 DEFAULT_GO2RTC_RTSP_PORT = 19554
+_NATIVE_ALIAS_READY_CACHE_TTL = 10.0
+_NATIVE_ALIAS_READY_CACHE: dict[str, tuple[float, bool]] = {}
 _VALIDATED_NATIVE_MODELS = {
     "HL_CAM3P": {
         "reason": "HL_CAM3P validated on native go2rtc for the SD feed while the main alias remains unproven on this host",
@@ -72,6 +74,17 @@ def _go2rtc_api_reachable(timeout: float = 0.75) -> bool:
         return False
 
 
+def _native_alias_is_ready(alias: str, timeout: float = 2.0) -> bool:
+    now = time.monotonic()
+    cached = _NATIVE_ALIAS_READY_CACHE.get(alias)
+    if cached and now - cached[0] < _NATIVE_ALIAS_READY_CACHE_TTL:
+        return cached[1]
+
+    ready = bool(_go2rtc_stream_details(alias, timeout=timeout))
+    _NATIVE_ALIAS_READY_CACHE[alias] = (now, ready)
+    return ready
+
+
 def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     alias = native_alias(camera.name_uri, substream)
     primary_alias = native_alias(camera.name_uri, False)
@@ -81,7 +94,8 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     selected_flag = (
         model_support.get("sub_selected") if substream else model_support.get("selected")
     ) if model_support else False
-    selected = bool(supported and selected_flag and api_reachable)
+    alias_ready = bool(supported and selected_flag and api_reachable and _native_alias_is_ready(alias))
+    selected = bool(supported and selected_flag and alias_ready)
 
     if getattr(camera, "is_gwell", False):
         reason = "GW_* remains blocked until a real Gwell model validates end-to-end"
@@ -89,6 +103,8 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
         reason = model_support["reason"]
         if selected_flag and not api_reachable:
             reason = f"{reason}; go2rtc sidecar is not reachable"
+        elif selected_flag and not alias_ready:
+            reason = f"{reason}; native alias {alias} failed readiness check"
     else:
         reason = "bridge remains the default until native go2rtc is validated for this model"
 
@@ -101,6 +117,9 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     elif supported and model_support and selected_flag and not api_reachable:
         talkback_supported = False
         talkback_reason = "talkback requires a reachable go2rtc sidecar"
+    elif supported and model_support and selected_flag and not alias_ready:
+        talkback_supported = False
+        talkback_reason = "talkback requires a ready native go2rtc alias"
     elif supported:
         talkback_supported = False
         talkback_reason = "talkback is limited to native-selected cameras in 4.2"
@@ -116,6 +135,7 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
         "native_rtsp_url": f"{go2rtc_rtsp_base()}/{alias}",
         "native_preload": selected,
         "native_api_reachable": api_reachable,
+        "native_alias_ready": alias_ready,
         "snapshot_source": "go2rtc" if selected else "rtsp",
         "talkback_supported": talkback_supported,
         "talkback_reason": talkback_reason,

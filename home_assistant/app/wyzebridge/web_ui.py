@@ -146,6 +146,18 @@ def _normalized_hls(url: Optional[str]) -> Optional[str]:
     )
 
 
+def _replace_url_host(url: Optional[str], hostname: str) -> Optional[str]:
+    if not url:
+        return url
+    parsed = urlparse(url)
+    if not parsed.netloc:
+        return url
+    netloc = hostname
+    if parsed.port:
+        netloc = f"{hostname}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
 def _lan_base_from_request(default_scheme: str) -> str:
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
     return f"{default_scheme}://{hostname}"
@@ -205,12 +217,14 @@ def build_stream_entries(camera: dict, data: dict) -> list[dict]:
     active_reason = "disabled" if not enabled else "offline"
     lan_base = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
 
-    hls_base = data.get("hls_url")
-    webrtc_base = data.get("webrtc_url")
+    hls_base = camera.get("hls_url") if "hls_url" in camera else data.get("hls_url")
+    webrtc_base = camera.get("webrtc_url") if "webrtc_url" in camera else data.get("webrtc_url")
     external_hls = _normalized_hls(f"{hls_base}stream.m3u8") if hls_base else None
     external_webrtc = f"{webrtc_base}whep" if webrtc_base else None
-    external_rtmp = data.get("rtmp_url")
-    external_rtsp = data.get("rtsp_url")
+    external_rtmp = camera.get("rtmp_url") if "rtmp_url" in camera else data.get("rtmp_url")
+    external_rtsp = camera.get("rtsp_url") if "rtsp_url" in camera else data.get("rtsp_url")
+    if camera.get("native_selected") and camera.get("native_rtsp_url"):
+        external_rtsp = _replace_url_host(camera.get("native_rtsp_url"), lan_base)
     external_fw_rtsp = (
         f"{external_rtsp}fw"
         if camera.get("rtsp_fw_enabled") and external_rtsp
@@ -221,6 +235,8 @@ def build_stream_entries(camera: dict, data: dict) -> list[dict]:
     lan_hls = f"https://{lan_base}:58888/{camera['uri']}/stream.m3u8"
     lan_rtmp = f"rtmp://{lan_base}:51935/{camera['uri']}"
     lan_rtsp = f"rtsp://{lan_base}:58554/{camera['uri']}"
+    if camera.get("native_selected") and camera.get("native_rtsp_url"):
+        lan_rtsp = _replace_url_host(camera.get("native_rtsp_url"), lan_base)
     lan_fw_rtsp = f"{lan_rtsp}fw" if camera.get("rtsp_fw_enabled") else None
 
     external_webrtc_url, lan_webrtc_url = _prefer_stream_urls(
@@ -358,6 +374,19 @@ def format_stream(name_uri: str) -> dict:
     return data
 
 
+def _normalize_camera_urls(camera: dict, stream_data: dict) -> dict:
+    hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
+    normalized = {}
+    for key in ("hls_url", "webrtc_url", "rtsp_url", "rtmp_url"):
+        if key not in camera:
+            continue
+        value = camera.get(key)
+        normalized[key] = _replace_url_host(value, hostname) if value else value
+    if camera.get("native_selected") and camera.get("native_rtsp_url"):
+        normalized["rtsp_url"] = _replace_url_host(camera.get("native_rtsp_url"), hostname)
+    return normalized
+
+
 def format_streams(cams: dict) -> dict[str, dict]:
     """
     Format info for multiple streams with hostname.
@@ -372,16 +401,18 @@ def format_streams(cams: dict) -> dict[str, dict]:
     for uri, cam in cams.items():
         stream_data = format_stream(uri)
         formatted[uri] = cam | stream_data
+        formatted[uri] |= _normalize_camera_urls(cam, stream_data)
         formatted[uri]["streams"] = build_stream_entries(formatted[uri], stream_data)
     return formatted
 
 
-def all_cams(streams: StreamManager, total: int) -> dict:
+def all_cams(streams: StreamManager, total: int, cameras: Optional[dict] = None) -> dict:
+    formatted = format_streams(cameras if cameras is not None else streams.get_all_cam_info())
     return {
         "total": total,
-        "available": streams.total,
-        "enabled": streams.active,
-        "cameras": format_streams(streams.get_all_cam_info()),
+        "available": len(formatted),
+        "enabled": sum(1 for camera in formatted.values() if camera.get("enabled")),
+        "cameras": formatted,
     }
 
 
