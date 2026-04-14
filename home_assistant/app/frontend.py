@@ -222,6 +222,16 @@ def create_app():
             flush=True,
         )
 
+    def camera_catalog():
+        if hasattr(wb, "camera_catalog"):
+            return wb.camera_catalog()
+        return wb.streams.get_all_cam_info()
+
+    def camera_info(cam_name: str):
+        if hasattr(wb, "camera_info"):
+            return wb.camera_info(cam_name)
+        return wb.streams.get_info(cam_name)
+
     def auth_required(view):
         @wraps(view)
         def wrapped_view(*args, **kwargs):
@@ -303,7 +313,9 @@ def create_app():
         resp = make_response(
             render_template(
                 "index.html",
-                cam_data=web_ui.all_cams(wb.streams, wb.api.total_cams),
+                cam_data=web_ui.all_cams(
+                    wb.streams, wb.api.total_cams, cameras=camera_catalog()
+                ),
                 number_of_columns=number_of_columns,
                 refresh_period=refresh_period,
                 api=WbAuth.api,
@@ -371,12 +383,12 @@ def create_app():
     @app.route("/api")
     @auth_required
     def api_all_cams():
-        return web_ui.all_cams(wb.streams, wb.api.total_cams)
+        return web_ui.all_cams(wb.streams, wb.api.total_cams, cameras=camera_catalog())
 
     @app.route("/api/<string:cam_name>")
     @auth_required
     def api_cam(cam_name: str):
-        if cam := wb.streams.get_info(cam_name):
+        if cam := camera_info(cam_name):
             return cam | web_ui.format_stream(cam_name)
         return {"error": f"Could not find camera [{cam_name}]"}
 

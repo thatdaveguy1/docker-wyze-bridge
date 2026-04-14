@@ -374,7 +374,11 @@ def bridge_camera_state(cam_uri: str) -> dict:
     cam_path = urllib.parse.quote(cam_uri, safe="")
     state = {}
 
+    catalog = bridge_camera_catalog()
     published = bridge_published_entries(cam_uri)
+    bridge_catalog_empty = isinstance(catalog, dict) and not catalog
+    if bridge_catalog_empty:
+        published = None
     if published is not None:
         enabled_entries = [(uri, camera) for uri, camera in published if bool(camera.get("enabled"))]
         state["published"] = bool(enabled_entries)

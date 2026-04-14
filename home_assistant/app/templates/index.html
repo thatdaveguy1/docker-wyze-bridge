@@ -162,7 +162,7 @@
             </header>
             <div class="card-image has-text-centered">
                 <figure class="image">
-                    {% if show_video and (camera.on_demand or camera.enabled) %}
+                    {% if show_video and (camera.on_demand or camera.enabled) and ((webrtc and (video_format == "webrtc" or camera.webrtc and video_format == "kvs")) or camera.hls_url) %}
                     {% set is_webrtc = webrtc and (video_format == "webrtc" or camera.webrtc and video_format == "kvs")
                     %}
                     <video data-cam="{{ cam_uri }}" data-refresh-mode="{{ camera.preview_refresh_mode }}" {% if not is_webrtc %}data-src="{{ camera.hls_url }}stream.m3u8" {%

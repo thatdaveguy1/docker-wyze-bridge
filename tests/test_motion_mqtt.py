@@ -48,7 +48,61 @@ fake_wyzecam_iotc.WyzeIOTC = object
 fake_wyzecam_iotc.WyzeIOTCSession = object
 sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
+fake_wyzecam_tutk = sys.modules.setdefault(
+    "wyzecam.tutk", types.ModuleType("wyzecam.tutk")
+)
+fake_wyzecam_tutk_tutk = sys.modules.setdefault(
+    "wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk")
+)
+fake_wyzecam_tutk_protocol = sys.modules.setdefault(
+    "wyzecam.tutk.tutk_protocol", types.ModuleType("wyzecam.tutk.tutk_protocol")
+)
+
+
+class FakeTutkProtocolMessage:
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class FakeTutkWyzeProtocolError(Exception):
+    pass
+
+
+class FakeTutkError(Exception):
+    pass
+
+
+fake_wyzecam_tutk.tutk = fake_wyzecam_tutk_tutk
+fake_wyzecam_tutk.tutk_protocol = fake_wyzecam_tutk_protocol
+if not hasattr(fake_wyzecam_tutk_tutk, "TutkError"):
+    fake_wyzecam_tutk_tutk.TutkError = FakeTutkError
+for _name, _value in {
+    "FRAME_SIZE_2K": 0,
+    "FRAME_SIZE_1080P": 1,
+    "FRAME_SIZE_360P": 2,
+    "FRAME_SIZE_DOORBELL_HD": 3,
+    "FRAME_SIZE_DOORBELL_SD": 4,
+}.items():
+    if not hasattr(fake_wyzecam_tutk_tutk, _name):
+        setattr(fake_wyzecam_tutk_tutk, _name, _value)
+
+
+for _name in (
+    "K10058TakePhoto",
+    "K10148StartBoa",
+    "K11010GetCruisePoints",
+    "K11018SetPTZPosition",
+):
+    if not hasattr(fake_wyzecam_tutk_protocol, _name):
+        setattr(fake_wyzecam_tutk_protocol, _name, FakeTutkProtocolMessage)
+if not hasattr(fake_wyzecam_tutk_protocol, "TutkWyzeProtocolError"):
+    fake_wyzecam_tutk_protocol.TutkWyzeProtocolError = FakeTutkWyzeProtocolError
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
+
+for module_name in list(sys.modules):
+    if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
+        del sys.modules[module_name]
 
 from wyzebridge.stream_manager import StreamManager
 from wyzebridge.wyze_control import motion_alarm
@@ -188,6 +242,22 @@ class TestMotionMQTT(unittest.TestCase):
             manager.monitor_streams(Mock())
 
         self.assertGreaterEqual(expiring_stream.motion_reads, 1)
+
+    def test_monitor_streams_skips_event_poller_when_no_bridge_streams_exist(self):
+        manager = StreamManager(DummyApi())
+
+        class StopImmediately:
+            def read(self, timeout=1):
+                manager.stop_flag = True
+
+        with (
+            patch("wyzebridge.stream_manager.cam_control", return_value=None),
+            patch("wyzebridge.stream_manager.RtspEvent", return_value=StopImmediately()),
+            patch("wyzebridge.stream_manager.WyzeEvents", side_effect=AssertionError("WyzeEvents should not be constructed without bridge streams")),
+            patch("wyzebridge.stream_manager.StreamManager.snap_all"),
+            patch("wyzebridge.stream_manager.StreamManager.active_streams", return_value=[]),
+        ):
+            manager.monitor_streams(Mock())
 
     def test_motion_property_publishes_off_after_expiry(self):
         user = SimpleNamespace()
