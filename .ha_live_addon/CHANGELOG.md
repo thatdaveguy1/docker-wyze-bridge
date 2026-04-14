@@ -1,5 +1,16 @@
 # What's Changed
 
+## What's Changed in v4.2.8
+
+Patch release focused on Home Assistant WHEP proxy stability for bridge-managed RTSP feeds.
+
+### Major Changes
+
+- Treat `/kvs-config/<camera>` `404 camera [x] not found` as terminal inside the bundled `whep_proxy` reconnect loop so removed or unpublished streams stop churning forever.
+- Only reuse WHEP upstream sessions that already have media or are still within a short startup window; stale `upstream_state="new"` sessions with no audio/video are replaced cleanly.
+- Add focused Go coverage for terminal refresh-config errors and stale-session reuse rules in both the production and dev WHEP proxy trees.
+- Validate live on the Home Assistant box that `deck-sub`, `garage-sub`, `south-yard-sub`, and `hamster` all probe cleanly again and that recent bridge/Scrypted/Frigate logs stay clear of the old `400 Bad Request` / `503` errors.
+
 ## What's Changed in v4.2.7
 
 Patch release focused on Home Assistant V3 Pro SD-feed correctness.

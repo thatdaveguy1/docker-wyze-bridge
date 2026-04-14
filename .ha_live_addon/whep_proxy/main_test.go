@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/pion/rtp"
@@ -78,9 +79,13 @@ func TestOutputTracksRequireReadyMedia(t *testing.T) {
 	if stream.canReuse() {
 		t.Fatal("expected stream without upstream session or ready media to stay non-reusable")
 	}
-	stream.setUpstream(&UpstreamSession{})
+	stream.setUpstream(&UpstreamSession{startedAt: time.Now()})
 	if !stream.canReuse() {
-		t.Fatal("expected stream with active upstream session to be reusable during startup")
+		t.Fatal("expected stream with recent upstream session to be reusable during startup")
+	}
+	stream.setUpstream(&UpstreamSession{startedAt: time.Now().Add(-startupReuseWindow - time.Second)})
+	if stream.canReuse() {
+		t.Fatal("expected stale upstream session without media to be replaced")
 	}
 }
 
@@ -139,6 +144,29 @@ func TestShouldReconnectOnNormalWSClosure(t *testing.T) {
 				t.Fatalf("expected %t, got %t", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestIsTerminalRefreshErrorRecognizesMissingStream(t *testing.T) {
+	err := &refreshConfigError{
+		statusCode: 404,
+		body:       `{"error":"camera [south-yard] not found"}`,
+	}
+	if !isTerminalRefreshError(err) {
+		t.Fatal("expected 404 refresh config error to stop reconnecting")
+	}
+}
+
+func TestIsTerminalRefreshErrorIgnoresRetryableRefreshFailures(t *testing.T) {
+	err := &refreshConfigError{
+		statusCode: 503,
+		body:       `{"error":"KVS config not ready for south-yard"}`,
+	}
+	if isTerminalRefreshError(err) {
+		t.Fatal("expected retryable refresh config error to keep reconnecting")
+	}
+	if isTerminalRefreshError(errors.New("boom")) {
+		t.Fatal("expected unrelated error to stay non-terminal")
 	}
 }
 

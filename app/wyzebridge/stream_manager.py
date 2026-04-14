@@ -83,7 +83,7 @@ class StreamManager:
         mqtt = cam_control(self.streams, self.send_cmd)
         logger.info(f"🎬 {self.total} stream{'s'[: self.total ^ 1]} enabled")
         event = RtspEvent(self.streams)
-        events = WyzeEvents(self.streams) if MOTION else None
+        events = WyzeEvents(self.streams) if MOTION and self.streams else None
 
         while not self.stop_flag:
             event.read(timeout=1)

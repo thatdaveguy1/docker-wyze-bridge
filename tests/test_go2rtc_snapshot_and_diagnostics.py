@@ -27,6 +27,9 @@ _paho = types.ModuleType("paho")
 _paho_mqtt = types.ModuleType("paho.mqtt")
 _paho_mqtt_client = types.ModuleType("paho.mqtt.client")
 _paho_mqtt_publish = types.ModuleType("paho.mqtt.publish")
+_paho_mqtt_client.Client = Mock
+_paho_mqtt_client.CallbackAPIVersion = types.SimpleNamespace(VERSION2=2)
+_paho_mqtt_publish.multiple = Mock()
 _paho.mqtt = _paho_mqtt
 _paho_mqtt.client = _paho_mqtt_client
 _paho_mqtt.publish = _paho_mqtt_publish
@@ -70,6 +73,8 @@ sys.modules["wyzebridge.wyze_events"] = _wyzebridge_wyze_events
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
+import wyzebridge.bridge_diagnostics as bridge_diagnostics_module
+import wyzebridge.stream_manager as stream_manager_module
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
 from wyzebridge.stream_manager import StreamManager
 
@@ -85,6 +90,27 @@ class DummyApi:
 
 
 class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
+    @patch("wyzebridge.go2rtc._native_alias_is_ready")
+    @patch("wyzebridge.go2rtc._go2rtc_api_reachable")
+    def test_native_stream_info_requires_ready_alias_for_selected_feed(
+        self, mock_api_reachable, mock_alias_ready
+    ):
+        from wyzebridge import go2rtc
+
+        mock_api_reachable.return_value = True
+        mock_alias_ready.return_value = False
+        camera = SimpleNamespace(name_uri="hamster", product_model="HL_CAM3P", is_gwell=False)
+
+        info = go2rtc.native_stream_info(camera, substream=True)
+
+        self.assertTrue(info["native_supported"])
+        self.assertFalse(info["native_selected"])
+        self.assertFalse(info["native_alias_ready"])
+        self.assertEqual(info["snapshot_source"], "rtsp")
+        self.assertIn("failed readiness check", info["native_reason"])
+        self.assertFalse(info["talkback_supported"])
+        mock_alias_ready.assert_called_once_with("hamster-sd")
+
     def test_talkback_codec_probe_requests_microphone_media(self):
         from wyzebridge import go2rtc
 
@@ -139,8 +165,8 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             timeout=20.0,
         )
 
-    @patch("wyzebridge.stream_manager.preload_native_stream")
-    @patch("wyzebridge.stream_manager.write_native_snapshot")
+    @patch.object(stream_manager_module, "preload_native_stream")
+    @patch.object(stream_manager_module, "write_native_snapshot")
     def test_stream_manager_prefers_native_snapshot_for_selected_camera(
         self, mock_write_native_snapshot, mock_preload
     ):
@@ -212,7 +238,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertIn("audio_b64", result["response"])
         self.assertIn("audio_url", result["response"])
 
-    @patch("wyzebridge.bridge_diagnostics.go2rtc_probe")
+    @patch.object(bridge_diagnostics_module, "go2rtc_probe")
     def test_collect_bridge_diagnostics_includes_go2rtc_selection(self, mock_probe):
         mock_probe.return_value = {
             "api": {"reachable": True},

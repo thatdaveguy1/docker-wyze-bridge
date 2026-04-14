@@ -90,7 +90,7 @@ class WyzeBridge(Thread):
             )
         self.mtx.setup_auth(WbAuth.api, STREAM_AUTH)
         self.setup_streams(user)
-        if self.streams.total < 1:
+        if self.streams.total < 1 and not self._has_enabled_native_feed():
             return signal.raise_signal(signal.SIGINT)
 
         if logger.getEffectiveLevel() == 10:  # if we're at debug level
@@ -123,15 +123,18 @@ class WyzeBridge(Thread):
             )
 
             stream_config = self.camera_stream_config(cam)
+            feeds = stream_config["feeds"]
             options = WyzeStreamOptions(
-                quality=f"hd{stream_config['feeds']['hd']['kbps']}",
+                quality=f"hd{feeds['hd']['kbps']}",
                 audio=bool(env_cam("enable_audio", cam.name_uri)),
                 record=bool(env_cam("record", cam.name_uri)),
                 reconnect=(not ON_DEMAND) or is_livestream(cam.name_uri),
             )
 
-            create_main = stream_config["feeds"]["hd"]["enabled"]
-            create_sub = self.camera_substream_enabled(cam)
+            create_main = any(
+                feed["enabled"] and feed["path"] == "main" for feed in feeds.values()
+            )
+            create_sub = bool(feeds["sd"]["enabled"] and feeds["sd"]["path"] == "sub")
 
             if create_main:
                 stream = WyzeStream(user, self.api, cam, options)
@@ -145,6 +148,82 @@ class WyzeBridge(Thread):
 
             if create_sub:
                 self.add_substream(user, self.api, cam, options)
+
+    def _camera_catalog_entry(self, cam: WyzeCamera) -> dict:
+        config = self.camera_stream_config(cam)
+        feeds = config["feeds"]
+        enabled = any(feed["enabled"] for feed in feeds.values())
+        selected_feed = "hd"
+        if feeds["hd"]["enabled"] and feeds["hd"]["path"] == "native":
+            selected_feed = "hd"
+        elif feeds["sd"]["enabled"]:
+            selected_feed = "sd"
+        native_info = native_stream_info(cam, substream=selected_feed == "sd")
+        selected_resolution = feeds[selected_feed].get("resolution")
+        connected = bool(
+            feeds[selected_feed]["path"] == "native"
+            and native_info.get("native_selected")
+        )
+        status = "connected" if connected else "stopped" if enabled else "disabled"
+
+        return {
+            "name_uri": cam.name_uri,
+            "camera_uri": cam.name_uri,
+            "source": "go2rtc" if feeds[selected_feed]["path"] == "native" else "kvs",
+            "status": status,
+            "connected": connected,
+            "enabled": enabled,
+            "motion": False,
+            "motion_ts": 0,
+            "on_demand": False,
+            "audio": bool(env_cam("enable_audio", cam.name_uri)),
+            "record": bool(env_cam("record", cam.name_uri)),
+            "substream": False,
+            "webrtc": False,
+            "start_time": 0,
+            "req_frame_size": 0,
+            "req_bitrate": 0,
+            "actual_resolution": selected_resolution,
+            "bridge_can_substream": cam.bridge_can_substream,
+            "camera_can_substream": cam.can_substream,
+            "rtsp_fw_enabled": False,
+            "rtsp_url": native_info.get("native_rtsp_url")
+            if feeds[selected_feed]["path"] == "native"
+            else None,
+            "hls_url": None,
+            "webrtc_url": None,
+            "rtmp_url": None,
+            "boa_url": None,
+        } | native_info | cam.model_dump(exclude={"p2p_id", "enr", "parent_enr"})
+
+    def camera_info(self, cam_name: str) -> dict:
+        if info := self.streams.get_info(cam_name):
+            return info
+        if cam_name.endswith("-sub"):
+            return {}
+        if not (cam := self.api.get_camera(cam_name)):
+            return {}
+        return self._camera_catalog_entry(cam)
+
+    def camera_catalog(self) -> dict:
+        catalog = self.streams.get_all_cam_info()
+        for cam in self.api.filtered_cams():
+            if cam.name_uri in catalog:
+                continue
+            config = self.camera_stream_config(cam)
+            if any(
+                feed["enabled"] and feed["path"] in {"main", "native"}
+                for feed in config["feeds"].values()
+            ):
+                catalog[cam.name_uri] = self._camera_catalog_entry(cam)
+        return catalog
+
+    def _has_enabled_native_feed(self) -> bool:
+        return any(
+            feed.get("enabled") and feed.get("path") == "native"
+            for cam in self.api.filtered_cams()
+            for feed in self.camera_stream_config(cam)["feeds"].values()
+        )
 
     def camera_stream_mode(self, cam: WyzeCamera) -> str:
         return self.camera_stream_config(cam)["mode"]
@@ -193,6 +272,8 @@ class WyzeBridge(Thread):
     def camera_feed_config(self, cam: WyzeCamera) -> dict:
         hd_supported = self.camera_hd_supported(cam)
         sd_supported = self.camera_sd_supported(cam)
+        native_hd = native_stream_info(cam, False)
+        native_sd = native_stream_info(cam, True)
         env_uri = cam.name_uri.upper().replace("-", "_")
         hd_env_configured = any(
             os.getenv(key) is not None
@@ -227,18 +308,23 @@ class WyzeBridge(Thread):
             else legacy_mode in {"sub", "both"} or (legacy_mode == "" and default_sd_enabled)
         ) and sd_supported
         if not hd_enabled and not sd_enabled:
-            if hd_supported:
-                hd_enabled = True
-            elif sd_supported:
+            if sd_supported:
                 sd_enabled = True
+            elif hd_supported:
+                hd_enabled = True
 
         sd_path = "main"
         if sd_enabled and sd_supported:
-            sd_path = "sub" if cam.bridge_can_substream else "main"
-            if env_bool("GO2RTC_RTSP_PORT") and native_stream_info(cam, True).get(
-                "native_selected"
-            ):
+            if env_bool("GO2RTC_RTSP_PORT") and native_sd.get("native_selected"):
                 sd_path = "native"
+            else:
+                sd_path = "sub" if cam.bridge_can_substream else "main"
+
+        hd_path = "main"
+        if hd_enabled and hd_supported and env_bool("GO2RTC_RTSP_PORT") and native_hd.get(
+            "native_selected"
+        ):
+            hd_path = "native"
 
         hd_kbps = int(get_camera_setting(cam.name_uri, "hd_kbps") or env_cam("quality", cam.name_uri, "hd180")[2:] or 180)
         sd_kbps = int(get_camera_setting(cam.name_uri, "sd_kbps") or env_cam("sub_quality", cam.name_uri, "sd30")[2:] or 30)
@@ -251,7 +337,7 @@ class WyzeBridge(Thread):
                     "supported": hd_supported,
                     "kbps": hd_kbps,
                     "resolution": self.camera_feed_resolution(cam, "hd"),
-                    "path": "main",
+                    "path": hd_path,
                     "reason": "" if hd_supported else "HD stream is not available for this camera",
                 },
                 "sd": {

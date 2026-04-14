@@ -83,6 +83,15 @@ type wsCloseInfo struct {
 	normal bool
 }
 
+type refreshConfigError struct {
+	statusCode int
+	body       string
+}
+
+func (e *refreshConfigError) Error() string {
+	return fmt.Sprintf("refresh config status %d: %s", e.statusCode, strings.TrimSpace(e.body))
+}
+
 type ICEServer struct {
 	URL        string `json:"url"`
 	Username   string `json:"username"`
@@ -98,6 +107,8 @@ type WebRTCConfig struct {
 
 var streams = make(map[string]*WebRTCStream)
 var streamsMu sync.Mutex
+
+const startupReuseWindow = 20 * time.Second
 
 func (stream *WebRTCStream) outputTracks() []*webrtc.TrackLocalStaticRTP {
 	stream.mediaMu.RLock()
@@ -133,7 +144,14 @@ func (stream *WebRTCStream) canReuse() bool {
 	if stream.videoReady.Load() || stream.audioReady.Load() {
 		return true
 	}
-	return stream.currentUpstream() != nil || stream.reconnecting.Load()
+	if stream.reconnecting.Load() {
+		return true
+	}
+	session := stream.currentUpstream()
+	if session == nil || session.startedAt.IsZero() {
+		return false
+	}
+	return time.Since(session.startedAt) < startupReuseWindow
 }
 
 func (stream *WebRTCStream) setVideoSource(track *webrtc.TrackRemote) {
@@ -269,6 +287,14 @@ func closeNormalRotationWebsocket(session *UpstreamSession) {
 	}
 	_ = session.wsConn.Close()
 	session.wsConn = nil
+}
+
+func isTerminalRefreshError(err error) bool {
+	var refreshErr *refreshConfigError
+	if !errors.As(err, &refreshErr) {
+		return false
+	}
+	return refreshErr.statusCode == http.StatusNotFound
 }
 
 func (stream *WebRTCStream) currentUpstream() *UpstreamSession {
@@ -788,6 +814,12 @@ func (stream *WebRTCStream) scheduleReconnect(reason string) {
 
 			config, err := fetchKVSConfig(stream.streamID)
 			if err != nil {
+				if isTerminalRefreshError(err) {
+					log.Printf("[WHEP_PROXY] Stopping reconnect for %s: %v", stream.streamID, err)
+					stream.reconnecting.Store(false)
+					destroyStreamIfCurrent(stream.streamID, stream)
+					return
+				}
 				log.Printf("[WHEP_PROXY] Failed to refresh KVS config for %s: %v", stream.streamID, err)
 				continue
 			}
@@ -845,7 +877,10 @@ func fetchKVSConfig(streamID string) (WebRTCConfig, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return config, fmt.Errorf("refresh config status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return config, &refreshConfigError{
+			statusCode: resp.StatusCode,
+			body:       string(body),
+		}
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&config); err != nil {
