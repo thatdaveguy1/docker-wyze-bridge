@@ -21,6 +21,7 @@ mediamtx.yml
 media/
 scripts/.ha_ssh.env
 worktrees/
+tmp/
 
 # Local debugging and runtime artifacts
 .live_local_info.json
