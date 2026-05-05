@@ -67,7 +67,7 @@ ARG BUILD_VERSION
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl; \
+    apt-get install -y --no-install-recommends ca-certificates curl; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     rm /var/log/*.log ; \

@@ -221,9 +221,9 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         for dockerfile_path in dockerfiles:
             dockerfile_text = dockerfile_path.read_text()
             with self.subTest(dockerfile=str(dockerfile_path.relative_to(ROOT))):
-                self.assertIn(
-                    "apt-get install -y --no-install-recommends curl",
+                self.assertRegex(
                     dockerfile_text,
+                    r"apt-get install -y --no-install-recommends [^\n]*\bcurl\b",
                     "runtime image should include curl because go2rtc_sidecar.sh refreshes preserved aliases via curl at startup",
                 )
 
@@ -252,7 +252,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertEqual(dev_version.group(1).strip(), "4.2.8-dev")
+        self.assertEqual(dev_version.group(1).strip(), "4.2.9-dev")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()

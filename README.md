@@ -21,9 +21,15 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - Camera metadata, `/health/details`, and the Web UI now expose per-camera native-vs-bridge selection plus granular `HD` and `SD` feed publishing controls.
 - `frontend.py`, `site.js`, and `index.html` are normalized across the three runtime trees where behavior should match, while preserving the intentional dev add-on `:55000` talkback loopback port.
 - API-first native talkback remains limited to native-selected cameras, with uploaded-audio talkback validated on native-selected V4 paths.
-- Public docs and add-on/package version surfaces are aligned for the `4.2.8` release.
+- Public docs and add-on/package version surfaces are aligned for the `4.2.9` release.
 
 ## 4.2 Patch Releases
+
+### 4.2.9
+
+- Fixes the native `go2rtc` startup race that could make native-only cameras look offline after every bridge restart when alias readiness lagged behind the sidecar API coming up.
+- Keeps `native_alias_ready` as a diagnostic signal, but no longer lets that transient startup state block native RTSP URL assignment or camera selection.
+- Hardens the Home Assistant `4.2.9` validation path for the current host by honoring configured MediaMTX listener addresses from env and completing a 20-minute soak on the validated HLS reroute when `58888` was already occupied on-box.
 
 ### 4.2.8
 

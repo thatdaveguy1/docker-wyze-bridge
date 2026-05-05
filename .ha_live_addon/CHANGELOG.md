@@ -1,5 +1,15 @@
 # What's Changed
 
+## What's Changed in v4.2.9
+
+Patch release fixing a startup race that caused native-only cameras (`north-yard`, `hamster`) to appear offline in HomeKit via Scrypted after every bridge restart.
+
+### Major Changes
+
+- Fix `native_selected` gate in `go2rtc.native_stream_info`: selection is now determined solely by `api_reachable`, not by `_native_alias_is_ready`.
+- Keep `native_alias_ready` as a diagnostic-only field so transient alias warm-up does not block native RTSP URL assignment.
+- Apply the fix across all three runtime trees: `app/`, `home_assistant/app/`, and `.ha_live_addon/app/`.
+
 ## What's Changed in v4.2.8
 
 Patch release focused on Home Assistant WHEP proxy stability for bridge-managed RTSP feeds.
