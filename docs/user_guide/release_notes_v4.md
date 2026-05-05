@@ -9,6 +9,15 @@ The short version:
 - Home Assistant support for the native `go2rtc` RTSP path is still included.
 - The docs now describe what really works today, in much plainer terms.
 
+## 4.2.9 Patch Release
+
+`4.2.9` is the native startup-race and Home Assistant validation follow-up for the `4.2` release line.
+
+- Native-only camera selection no longer depends on `_native_alias_is_ready()`, which was only a transient startup probe and could briefly report `False` while `go2rtc` was already reachable.
+- `native_alias_ready` stays available as a diagnostic field, but it no longer blocks native RTSP URL assignment, camera-catalog selection, or the HomeKit/Scrypted path that depends on those values.
+- Matching regression coverage now locks in both sides of the rule: a reachable `go2rtc` API keeps native selection active even before the alias is hot, while a fully unreachable sidecar still reports the camera as not selected.
+- On the live Home Assistant validation host, the cleaned `ssltest` add-on completed a 20-check soak with `mtx_alive=true`, `wyze_authed=true`, RTSP/WebRTC/native ports answering, and the old `SSLCertVerificationError` / `.email` startup crashes absent. The host already had something else bound to `:58888`, so the validation soak used a temporary HLS listener on `:39888` instead.
+
 ## 4.2.8 Patch Release
 
 `4.2.8` is the Home Assistant WHEP stability follow-up for the `4.2` release line.
