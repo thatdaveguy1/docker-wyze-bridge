@@ -305,7 +305,10 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         self.assertTrue(config["feeds"]["sd"]["enabled"])
         self.assertEqual(config["feeds"]["sd"]["path"], "sub")
 
-    def test_camera_feed_config_falls_back_to_bridge_sub_when_native_sd_not_ready(self):
+    def test_camera_feed_config_falls_back_to_bridge_sub_when_go2rtc_unreachable_for_native_sd(self):
+        # Verify the SD feed falls back to bridge-sub when native_selected=False.
+        # After the 4.2.9 fix, native_selected=False only happens when go2rtc is fully
+        # unreachable (not merely because the alias hasn't been probed yet).
         sys.modules.pop("wyze_bridge", None)
         reset_wyzecam_modules()
         with patch("os.makedirs"):
@@ -323,7 +326,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
             if substream:
                 info["native_selected"] = False
                 info["native_alias_ready"] = False
-                info["native_reason"] = "native alias north-yard-sd failed readiness check"
+                info["native_reason"] = "HL_CAM3P validated on native go2rtc for the SD feed; go2rtc sidecar is not reachable"
                 info["snapshot_source"] = "rtsp"
             return info
 

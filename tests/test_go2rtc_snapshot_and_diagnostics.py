@@ -92,9 +92,12 @@ class DummyApi:
 class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     @patch("wyzebridge.go2rtc._native_alias_is_ready")
     @patch("wyzebridge.go2rtc._go2rtc_api_reachable")
-    def test_native_stream_info_requires_ready_alias_for_selected_feed(
+    def test_native_stream_info_selected_when_api_reachable_even_if_alias_not_ready(
         self, mock_api_reachable, mock_alias_ready
     ):
+        # alias_ready is diagnostic-only; it must NOT block selection when the sidecar is up.
+        # Previously this gated native_selected=False, causing Scrypted to cache a bad URL
+        # and HomeKit to lose the camera on every bridge restart (4.2.8 regression).
         from wyzebridge import go2rtc
 
         mock_api_reachable.return_value = True
@@ -104,12 +107,36 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         info = go2rtc.native_stream_info(camera, substream=True)
 
         self.assertTrue(info["native_supported"])
+        self.assertTrue(info["native_selected"])        # selected because api_reachable=True
+        self.assertFalse(info["native_alias_ready"])    # diagnostic: alias not hot yet
+        self.assertEqual(info["snapshot_source"], "go2rtc")
+        self.assertNotIn("failed readiness check", info["native_reason"])
+        self.assertFalse(info["talkback_supported"])    # substream — talkback always off
+        mock_alias_ready.assert_called_once_with("hamster-sd")
+
+    @patch("wyzebridge.go2rtc._native_alias_is_ready")
+    @patch("wyzebridge.go2rtc._go2rtc_api_reachable")
+    def test_native_stream_info_not_selected_when_go2rtc_unreachable(
+        self, mock_api_reachable, mock_alias_ready
+    ):
+        # When the go2rtc sidecar is completely down the camera should be reported as
+        # not-selected so Scrypted can surface it as offline rather than serve a dead URL.
+        from wyzebridge import go2rtc
+
+        mock_api_reachable.return_value = False
+        mock_alias_ready.return_value = False
+        camera = SimpleNamespace(name_uri="north-yard", product_model="HL_CAM4", is_gwell=False)
+
+        info = go2rtc.native_stream_info(camera, substream=False)
+
+        self.assertTrue(info["native_supported"])
         self.assertFalse(info["native_selected"])
         self.assertFalse(info["native_alias_ready"])
         self.assertEqual(info["snapshot_source"], "rtsp")
-        self.assertIn("failed readiness check", info["native_reason"])
+        self.assertIn("not reachable", info["native_reason"])
         self.assertFalse(info["talkback_supported"])
-        mock_alias_ready.assert_called_once_with("hamster-sd")
+        # alias readiness should NOT be checked when the API is down (avoids a wasted call)
+        mock_alias_ready.assert_not_called()
 
     def test_talkback_codec_probe_requests_microphone_media(self):
         from wyzebridge import go2rtc

@@ -94,8 +94,12 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     selected_flag = (
         model_support.get("sub_selected") if substream else model_support.get("selected")
     ) if model_support else False
-    alias_ready = bool(supported and selected_flag and api_reachable and _native_alias_is_ready(alias))
-    selected = bool(supported and selected_flag and alias_ready)
+    # selected is gated only on api_reachable, not alias readiness — alias readiness is a
+    # transient startup condition and must not cause native cameras to lose their RTSP URL
+    selected = bool(supported and selected_flag and api_reachable)
+    # alias_ready is a diagnostic-only field: it tells callers whether the stream is already
+    # hot in go2rtc, but a False value does NOT block selection or URL assignment
+    alias_ready = bool(selected and _native_alias_is_ready(alias))
 
     if getattr(camera, "is_gwell", False):
         reason = "GW_* remains blocked until a real Gwell model validates end-to-end"
@@ -103,8 +107,6 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
         reason = model_support["reason"]
         if selected_flag and not api_reachable:
             reason = f"{reason}; go2rtc sidecar is not reachable"
-        elif selected_flag and not alias_ready:
-            reason = f"{reason}; native alias {alias} failed readiness check"
     else:
         reason = "bridge remains the default until native go2rtc is validated for this model"
 
@@ -117,9 +119,6 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     elif supported and model_support and selected_flag and not api_reachable:
         talkback_supported = False
         talkback_reason = "talkback requires a reachable go2rtc sidecar"
-    elif supported and model_support and selected_flag and not alias_ready:
-        talkback_supported = False
-        talkback_reason = "talkback requires a ready native go2rtc alias"
     elif supported:
         talkback_supported = False
         talkback_reason = "talkback is limited to native-selected cameras in 4.2"

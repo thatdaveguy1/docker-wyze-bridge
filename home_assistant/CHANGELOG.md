@@ -1,5 +1,16 @@
 # What's Changed
 
+## What's Changed in v4.2.9
+
+Patch release fixing a startup race that caused native-only cameras (`north-yard`, `hamster`) to appear offline in HomeKit via Scrypted after every bridge restart.
+
+### Major Changes
+
+- Fix `native_selected` gate in `go2rtc.native_stream_info`: selection is now determined solely by `api_reachable`, not by `_native_alias_is_ready`. The alias-readiness check is a transient startup condition (go2rtc is up but aliases haven't connected yet), and using it to gate `selected` caused `connected=False`/`status="stopped"` in the camera catalog, which Scrypted cached as "camera offline" in HomeKit.
+- `native_alias_ready` is preserved as a diagnostic-only field in the returned dict and in `/api/diagnostics` — it still tells you whether the stream is already hot in go2rtc, but a `False` value no longer blocks selection or RTSP URL assignment.
+- Apply fix consistently across all three code copies: `app/`, `home_assistant/app/`, and `.ha_live_addon/app/`.
+- Live validation on the Home Assistant host also re-proved the startup/auth path with `mtx_alive=true` and `wyze_authed=true` through a 20-check soak. The host already had another service bound to `:58888`, so the validation lane used a temporary HLS listener on `:39888` for that soak instead of the default HLS port.
+
 ## What's Changed in v4.2.8
 
 Patch release focused on Home Assistant WHEP proxy stability for bridge-managed RTSP feeds.
