@@ -437,6 +437,14 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                 for expected in expected_lines[addon_name]:
                     self.assertIn(expected, env_text)
 
+    def test_prod_hidden_ha_env_is_explicitly_unignored(self):
+        gitignore_text = (ROOT / ".gitignore").read_text()
+        self.assertIn(
+            "!home_assistant/app/.env",
+            gitignore_text,
+            "the production Home Assistant .env must be explicitly unignored so Supervisor GitHub builds receive the fixed MediaMTX port settings",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
