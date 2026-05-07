@@ -19,4 +19,6 @@ fi
 . /app/go2rtc_sidecar.sh
 start_go2rtc_sidecar
 
+export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
+
 exec flask run --host=0.0.0.0 --port=5000

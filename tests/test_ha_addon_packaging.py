@@ -30,6 +30,24 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                 self.assertIn(". /app/go2rtc_sidecar.sh", run_text)
                 self.assertIn("start_go2rtc_sidecar", run_text)
 
+    def test_all_runtime_entrypoints_export_app_pythonpath(self):
+        run_files = [
+            ROOT / "app" / "run",
+            ROOT / "home_assistant" / "app" / "run",
+            ROOT / ".ha_live_addon" / "app" / "run",
+        ]
+
+        expected_line = 'export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"'
+
+        for run_path in run_files:
+            run_text = run_path.read_text()
+            with self.subTest(run=str(run_path.relative_to(ROOT))):
+                self.assertIn(
+                    expected_line,
+                    run_text,
+                    "runtime entrypoints should export /app on PYTHONPATH so flask can import wyzebridge from the add-on workdir",
+                )
+
     def test_all_ha_dockerfiles_avoid_hidden_env_dependency(self):
         dockerfiles = [
             ADDON_DIR / "Dockerfile",
