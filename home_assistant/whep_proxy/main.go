@@ -174,6 +174,15 @@ func (stream *WebRTCStream) canReuse() bool {
 	if stream.reconnecting.Load() {
 		return true
 	}
+	// If no media has ever flowed but the stream is still within maxNoMediaAge,
+	// keep it alive so the upstream goroutine has time to finish ICE/DTLS
+	// negotiation.  Without this guard the 20-second startupReuseWindow check
+	// below fires first, causing repeated stale-replace cycles that never let
+	// any single connection attempt run to completion.
+	if !stream.hasEverHadMedia.Load() && !stream.streamCreatedAt.IsZero() &&
+		time.Since(stream.streamCreatedAt) < maxNoMediaAge {
+		return true
+	}
 	session := stream.currentUpstream()
 	if session == nil || session.startedAt.IsZero() {
 		return false
