@@ -89,6 +89,34 @@ func TestOutputTracksRequireReadyMedia(t *testing.T) {
 	}
 }
 
+func TestCanReuseStaleNoMediaStreamExpires(t *testing.T) {
+	// A stream that has never produced media and whose streamCreatedAt is past
+	// maxNoMediaAge must return canReuse()=false — even when reconnecting=true
+	// or a fresh upstream session is present — to break the perpetual "new"
+	// wedge where each reconnect resets the per-session startedAt clock.
+	stream := &WebRTCStream{
+		streamCreatedAt: time.Now().Add(-maxNoMediaAge - time.Second),
+	}
+	// No media ever, no upstream session yet.
+	if stream.canReuse() {
+		t.Fatal("expected stream with no media and expired maxNoMediaAge to be non-reusable")
+	}
+	// Also non-reusable even when reconnecting.
+	stream.reconnecting.Store(true)
+	if stream.canReuse() {
+		t.Fatal("expected reconnecting stream past maxNoMediaAge with no media to be non-reusable")
+	}
+	stream.reconnecting.Store(false)
+
+	// Once media has ever flowed, the maxNoMediaAge guard must NOT fire:
+	// existing reconnect / startup-window logic takes over instead.
+	stream.hasEverHadMedia.Store(true)
+	stream.setUpstream(&UpstreamSession{startedAt: time.Now()})
+	if !stream.canReuse() {
+		t.Fatal("expected stream that has had media (even past maxNoMediaAge) to remain reusable during startup window")
+	}
+}
+
 func TestClassifyWSReadErrorTreatsGoingAwayAsNormal(t *testing.T) {
 	closeInfo := classifyWSReadError(&websocket.CloseError{Code: websocket.CloseGoingAway, Text: "Going away"})
 	if !closeInfo.normal {
