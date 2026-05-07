@@ -61,6 +61,13 @@ type WebRTCStream struct {
 	videoReplayLogged atomic.Bool
 	videoIDRLogged    atomic.Bool
 	videoParamsMissed atomic.Bool
+	// streamCreatedAt is set once when the stream is first registered and never
+	// reset.  Together with hasEverHadMedia it lets canReuse() detect streams
+	// that have been wedged since birth (upstream never reaches "connected") and
+	// force a destroy/recreate cycle instead of recycling them indefinitely.
+	streamCreatedAt time.Time
+	hasEverHadMedia atomic.Bool
+	staleLogged     atomic.Bool
 }
 
 type UpstreamSession struct {
@@ -110,6 +117,12 @@ var streamsMu sync.Mutex
 
 const startupReuseWindow = 20 * time.Second
 
+// maxNoMediaAge is the wall-clock age at which a stream that has never
+// produced any media is considered permanently wedged and declared non-reusable,
+// forcing a destroy/recreate cycle on the next config POST from the Python
+// bridge.  Two minutes is generous: a healthy KVS camera connects in < 30s.
+const maxNoMediaAge = 2 * time.Minute
+
 func (stream *WebRTCStream) outputTracks() []*webrtc.TrackLocalStaticRTP {
 	stream.mediaMu.RLock()
 	defer stream.mediaMu.RUnlock()
@@ -141,6 +154,20 @@ func (stream *WebRTCStream) canReuse() bool {
 	if stream == nil || stream.destroyed.Load() {
 		return false
 	}
+	// Hard timeout: if no media has ever flowed and the stream has been alive
+	// longer than maxNoMediaAge, declare it stale.  This breaks the perpetual
+	// "new" wedge where each reconnect attempt resets the per-session startedAt
+	// clock, keeping startupReuseWindow alive forever.  Once hasEverHadMedia is
+	// true this guard is skipped — existing reconnect / startup-window logic
+	// handles temporary media loss.
+	if !stream.hasEverHadMedia.Load() && !stream.streamCreatedAt.IsZero() &&
+		time.Since(stream.streamCreatedAt) > maxNoMediaAge {
+		if stream.staleLogged.CompareAndSwap(false, true) {
+			log.Printf("[WHEP_PROXY] Stream %s declared stale: no media in %s (maxNoMediaAge=%s)",
+				stream.streamID, time.Since(stream.streamCreatedAt).Round(time.Second), maxNoMediaAge)
+		}
+		return false
+	}
 	if stream.videoReady.Load() || stream.audioReady.Load() {
 		return true
 	}
@@ -159,6 +186,11 @@ func (stream *WebRTCStream) setVideoSource(track *webrtc.TrackRemote) {
 	defer stream.mediaMu.Unlock()
 	stream.videoSource = track
 	stream.videoReady.Store(track != nil)
+	if track != nil {
+		// Once we have a video track the stream has produced real media; disable
+		// the maxNoMediaAge guard for the rest of this stream's lifetime.
+		stream.hasEverHadMedia.Store(true)
+	}
 }
 
 func (stream *WebRTCStream) setAudioReady(ready bool) {
@@ -171,13 +203,20 @@ func (stream *WebRTCStream) status() map[string]interface{} {
 		upstreamState = session.peerConnection.ConnectionState().String()
 	}
 
+	streamAgeSec := 0.0
+	if !stream.streamCreatedAt.IsZero() {
+		streamAgeSec = time.Since(stream.streamCreatedAt).Seconds()
+	}
+
 	return map[string]interface{}{
-		"upstream_state": upstreamState,
-		"upstream_alive": stream.upstreamAlive.Load(),
-		"can_reuse":      stream.canReuse(),
-		"video_ready":    stream.videoReady.Load(),
-		"audio_ready":    stream.audioReady.Load(),
-		"whep_clients":   stream.whepClients.Load(),
+		"upstream_state":    upstreamState,
+		"upstream_alive":    stream.upstreamAlive.Load(),
+		"can_reuse":         stream.canReuse(),
+		"video_ready":       stream.videoReady.Load(),
+		"audio_ready":       stream.audioReady.Load(),
+		"whep_clients":      stream.whepClients.Load(),
+		"has_ever_had_media": stream.hasEverHadMedia.Load(),
+		"stream_age_sec":    streamAgeSec,
 	}
 }
 
@@ -1518,9 +1557,10 @@ func websocketHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stream = &WebRTCStream{
-		streamID:   streamID,
-		videoTrack: videoTrack,
-		audioTrack: audioTrack,
+		streamID:        streamID,
+		videoTrack:      videoTrack,
+		audioTrack:      audioTrack,
+		streamCreatedAt: time.Now(),
 	}
 	stream.setConfig(config)
 	streams[streamID] = stream
