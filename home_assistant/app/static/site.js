@@ -222,10 +222,10 @@ async function update_img(oldUrl, options = {}) {
     button.disabled = false;
     button.getElementsByClassName("fas")[0].classList.remove("fa-spin");
     button.style.display = null;
-    if (!imgDate.url.endsWith(".svg")) {
-      button.parentElement.querySelector(".age").dataset.age = new Date(
-        imgDate.headers.get("Last-Modified"),
-      ).getTime();
+    const lastModified = imgDate.headers.get("Last-Modified");
+    const lastModifiedMs = lastModified ? new Date(lastModified).getTime() : NaN;
+    if (!imgDate.url.endsWith(".svg") && Number.isFinite(lastModifiedMs)) {
+      button.parentElement.querySelector(".age").dataset.age = lastModifiedMs;
     }
   }
   return newUrl;

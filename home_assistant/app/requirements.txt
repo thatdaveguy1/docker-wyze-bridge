@@ -4,6 +4,7 @@ paho-mqtt== 2.1.*
 pydantic==2.11.*
 python-dotenv==1.1.*
 certifi>=2024.12.0
+Pillow>=10.4,<12
 requests==2.32.*
 PyYAML==6.0.*
 xxtea==3.3.*

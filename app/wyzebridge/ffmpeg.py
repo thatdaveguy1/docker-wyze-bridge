@@ -13,7 +13,7 @@ from wyzebridge.logging import logger
 
 def internal_rtsp_url(uri: str) -> str:
     rtsp_port = os.getenv("MTX_RTSPADDRESS", ":8554").rsplit(":", 1)[-1] or "8554"
-    return f"rtsp://0.0.0.0:{rtsp_port}/{uri}"
+    return f"rtsp://127.0.0.1:{rtsp_port}/{uri}"
 
 
 def get_ffmpeg_cmd(
@@ -291,7 +291,7 @@ def parse_timedelta(env_key: str) -> Optional[timedelta]:
     except (ValueError, TypeError):
         return
 
-def rtsp_snap_cmd(cam_name: str, interval: bool = False):
+def rtsp_snap_cmd(cam_name: str, interval: bool = False, skip_early_frames: bool = True):
     ext = IMG_TYPE
     img = f"{IMG_PATH}{cam_name}.{ext}"
 
@@ -306,18 +306,24 @@ def rtsp_snap_cmd(cam_name: str, interval: bool = False):
     if keep_time and SNAPSHOT_FORMAT:
         purge_old(IMG_PATH + cam_name, ext, keep_time)
 
-    rotation = []
+    filters = []
     if rotate_img := env_bool(f"ROTATE_IMG_{cam_name}"):
         transpose = rotate_img if rotate_img in {"0", "1", "2", "3"} else "clock"
-        rotation = ["-filter:v", f"{transpose=}"]
+        filters.append(f"transpose={transpose}")
+
+    if skip_early_frames:
+        # Skip the earliest decoded frames; several cameras produce corrupt first-frame stills.
+        filters.append(r"select=gte(n\,15)")
+
+    filter_args = ["-vf", ",".join(filters)] if filters else []
 
     rtsp_transport = "udp" if "udp" in env_bool("MTX_RTSPTRANSPORTS") else "tcp"
 
     cmd = (
-        ["ffmpeg", "-loglevel", "error", "-analyzeduration", "0", "-probesize", "32"]
+        ["ffmpeg", "-loglevel", "error"]
         + ["-f", "rtsp", "-rtsp_transport", rtsp_transport, "-thread_queue_size", "500"]
         + ["-i", internal_rtsp_url(cam_name), "-map", "0:v:0"]
-        + rotation
+        + filter_args
         + ["-f", "image2", "-frames:v", "1", "-y", img]
     )
 

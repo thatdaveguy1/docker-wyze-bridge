@@ -12,6 +12,8 @@ from urllib.parse import quote, urlencode
 import requests
 
 from wyzebridge.config import IMG_PATH, IMG_TYPE
+from wyzebridge.logging import logger
+from wyzebridge.preview_validation import preview_bytes_are_valid_image
 
 DEFAULT_GO2RTC_API_PORT = 11984
 DEFAULT_GO2RTC_RTSP_PORT = 19554
@@ -60,6 +62,13 @@ def native_alias(name_uri: str, substream: bool = False) -> str:
 
 def native_snapshot_path(cam_name: str) -> Path:
     return Path(f"{IMG_PATH}{cam_name}.{IMG_TYPE}")
+
+
+def _content_matches_existing(output_path: Path, content: bytes) -> bool:
+    try:
+        return output_path.exists() and output_path.read_bytes() == content
+    except OSError:
+        return False
 
 
 def _validated_native_model(camera) -> dict[str, Any] | None:
@@ -207,16 +216,40 @@ def preload_native_stream(alias: str, timeout: float = 2.0) -> dict[str, Any]:
 def write_native_snapshot(alias: str, cam_name: str, timeout: float = 15.0) -> bool:
     output_path = native_snapshot_path(cam_name)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        response = requests.get(
-            f"{go2rtc_api_base()}/api/frame.jpeg?src={quote(alias, safe='')}",
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        output_path.write_bytes(response.content)
-        return output_path.stat().st_size > 0
-    except (requests.RequestException, OSError):
-        return False
+    deadline = time.monotonic() + timeout
+    last_error = "no frame returned"
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(
+                f"{go2rtc_api_base()}/api/frame.jpeg?src={quote(alias, safe='')}",
+                timeout=max(0.5, min(5.0, deadline - time.monotonic())),
+            )
+            if response.status_code == 503:
+                last_error = "status=503"
+                time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+                continue
+            if response.status_code == 404:
+                logger.warning(f"❗ [{cam_name}] Native snapshot from {alias} failed: status=404")
+                return False
+            response.raise_for_status()
+            if not response.content:
+                last_error = "empty response"
+                time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+                continue
+            if not preview_bytes_are_valid_image(response.content):
+                logger.warning(f"❗ [{cam_name}] Native snapshot from {alias} was not a valid image")
+                return False
+            if _content_matches_existing(output_path, response.content):
+                last_error = "matched existing preview"
+                time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+                continue
+            output_path.write_bytes(response.content)
+            return output_path.stat().st_size > 0
+        except (requests.RequestException, OSError) as ex:
+            last_error = f"{type(ex).__name__}: {ex}"
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+    logger.warning(f"❗ [{cam_name}] Native snapshot from {alias} failed: {last_error}")
+    return False
 
 
 def _go2rtc_stream_request(
