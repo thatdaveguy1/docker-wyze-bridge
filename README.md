@@ -15,6 +15,14 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - WebRTC/KVS-backed bridge path for modern Wyze models.
 - Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 4.3 workflows.
 
+## 4.3.1 Highlights
+
+- Cached preview files are now validated as real images before the bridge serves them, blocking zero-byte files, HTML/login responses saved as `.jpg`, and repeated vertical-smear corruption.
+- Thumbnail refreshes now prefer a fresh local snapshot path first, including one stream restart attempt, before falling back to a recent valid Wyze API thumbnail.
+- Native `go2rtc` snapshots now reject `503`, empty, invalid, and byte-identical stale frames instead of silently replacing the cache with bad data.
+- The Web UI now prefers the freshest valid main or `-sub` preview image, and `/health/details` includes `go2rtc` plus WHEP log tails for faster live debugging.
+- Home Assistant startup now cleans stale `whep_proxy` supervisor loops before relaunching the proxy.
+
 ## 4.3 Highlights
 
 - Home Assistant API snapshot mode now avoids slow RTSP snapshot attempts and uses the fast Wyze thumbnail path instead.
