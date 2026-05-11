@@ -12,9 +12,30 @@ if [ "$BUILD" = "dev" ]; then
     cat /data/options.json
 fi
 
-if command -v whep_proxy >/dev/null 2>&1; then
-    whep_proxy &
-fi
+start_whep_proxy() {
+    if command -v whep_proxy >/dev/null 2>&1; then
+        for pid in $(ps | awk '/[s]h -c/ && /whep_proxy/ {print $1}'); do
+            kill "$pid" 2>/dev/null || true
+        done
+        if command -v pkill >/dev/null 2>&1; then
+            pkill -f '[w]hep_proxy >>/tmp/whep_proxy.log' 2>/dev/null || true
+            pkill -x whep_proxy 2>/dev/null || true
+        elif command -v pidof >/dev/null 2>&1; then
+            # shellcheck disable=SC2046
+            kill $(pidof whep_proxy) 2>/dev/null || true
+        fi
+        nohup sh -c '
+            while :; do
+                whep_proxy >>/tmp/whep_proxy.log 2>&1
+                status=$?
+                printf "%s whep_proxy exited with status %s\n" "$(date -Iseconds)" "$status" >>/tmp/whep_proxy.log
+                sleep 2
+            done
+        ' </dev/null >/dev/null 2>&1 &
+    fi
+}
+
+start_whep_proxy
 
 . /app/go2rtc_sidecar.sh
 start_go2rtc_sidecar

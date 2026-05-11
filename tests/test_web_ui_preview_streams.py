@@ -10,11 +10,18 @@ from flask import Flask
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
+fake_stream_manager = types.ModuleType("wyzebridge.stream_manager")
+fake_stream_manager.StreamManager = object
+sys.modules.setdefault("wyzebridge.stream_manager", fake_stream_manager)
+
 fake_wyzecam_tutk = sys.modules.setdefault(
     "wyzecam.tutk", types.ModuleType("wyzecam.tutk")
 )
 fake_wyzecam_tutk_tutk = sys.modules.setdefault(
     "wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk")
+)
+fake_wyzecam_tutk_ioctl_mux = sys.modules.setdefault(
+    "wyzecam.tutk.tutk_ioctl_mux", types.ModuleType("wyzecam.tutk.tutk_ioctl_mux")
 )
 fake_wyzecam_tutk_protocol = sys.modules.setdefault(
     "wyzecam.tutk.tutk_protocol", types.ModuleType("wyzecam.tutk.tutk_protocol")
@@ -34,10 +41,17 @@ class FakeTutkError(Exception):
     pass
 
 
+class FakeTutkIOCtrlMux:
+    pass
+
+
 fake_wyzecam_tutk.tutk = fake_wyzecam_tutk_tutk
+fake_wyzecam_tutk.tutk_ioctl_mux = fake_wyzecam_tutk_ioctl_mux
 fake_wyzecam_tutk.tutk_protocol = fake_wyzecam_tutk_protocol
 if not hasattr(fake_wyzecam_tutk_tutk, "TutkError"):
     fake_wyzecam_tutk_tutk.TutkError = FakeTutkError
+if not hasattr(fake_wyzecam_tutk_ioctl_mux, "TutkIOCtrlMux"):
+    fake_wyzecam_tutk_ioctl_mux.TutkIOCtrlMux = FakeTutkIOCtrlMux
 for _name, _value in {
     "FRAME_SIZE_2K": 0,
     "FRAME_SIZE_1080P": 1,
@@ -78,6 +92,7 @@ class TestWebUIPreviewStreams(unittest.TestCase):
                 patch.object(web_ui, "HLS_URL", "http://homeassistant.local:58888"),
                 patch.object(web_ui, "RTMP_URL", "rtmp://homeassistant.local:51935"),
                 patch.object(web_ui, "BRIDGE_IP", "192.168.1.10"),
+                patch.object(web_ui, "preview_file_is_image", return_value=True),
                 patch.object(web_ui.os.path, "getmtime", return_value=1234),
             ):
                 data = web_ui.format_stream("garage")
@@ -86,6 +101,93 @@ class TestWebUIPreviewStreams(unittest.TestCase):
         self.assertEqual(data["preview_kind"], "api")
         self.assertEqual(data["preview_refresh_mode"], "thumb")
         self.assertEqual(data["img_url"], "img/garage.jpg")
+
+    def test_format_stream_uses_parent_image_time_for_missing_sub_preview(self):
+        def getmtime(path):
+            if path.endswith("south-yard-sub.jpg"):
+                raise FileNotFoundError
+            if path.endswith("south-yard.jpg"):
+                return 1234
+            raise AssertionError(path)
+
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", ""),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui, "preview_file_is_image", side_effect=lambda path: path.endswith("south-yard.jpg")),
+                patch.object(web_ui.os.path, "getmtime", side_effect=getmtime),
+            ):
+                data = web_ui.format_stream("south-yard-sub")
+
+        self.assertEqual(data["img_time"], 1234000)
+        self.assertEqual(data["img_url"], "img/south-yard.jpg")
+        self.assertEqual(data["preview_url"], "img/south-yard.jpg")
+
+    def test_format_stream_main_prefers_newer_sub_preview_when_available(self):
+        def preview_is_image(path):
+            return path.endswith("north-yard.jpg") or path.endswith("north-yard-sub.jpg")
+
+        def getmtime(path):
+            if path.endswith("north-yard.jpg"):
+                return 1200
+            if path.endswith("north-yard-sub.jpg"):
+                return 1300
+            raise AssertionError(path)
+
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", ""),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui, "preview_file_is_image", side_effect=preview_is_image),
+                patch.object(web_ui.os.path, "getmtime", side_effect=getmtime),
+            ):
+                data = web_ui.format_stream("north-yard")
+
+        self.assertEqual(data["img_time"], 1300000)
+        self.assertEqual(data["img_url"], "img/north-yard-sub.jpg")
+        self.assertEqual(data["preview_url"], "img/north-yard-sub.jpg")
+
+    def test_format_stream_skips_invalid_parent_preview_file(self):
+        def preview_is_image(path):
+            return path.endswith("south-yard-sub.jpg")
+
+        def getmtime(path):
+            if path.endswith("south-yard-sub.jpg"):
+                return 1200
+            if path.endswith("south-yard.jpg"):
+                return 1300
+            raise AssertionError(path)
+
+        with self.app.test_request_context("/"):
+            with (
+                patch.object(web_ui, "SNAPSHOT_TYPE", "api", create=True),
+                patch.object(web_ui, "IMG_TYPE", "jpg"),
+                patch.object(web_ui, "IMG_PATH", "/tmp/"),
+                patch.object(web_ui, "WEBRTC_URL", ""),
+                patch.object(web_ui, "RTSP_URL", ""),
+                patch.object(web_ui, "HLS_URL", ""),
+                patch.object(web_ui, "RTMP_URL", ""),
+                patch.object(web_ui, "BRIDGE_IP", ""),
+                patch.object(web_ui, "preview_file_is_image", side_effect=preview_is_image),
+                patch.object(web_ui.os.path, "getmtime", side_effect=getmtime),
+            ):
+                data = web_ui.format_stream("south-yard-sub")
+
+        self.assertEqual(data["img_time"], 1200000)
+        self.assertEqual(data["img_url"], "img/south-yard-sub.jpg")
+        self.assertEqual(data["preview_url"], "img/south-yard-sub.jpg")
 
     def test_format_stream_marks_disabled_streams_with_reasons(self):
         with self.app.test_request_context("/"):

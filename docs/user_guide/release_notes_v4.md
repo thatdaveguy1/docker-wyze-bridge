@@ -1,5 +1,15 @@
 # Release Notes 4.3
 
+## 4.3.1 Release
+
+`4.3.1` is the preview-integrity and snapshot-refresh follow-up for the `4.3` release line.
+
+- Cached preview files are now validated as real images before the bridge serves them. That blocks zero-byte files, HTML/login pages accidentally saved with `.jpg` names, and the vertical-smear corruption that can appear in bad still frames.
+- Thumbnail refreshes now take the stronger path through `refresh_preview()`: first try a fresh native `go2rtc` or RTSP snapshot, restart a stuck stream once if needed, and only then fall back to a recent valid Wyze API thumbnail.
+- Native `go2rtc` snapshots now wait for a genuinely new frame instead of accepting `503`, empty, invalid, or unchanged bytes, and cached API thumbnails are only reused when they are still recent and valid.
+- Web UI preview metadata now prefers the freshest valid main or `-sub` preview image, and `/health/details` now includes `go2rtc` plus WHEP log tails so snapshot failures are easier to diagnose.
+- Home Assistant startup now cleans stale `whep_proxy` loops before relaunching the proxy, preventing orphaned helpers from hanging onto the local bind across rebuilds.
+
 ## 4.3.0 Release
 
 `4.3.0` is a Home Assistant reliability release for snapshots, native `go2rtc`, and the late 4.2 streaming hardening work.

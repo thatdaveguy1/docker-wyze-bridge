@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from urllib.parse import quote
 
 import requests
@@ -79,6 +80,19 @@ def mediamtx_probe(stream_name: str | None, timeout: float = 1.5) -> dict:
     return probe
 
 
+def _tail_file(path: str, max_lines: int = 160) -> dict:
+    result = {"path": path, "exists": False, "lines": []}
+    log_path = Path(path)
+    try:
+        if not log_path.exists():
+            return result
+        result["exists"] = True
+        result["lines"] = log_path.read_text(errors="replace").splitlines()[-max_lines:]
+    except OSError as ex:
+        result["error"] = str(ex)
+    return result
+
+
 def collect_bridge_diagnostics(
     stream_name: str | None = None, stream_info: dict | None = None
 ) -> dict:
@@ -89,6 +103,8 @@ def collect_bridge_diagnostics(
     }
     include_streams = bool(stream_info and stream_info.get("native_alias"))
     diagnostics["go2rtc"] = go2rtc_probe(include_streams=include_streams)
+    diagnostics["go2rtc"]["log_tail"] = _tail_file("/tmp/go2rtc.log")
+    diagnostics["whep_proxy"]["log_tail"] = _tail_file("/tmp/whep_proxy.log")
     if stream_info:
         diagnostics["go2rtc"]["selection"] = {
             "supported": stream_info.get("native_supported"),

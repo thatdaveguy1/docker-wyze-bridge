@@ -1,5 +1,17 @@
 # What's Changed
 
+## What's Changed in v4.3.1
+
+Patch release focused on preview integrity, snapshot freshness, and Home Assistant diagnostics.
+
+### Major Changes
+
+- Validate cached preview files as real images before serving them from `/img/<camera>.jpg`, rejecting zero-byte files, HTML/login responses, and the repeated vertical-smear corruption seen in bad JPEG snapshots.
+- Upgrade `/thumb/<camera>.jpg` refreshes to use the stronger `refresh_preview()` path: try native `go2rtc` or RTSP first, restart a stuck stream once, and only then fall back to a recent valid Wyze API thumbnail.
+- Make native `go2rtc` snapshots wait for a fresh frame instead of accepting `503`, empty, invalid, or byte-for-byte identical content, and reject stale API thumbnails that are too old or unchanged.
+- Prefer the freshest valid main or `-sub` preview image in the Web UI metadata, and surface `go2rtc` plus WHEP log tails in `/health/details` so wedged preview paths are diagnosable without shell access.
+- Clean stale `whep_proxy` supervisor loops and child processes on startup so Home Assistant rebuilds do not leave orphaned proxy instances fighting over the local bind.
+
 ## What's Changed in v4.2.9
 
 Patch release fixing a startup race that caused native-only cameras (`north-yard`, `hamster`) to appear offline in HomeKit via Scrypted after every bridge restart.

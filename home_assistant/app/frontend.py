@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import re
@@ -26,6 +27,7 @@ from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
 from wyzebridge.go2rtc import send_native_talkback
 from wyzebridge.camera_settings import set_camera_stream_mode
+from wyzebridge.preview_validation import preview_file_is_image
 from wyzebridge.web_ui import url_for
 
 WYZE_DNS_URLS = (
@@ -543,8 +545,17 @@ def create_app():
         Use the exp parameter to fetch a new snapshot if the existing one is too old.
         """
         try:
+            img_path = config.IMG_PATH + img_file
+            if os.path.getsize(img_path) <= 0:
+                with contextlib.suppress(OSError):
+                    os.remove(img_path)
+                raise NotFound
+            if not preview_file_is_image(img_path):
+                with contextlib.suppress(OSError):
+                    os.remove(img_path)
+                raise NotFound
             if exp := request.args.get("exp"):
-                created_at = os.path.getmtime(config.IMG_PATH + img_file)
+                created_at = os.path.getmtime(img_path)
                 if time.time() - created_at > int(exp):
                     raise NotFound
             return send_from_directory(config.IMG_PATH, img_file)
@@ -562,7 +573,7 @@ def create_app():
         if stem.endswith("-sub"):
             candidates.append(stem.removesuffix("-sub"))
         for uri in candidates:
-            if wb.api.save_thumbnail(uri, ""):
+            if wb.streams.refresh_preview(uri)["ok"]:
                 return send_from_directory(config.IMG_PATH, f"{uri}{path.suffix}")
 
         return redirect("/static/notavailable.svg", code=307)

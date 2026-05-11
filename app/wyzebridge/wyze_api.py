@@ -33,6 +33,9 @@ from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_cam, env_list
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
 from wyzebridge.logging import logger
+from wyzebridge.preview_validation import preview_bytes_are_valid_image, preview_file_is_image
+
+API_THUMBNAIL_MAX_AGE = int(environ.get("API_THUMBNAIL_MAX_AGE", "300"))
 
 import wyzecam.api as wyzecam_api_module
 
@@ -356,13 +359,27 @@ class WyzeApi:
         if not thumb:
             return False
 
-        save_to = IMG_PATH + uri + ".jpg"
+        save_path = Path(IMG_PATH, f"{uri}.jpg")
+        save_to = str(save_path)
         s3_timestamp = url_timestamp(thumb)
+        if s3_timestamp and time() - s3_timestamp > API_THUMBNAIL_MAX_AGE:
+            logger.warning(f"[API] Thumbnail for {uri} is too old; keeping existing preview")
+            return False
+
+        cached_exists = save_path.exists()
+        cached_valid = _cached_thumbnail_is_valid(save_path)
+        if cached_exists and not cached_valid:
+            logger.warning(f"[API] Removing invalid cached thumbnail for {uri}")
+            with contextlib.suppress(OSError):
+                save_path.unlink()
 
         with contextlib.suppress(FileNotFoundError):
-            if s3_timestamp <= int(getmtime(save_to)):
-                logger.debug(f"[API] Using existing thumbnail for {uri}")
-                return True
+            if cached_valid and s3_timestamp and s3_timestamp <= int(getmtime(save_to)):
+                if time() - getmtime(save_to) <= API_THUMBNAIL_MAX_AGE:
+                    logger.debug(f"[API] Using recent cached thumbnail for {uri}")
+                    return True
+                logger.debug(f"[API] Thumbnail for {uri} is unchanged and stale; keeping existing preview")
+                return False
 
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
 
@@ -370,8 +387,21 @@ class WyzeApi:
             img = get(thumb, headers=_headers())
             img.raise_for_status()
 
-            with open(save_to, "wb") as f:
-                f.write(img.content)
+            if not _thumbnail_response_is_image(img):
+                logger.warning(
+                    f"[API] Thumbnail response for {uri} was not an image: "
+                    f"content_type={img.headers.get('Content-Type', '')} "
+                    f"url={sanitize_url(thumb)}"
+                )
+                return False
+
+            temp_path = save_path.with_name(save_path.name + ".tmp")
+            if cached_valid and save_path.read_bytes() == img.content:
+                logger.debug(f"[API] Downloaded thumbnail for {uri} matched existing preview")
+                return False
+            with temp_path.open("wb") as handle:
+                handle.write(img.content)
+            temp_path.replace(save_path)
 
             if modified := s3_timestamp or img.headers.get("Last-Modified"):
                 ts_format = "%a, %d %b %Y %H:%M:%S %Z"
@@ -384,7 +414,7 @@ class WyzeApi:
             return True
         except Exception as ex:
             if (
-                isinstance(ex, requests.HTTPError)
+                isinstance(ex, HTTPError)
                 and getattr(ex.response, "status_code", None) == 404
             ):
                 logger.warning(
@@ -429,7 +459,7 @@ class WyzeApi:
             return {"result": str(ex), "cam": cam_name}
 
     def _maybe_wake_kvs_camera(self, cam: WyzeCamera) -> None:
-        if cam.product_model not in {"LD_CFP", "HL_CAM4"}:
+        if cam.product_model not in {"LD_CFP", "HL_CAM4", "WYZE_CAKP2JFUS"}:
             return
         wake_key = cam.name_uri
         now = time()
@@ -757,6 +787,32 @@ def valid_s3_url(url: Optional[str]) -> bool:
         return amz_date.timestamp() + int(x_amz_expires) > time()
     except (ValueError, TypeError, KeyError):
         return False
+
+
+def _looks_like_html(payload: bytes) -> bool:
+    snippet = payload.lstrip().lower()[:64]
+    return snippet.startswith((b"<!doctype html", b"<html", b"<?xml"))
+
+
+def _looks_like_image_bytes(payload: bytes) -> bool:
+    if not payload or _looks_like_html(payload):
+        return False
+
+    header = payload[:16]
+    return (
+        header.startswith(b"\xff\xd8\xff")
+        or header.startswith(b"\x89PNG\r\n\x1a\n")
+        or header.startswith((b"GIF87a", b"GIF89a"))
+        or (len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP")
+    )
+
+
+def _thumbnail_response_is_image(response: requests.Response) -> bool:
+    return preview_bytes_are_valid_image(response.content or b"")
+
+
+def _cached_thumbnail_is_valid(path: Path) -> bool:
+    return preview_file_is_image(path)
 
 
 def env_filter(cam: WyzeCamera) -> bool:

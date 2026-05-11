@@ -25,6 +25,7 @@ from wyzebridge.config import (
 from wyzebridge.auth import WbAuth
 from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
+from wyzebridge.preview_validation import preview_file_is_image
 from wyzebridge.stream import Stream
 from wyzebridge.stream_manager import StreamManager
 
@@ -347,10 +348,23 @@ def format_stream(name_uri: str) -> dict:
     """
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
     img = f"{name_uri}.{IMG_TYPE}"
-    try:
-        img_time = int(os.path.getmtime(IMG_PATH + img) * 1000)
-    except FileNotFoundError:
-        img_time = None
+    img_time = None
+    img_candidates = [img]
+    if name_uri.endswith("-sub"):
+        img_candidates.append(f"{name_uri.removesuffix('-sub')}.{IMG_TYPE}")
+    else:
+        img_candidates.append(f"{name_uri}-sub.{IMG_TYPE}")
+    for img_candidate in img_candidates:
+        img_path = IMG_PATH + img_candidate
+        if not preview_file_is_image(img_path):
+            continue
+        try:
+            candidate_time = int(os.path.getmtime(img_path) * 1000)
+        except FileNotFoundError:
+            continue
+        if img_time is None or candidate_time > img_time:
+            img = img_candidate
+            img_time = candidate_time
 
     webrtc_url = (WEBRTC_URL or f"http://{hostname}:8889") + f"/{name_uri}/"
     preview_kind = "api" if SNAPSHOT_TYPE == "api" else "rtsp"

@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
 
+import io
+import os
 import pathlib
 import sys
+import tempfile
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+original_requests_module = sys.modules.get("requests")
+original_requests_exceptions_module = sys.modules.get("requests.exceptions")
+original_wyzebridge_modules = {
+    name: module
+    for name, module in sys.modules.items()
+    if name == "wyzebridge" or name.startswith("wyzebridge.")
+}
 
 requests_stub = types.ModuleType("requests")
 requests_exceptions = types.ModuleType("requests.exceptions")
@@ -74,37 +90,96 @@ sys.modules["wyzebridge.wyze_events"] = _wyzebridge_wyze_events
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 import wyzebridge.bridge_diagnostics as bridge_diagnostics_module
+import wyzebridge.ffmpeg as ffmpeg_module
+import wyzebridge.go2rtc as go2rtc_module
 import wyzebridge.stream_manager as stream_manager_module
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
 from wyzebridge.stream_manager import StreamManager
 
+if original_requests_module is not None:
+    sys.modules["requests"] = original_requests_module
+else:
+    sys.modules.pop("requests", None)
+
+if original_requests_exceptions_module is not None:
+    sys.modules["requests.exceptions"] = original_requests_exceptions_module
+else:
+    sys.modules.pop("requests.exceptions", None)
+
+sys.modules.update(original_wyzebridge_modules)
+
 # StreamManager import needed the lightweight wyzebridge stubs above, but later
 # tests in the same pytest process need the real module. Drop the stubs after
 # import so future imports resolve the actual implementation.
-sys.modules.pop("wyzebridge.wyze_stream", None)
-sys.modules.pop("wyzebridge.wyze_events", None)
+if "wyzebridge.wyze_stream" not in original_wyzebridge_modules:
+    sys.modules.pop("wyzebridge.wyze_stream", None)
+if "wyzebridge.wyze_events" not in original_wyzebridge_modules:
+    sys.modules.pop("wyzebridge.wyze_events", None)
+
+
+def valid_jpeg_bytes(color: tuple[int, int, int]) -> bytes:
+    assert Image is not None
+    image = Image.new("RGB", (48, 32), color)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+    return buffer.getvalue()
 
 
 class DummyApi:
     pass
 
 
+class FakeSnapshotPopen:
+    def __init__(self, cmd, stdout=None, stderr=None, stderr_output=b"", image_bytes=None):
+        self.cmd = cmd
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = 0
+        self._stderr_output = stderr_output
+        self._image_bytes = image_bytes or valid_jpeg_bytes((96, 144, 192))
+
+    def communicate(self, timeout=None):
+        with open(self.cmd[-1], "wb") as handle:
+            handle.write(self._image_bytes)
+        return b"", self._stderr_output
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+class FakeTimeoutPopen(FakeSnapshotPopen):
+    def __init__(self, cmd, stdout=None, stderr=None):
+        super().__init__(cmd, stdout=stdout, stderr=stderr)
+        self.returncode = None
+
+    def communicate(self, timeout=None):
+        if self.returncode == -9:
+            return b"", b""
+        raise stream_manager_module.TimeoutExpired(self.cmd, timeout)
+
+
 class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
-    @patch("wyzebridge.go2rtc._native_alias_is_ready")
-    @patch("wyzebridge.go2rtc._go2rtc_api_reachable")
+    def tearDown(self):
+        requests_stub.get.reset_mock()
+        requests_stub.put.reset_mock()
+        requests_stub.post.reset_mock()
+
+    @patch.object(go2rtc_module, "_native_alias_is_ready")
+    @patch.object(go2rtc_module, "_go2rtc_api_reachable")
     def test_native_stream_info_selected_when_api_reachable_even_if_alias_not_ready(
         self, mock_api_reachable, mock_alias_ready
     ):
         # alias_ready is diagnostic-only; it must NOT block selection when the sidecar is up.
         # Previously this gated native_selected=False, causing Scrypted to cache a bad URL
         # and HomeKit to lose the camera on every bridge restart (4.2.8 regression).
-        from wyzebridge import go2rtc
-
         mock_api_reachable.return_value = True
         mock_alias_ready.return_value = False
         camera = SimpleNamespace(name_uri="hamster", product_model="HL_CAM3P", is_gwell=False)
 
-        info = go2rtc.native_stream_info(camera, substream=True)
+        info = go2rtc_module.native_stream_info(camera, substream=True)
 
         self.assertTrue(info["native_supported"])
         self.assertTrue(info["native_selected"])        # selected because api_reachable=True
@@ -114,20 +189,18 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertFalse(info["talkback_supported"])    # substream — talkback always off
         mock_alias_ready.assert_called_once_with("hamster-sd")
 
-    @patch("wyzebridge.go2rtc._native_alias_is_ready")
-    @patch("wyzebridge.go2rtc._go2rtc_api_reachable")
+    @patch.object(go2rtc_module, "_native_alias_is_ready")
+    @patch.object(go2rtc_module, "_go2rtc_api_reachable")
     def test_native_stream_info_not_selected_when_go2rtc_unreachable(
         self, mock_api_reachable, mock_alias_ready
     ):
         # When the go2rtc sidecar is completely down the camera should be reported as
         # not-selected so Scrypted can surface it as offline rather than serve a dead URL.
-        from wyzebridge import go2rtc
-
         mock_api_reachable.return_value = False
         mock_alias_ready.return_value = False
         camera = SimpleNamespace(name_uri="north-yard", product_model="HL_CAM4", is_gwell=False)
 
-        info = go2rtc.native_stream_info(camera, substream=False)
+        info = go2rtc_module.native_stream_info(camera, substream=False)
 
         self.assertTrue(info["native_supported"])
         self.assertFalse(info["native_selected"])
@@ -138,48 +211,59 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         # alias readiness should NOT be checked when the API is down (avoids a wasted call)
         mock_alias_ready.assert_not_called()
 
-    def test_talkback_codec_probe_requests_microphone_media(self):
-        from wyzebridge import go2rtc
+    @patch.object(go2rtc_module, "_native_alias_is_ready")
+    @patch.object(go2rtc_module, "_go2rtc_api_reachable")
+    def test_hl_cam4_substream_native_selected_when_api_reachable(
+        self, mock_api_reachable, mock_alias_ready
+    ):
+        mock_api_reachable.return_value = True
+        mock_alias_ready.return_value = False
+        camera = SimpleNamespace(name_uri="north-yard", product_model="HL_CAM4", is_gwell=False)
 
+        info = go2rtc_module.native_stream_info(camera, substream=True)
+
+        self.assertTrue(info["native_supported"])
+        self.assertTrue(info["native_selected"])
+        self.assertFalse(info["native_alias_ready"])
+        self.assertEqual(info["native_alias"], "north-yard-sd")
+        self.assertEqual(info["snapshot_source"], "go2rtc")
+
+    def test_talkback_codec_probe_requests_microphone_media(self):
         response = Mock()
         response.json.return_value = {"producers": []}
         requests_stub.get.return_value = response
 
-        go2rtc._go2rtc_stream_details("north-yard")
+        go2rtc_module._go2rtc_stream_details("north-yard")
 
         requests_stub.get.assert_called_with(
-            f"{go2rtc.go2rtc_api_base()}/api/streams",
+            f"{go2rtc_module.go2rtc_api_base()}/api/streams",
             params={"src": "north-yard", "microphone": "any"},
             timeout=2.0,
         )
 
-    @patch("wyzebridge.go2rtc.time.sleep")
-    @patch("wyzebridge.go2rtc.preload_native_stream")
-    @patch("wyzebridge.go2rtc._talkback_ffmpeg_codec")
+    @patch.object(go2rtc_module.time, "sleep")
+    @patch.object(go2rtc_module, "preload_native_stream")
+    @patch.object(go2rtc_module, "_talkback_ffmpeg_codec")
     def test_talkback_codec_resolution_preloads_and_retries(
         self, mock_codec, mock_preload, _mock_sleep
     ):
-        from wyzebridge import go2rtc
-
         mock_codec.side_effect = [None, "aac/16000"]
 
-        codec = go2rtc._resolve_talkback_ffmpeg_codec("north-yard")
+        codec = go2rtc_module._resolve_talkback_ffmpeg_codec("north-yard")
 
         self.assertEqual(codec, "aac/16000")
         mock_preload.assert_called_once_with("north-yard", timeout=2.0)
         self.assertEqual(mock_codec.call_count, 2)
 
-    @patch("wyzebridge.go2rtc._resolve_talkback_ffmpeg_codec")
-    @patch("wyzebridge.go2rtc._go2rtc_stream_request")
+    @patch.object(go2rtc_module, "_resolve_talkback_ffmpeg_codec")
+    @patch.object(go2rtc_module, "_go2rtc_stream_request")
     def test_send_native_talkback_uses_resolved_codec_for_audio_url(
         self, mock_stream_request, mock_resolve_codec
     ):
-        from wyzebridge import go2rtc
-
         mock_resolve_codec.return_value = "aac/16000"
         mock_stream_request.return_value = {"status": "success"}
 
-        result = go2rtc.send_native_talkback(
+        result = go2rtc_module.send_native_talkback(
             {"audio_url": "http://127.0.0.1:55000/api/talkback-file/test.wav"},
             "north-yard",
         )
@@ -201,6 +285,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         manager.streams["north-yard"] = SimpleNamespace(
             get_info=lambda: {
                 "native_selected": True,
+                "native_api_reachable": True,
                 "native_alias": "north-yard",
             }
         )
@@ -213,18 +298,253 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         mock_preload.assert_called_once_with("north-yard")
         mock_write_native_snapshot.assert_called_once_with("north-yard", "north-yard")
 
-    @patch("wyzebridge.go2rtc._resolve_talkback_ffmpeg_codec")
-    @patch("wyzebridge.go2rtc._go2rtc_stream_request")
-    @patch("wyzebridge.go2rtc._cleanup_stale_talkback_files")
-    @patch("wyzebridge.go2rtc._talkback_temp_dir")
+    @patch.object(stream_manager_module, "preload_native_stream")
+    @patch.object(stream_manager_module, "write_native_snapshot")
+    def test_stream_manager_uses_go2rtc_alias_snapshot_when_api_is_reachable(
+        self, mock_write_native_snapshot, mock_preload
+    ):
+        manager = StreamManager(DummyApi())
+        manager.streams["back-yard-sub"] = SimpleNamespace(
+            get_info=lambda: {
+                "native_selected": False,
+                "native_api_reachable": True,
+                "native_alias": "back-yard-sd",
+            }
+        )
+        mock_preload.return_value = {"ok": True}
+        mock_write_native_snapshot.return_value = True
+
+        result = manager.get_snapshot("back-yard-sub")
+
+        self.assertEqual(result, {"ok": True, "source": "go2rtc"})
+        mock_preload.assert_called_once_with("back-yard-sd")
+        mock_write_native_snapshot.assert_called_once_with("back-yard-sd", "back-yard-sub")
+
+    @patch.object(StreamManager, "get_snapshot")
+    def test_refresh_preview_falls_back_to_cloud_thumbnail(self, mock_get_snapshot):
+        api = DummyApi()
+        api.save_thumbnail = Mock(return_value=True)
+        manager = StreamManager(api)
+        mock_get_snapshot.return_value = {"ok": False, "source": "rtsp"}
+
+        result = manager.refresh_preview("hamster")
+
+        self.assertEqual(result, {"ok": True, "source": "api"})
+        api.save_thumbnail.assert_called_once_with("hamster", "")
+
+    @patch.object(stream_manager_module, "rtsp_snap_cmd", return_value=["ffmpeg", "-y", "unused.jpg"])
+    def test_get_rtsp_snap_rejects_decode_errors_and_keeps_existing_preview(self, _mock_cmd):
+        manager = StreamManager(DummyApi())
+        stream = SimpleNamespace(start=Mock())
+        manager.streams["garage-sub"] = stream
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = os.path.join(temp_dir, "garage-sub.jpg")
+            with open(final_path, "wb") as handle:
+                handle.write(b"existing-preview")
+
+            fake_popen = FakeSnapshotPopen(
+                ["ffmpeg", "-y", os.path.join(temp_dir, "garage-sub.jpg.tmp")],
+                stderr_output=b"[h264 @ 0x1] error while decoding MB 47 19, bytestream -15\n",
+            )
+
+            with patch.object(stream_manager_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                stream_manager_module, "Popen", return_value=fake_popen
+            ):
+                result = manager.get_rtsp_snap("garage-sub")
+
+            self.assertFalse(result)
+            with open(final_path, "rb") as handle:
+                self.assertEqual(handle.read(), b"existing-preview")
+
+        stream.start.assert_called_once_with()
+
+    @patch.object(stream_manager_module, "rtsp_snap_cmd", return_value=["ffmpeg", "-y", "unused.jpg"])
+    def test_get_rtsp_snap_replaces_preview_without_decode_errors(self, _mock_cmd):
+        manager = StreamManager(DummyApi())
+        stream = SimpleNamespace(start=Mock())
+        manager.streams["deck-sub"] = stream
+        fresh_preview = valid_jpeg_bytes((180, 48, 48))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = os.path.join(temp_dir, "deck-sub.jpg")
+            fake_popen = FakeSnapshotPopen(
+                ["ffmpeg", "-y", os.path.join(temp_dir, "deck-sub.jpg.tmp")],
+                stderr_output=b"",
+                image_bytes=fresh_preview,
+            )
+
+            with patch.object(stream_manager_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                stream_manager_module, "Popen", return_value=fake_popen
+            ):
+                result = manager.get_rtsp_snap("deck-sub")
+
+            self.assertTrue(result)
+            with open(final_path, "rb") as handle:
+                self.assertEqual(handle.read(), fresh_preview)
+
+    @patch.object(stream_manager_module, "rtsp_snap_cmd", return_value=["ffmpeg", "-y", "unused.jpg"])
+    def test_get_rtsp_snap_rejects_unchanged_preview_as_stale(self, _mock_cmd):
+        manager = StreamManager(DummyApi())
+        stream = SimpleNamespace(start=Mock())
+        manager.streams["deck-sub"] = stream
+        stale_preview = valid_jpeg_bytes((72, 96, 168))
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = os.path.join(temp_dir, "deck-sub.jpg")
+            with open(final_path, "wb") as handle:
+                handle.write(stale_preview)
+
+            fake_popen = FakeSnapshotPopen(
+                ["ffmpeg", "-y", os.path.join(temp_dir, "deck-sub.jpg.tmp")],
+                stderr_output=b"",
+                image_bytes=stale_preview,
+            )
+
+            with patch.object(stream_manager_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                stream_manager_module, "Popen", return_value=fake_popen
+            ):
+                result = manager.get_rtsp_snap("deck-sub")
+
+            self.assertFalse(result)
+            with open(final_path, "rb") as handle:
+                self.assertEqual(handle.read(), stale_preview)
+
+    def test_get_rtsp_snap_retries_without_frame_skip_after_timeout(self):
+        manager = StreamManager(DummyApi())
+        stream = SimpleNamespace(start=Mock())
+        manager.streams["garage-sub"] = stream
+        fallback_preview = valid_jpeg_bytes((120, 84, 44))
+
+        def snap_cmd(cam_name, interval=False, skip_early_frames=True):
+            cmd = ["ffmpeg"]
+            if skip_early_frames:
+                cmd += ["-vf", r"select=gte(n\,15)"]
+            return cmd + ["unused.jpg"]
+
+        created = []
+
+        def fake_popen(cmd, stdout=None, stderr=None):
+            created.append(cmd)
+            if len(created) == 1:
+                return FakeTimeoutPopen(cmd, stdout=stdout, stderr=stderr)
+            return FakeSnapshotPopen(
+                cmd,
+                stdout=stdout,
+                stderr=stderr,
+                image_bytes=fallback_preview,
+            )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = os.path.join(temp_dir, "garage-sub.jpg")
+            with patch.object(stream_manager_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                stream_manager_module, "rtsp_snap_cmd", side_effect=snap_cmd
+            ) as mock_cmd, patch.object(stream_manager_module, "Popen", side_effect=fake_popen):
+                result = manager.get_rtsp_snap("garage-sub")
+
+            self.assertTrue(result)
+            with open(final_path, "rb") as handle:
+                self.assertEqual(handle.read(), fallback_preview)
+
+        self.assertEqual(
+            mock_cmd.call_args_list,
+            [
+                call("garage-sub", skip_early_frames=True),
+                call("garage-sub", skip_early_frames=False),
+            ],
+        )
+        self.assertIn("-vf", created[0])
+        self.assertNotIn("-vf", created[1])
+
+    def test_write_native_snapshot_rejects_unchanged_preview_as_stale(self):
+        stale_preview = valid_jpeg_bytes((32, 110, 180))
+        response = Mock(status_code=200, content=stale_preview)
+        response.raise_for_status = Mock()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = pathlib.Path(temp_dir) / "deck-sub.jpg"
+            final_path.write_bytes(stale_preview)
+
+            with patch.object(go2rtc_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                go2rtc_module.requests, "get", return_value=response
+            ), patch.object(go2rtc_module.time, "sleep"):
+                result = go2rtc_module.write_native_snapshot("deck-sd", "deck-sub", timeout=0.01)
+
+            self.assertFalse(result)
+            self.assertEqual(final_path.read_bytes(), stale_preview)
+
+    def test_write_native_snapshot_waits_for_new_frame_before_failing(self):
+        stale_preview = valid_jpeg_bytes((60, 80, 180))
+        fresh_preview = valid_jpeg_bytes((180, 120, 40))
+        stale_response = Mock(status_code=200, content=stale_preview)
+        stale_response.raise_for_status = Mock()
+        fresh_response = Mock(status_code=200, content=fresh_preview)
+        fresh_response.raise_for_status = Mock()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            final_path = pathlib.Path(temp_dir) / "north-yard.jpg"
+            final_path.write_bytes(stale_preview)
+
+            with patch.object(go2rtc_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                go2rtc_module.requests, "get", side_effect=[stale_response, fresh_response]
+            ), patch.object(go2rtc_module.time, "sleep"):
+                result = go2rtc_module.write_native_snapshot("north-yard", "north-yard", timeout=1.0)
+
+            self.assertTrue(result)
+            self.assertEqual(final_path.read_bytes(), fresh_preview)
+
+    def test_write_native_snapshot_rejects_non_image_response(self):
+        response = Mock(status_code=200, content=b"<!doctype html><html>redirect</html>")
+        response.raise_for_status = Mock()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.object(go2rtc_module, "IMG_PATH", temp_dir + os.sep), patch.object(
+                go2rtc_module.requests, "get", return_value=response
+            ):
+                result = go2rtc_module.write_native_snapshot("garage-sd", "garage")
+
+            self.assertFalse(result)
+            self.assertFalse((pathlib.Path(temp_dir) / "garage.jpg").exists())
+
+    @patch.object(stream_manager_module, "write_native_snapshot", return_value=True)
+    def test_get_snapshot_uses_native_alias_without_registered_stream(self, mock_write_native_snapshot):
+        manager = StreamManager(DummyApi())
+
+        result = manager.get_snapshot("north-yard")
+
+        self.assertEqual(result, {"ok": True, "source": "go2rtc"})
+        mock_write_native_snapshot.assert_called_once_with("north-yard", "north-yard")
+
+    @patch.object(stream_manager_module, "write_native_snapshot")
+    def test_get_snapshot_tries_sd_alias_without_registered_parent_stream(self, mock_write_native_snapshot):
+        manager = StreamManager(DummyApi())
+        mock_write_native_snapshot.side_effect = [False, True]
+
+        result = manager.get_snapshot("south-yard")
+
+        self.assertEqual(result, {"ok": True, "source": "go2rtc"})
+        self.assertEqual(
+            mock_write_native_snapshot.call_args_list,
+            [call("south-yard", "south-yard"), call("south-yard-sd", "south-yard")],
+        )
+
+    def test_rtsp_snapshot_command_skips_early_frames(self):
+        cmd = ffmpeg_module.rtsp_snap_cmd("south-yard-sub")
+
+        self.assertIn("-vf", cmd)
+        vf_index = cmd.index("-vf")
+        self.assertIn(r"select=gte(n\,15)", cmd[vf_index + 1])
+
+    @patch.object(go2rtc_module, "_resolve_talkback_ffmpeg_codec")
+    @patch.object(go2rtc_module, "_go2rtc_stream_request")
+    @patch.object(go2rtc_module, "_cleanup_stale_talkback_files")
+    @patch.object(go2rtc_module, "_talkback_temp_dir")
     def test_send_native_talkback_audio_b64_writes_temp_file_and_calls_stream_request(
         self, mock_temp_dir, mock_cleanup, mock_stream_request, mock_resolve_codec
     ):
         import base64
         import tempfile
         from pathlib import Path
-
-        from wyzebridge import go2rtc
 
         mock_resolve_codec.return_value = "aac/16000"
         mock_stream_request.return_value = {"status": "success"}
@@ -236,7 +556,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             audio_bytes = b"RIFF\x00\x00\x00\x00WAVEfmt "
             audio_b64 = base64.b64encode(audio_bytes).decode()
 
-            result = go2rtc.send_native_talkback(
+            result = go2rtc_module.send_native_talkback(
                 {"audio_b64": audio_b64, "file_ext": "wav"},
                 "north-yard",
             )
@@ -253,10 +573,8 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     def test_send_native_talkback_rejects_both_audio_b64_and_audio_url(self):
         import base64
 
-        from wyzebridge import go2rtc
-
         audio_b64 = base64.b64encode(b"fake audio").decode()
-        result = go2rtc.send_native_talkback(
+        result = go2rtc_module.send_native_talkback(
             {"audio_b64": audio_b64, "audio_url": "http://example.com/audio.wav"},
             "north-yard",
         )

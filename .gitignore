@@ -7,6 +7,7 @@
 *.pickle
 *.env
 *.env.local
+!app/build.env
 !home_assistant/app/build.env
 !home_assistant/app/.env
 **/build.env.local
