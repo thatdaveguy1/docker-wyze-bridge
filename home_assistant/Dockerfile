@@ -6,7 +6,7 @@ FROM python:3.13-slim-bookworm AS base
 
 FROM golang:1.23 AS whep_builder
 
-COPY /whep_proxy/ /build/whep_proxy/
+COPY whep_proxy/ /build/whep_proxy/
 WORKDIR /build/whep_proxy
 RUN go mod download
 RUN go build -o /build/whep_proxy/whep_proxy
@@ -25,7 +25,7 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-COPY /app/ /build/app/
+COPY app/ /build/app/
 
 RUN chmod +x /build/app/run
 RUN chmod +x /build/app/go2rtc_sidecar.sh
