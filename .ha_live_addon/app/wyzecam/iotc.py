@@ -4,10 +4,8 @@ import contextlib
 import enum
 import errno
 import hashlib
-import json
 import logging
 import os
-import pathlib
 import threading
 import time
 import warnings
@@ -24,27 +22,35 @@ from wyzecam.tutk.tutk_protocol import (
     K10056SetResolvingBit,
     respond_to_ioctrl_10001,
 )
+from wyzecam.iotc_helpers import (
+    configure_tutk_native_log,
+    get_audio_sample_rate,
+    hl_cam4_connect_watchdog_secs,
+    hl_cam4_main_probe_mode,
+    log_tutk_trace,
+    redact_password,
+    resolve_audio_codec,
+    truthy_env,
+    tutk_trace_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _hl_cam4_main_probe_mode() -> str:
-    mode = os.getenv("HL_CAM4_MAIN_PROBE_MODE", "kvs").strip().lower()
-    return mode if mode in {"kvs", "tutk_dtls", "tutk_parallel"} else "kvs"
-
-
-def _tutk_trace_enabled(camera: WyzeCamera) -> bool:
-    raw = os.getenv("TUTK_TRACE_STREAM", "").strip().lower()
-    if not raw:
-        return False
-
-    targets = {item.strip() for item in raw.split(",") if item.strip()}
-    return "all" in targets or camera.name_uri in targets
+# Backwards-compatible aliases (delegates to iotc_helpers)
+_hl_cam4_main_probe_mode = hl_cam4_main_probe_mode
+_tutk_trace_enabled = tutk_trace_enabled
+_hl_cam4_connect_watchdog_secs = hl_cam4_connect_watchdog_secs
+_truthy_env = truthy_env
+_configure_tutk_native_log = configure_tutk_native_log
 
 
 def _log_tutk_trace(camera: WyzeCamera, event: str, **fields) -> None:
+    """Wrapper that uses this module's logger so tests can patch iotc.logger."""
+    import json
+    import os
     raw = os.getenv("TUTK_TRACE_STREAM", "").strip().lower()
-    enabled = _tutk_trace_enabled(camera)
+    enabled = tutk_trace_enabled(camera)
     if event == "connect_start":
         print(
             f"[TUTK_TRACE_GATE] raw={raw!r} camera={camera.name_uri} enabled={enabled}",
@@ -57,59 +63,6 @@ def _log_tutk_trace(camera: WyzeCamera, event: str, **fields) -> None:
     trace = f"[TUTK_TRACE] {json.dumps(payload, sort_keys=True)}"
     logger.info(trace)
     print(trace, flush=True)
-
-
-def _hl_cam4_connect_watchdog_secs() -> Optional[float]:
-    raw = os.getenv("HL_CAM4_CONNECT_WATCHDOG_SECS", "").strip().lower()
-    if raw in {"0", "false", "no", "off"}:
-        return None
-    if raw:
-        try:
-            return max(float(raw), 0.1)
-        except ValueError:
-            logger.warning(
-                "[IOTC] Ignoring invalid HL_CAM4_CONNECT_WATCHDOG_SECS=%r", raw
-            )
-            return None
-    return float(CONNECT_TIMEOUT + 2)
-
-
-def _truthy_env(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _configure_tutk_native_log(tutk_platform_lib: CDLL) -> None:
-    if not _truthy_env("TUTK_NATIVE_LOG"):
-        return
-
-    log_path = (
-        os.getenv("TUTK_NATIVE_LOG_PATH", "/tmp/tutk_iotc.log").strip()
-        or "/tmp/tutk_iotc.log"
-    )
-    level_raw = os.getenv("TUTK_NATIVE_LOG_LEVEL", "0").strip()
-    try:
-        log_level = max(int(level_raw), 0)
-    except ValueError:
-        logger.warning("[TUTK] Ignoring invalid TUTK_NATIVE_LOG_LEVEL=%r", level_raw)
-        log_level = 0
-
-    try:
-        pathlib.Path(log_path).parent.mkdir(parents=True, exist_ok=True)
-    except OSError as ex:
-        print(
-            f"[TUTK_NATIVE_LOG] mkdir_failed path={log_path} error={type(ex).__name__}: {ex}",
-            flush=True,
-        )
-
-    errno = tutk.iotc_set_log_attr(
-        tutk_platform_lib,
-        log_path,
-        c_uint32(log_level),
-    )
-    print(
-        f"[TUTK_NATIVE_LOG] path={log_path} level={log_level} errno={errno}",
-        flush=True,
-    )
 
 
 class WyzeIOTC:
@@ -765,31 +718,11 @@ class WyzeIOTCSession:
 
     def get_audio_sample_rate(self) -> int:
         """Attempt to get the audio sample rate."""
-        if self.camera.camera_info and "audioParm" in self.camera.camera_info:
-            audio_param = self.camera.camera_info["audioParm"]
-            return int(audio_param.get("sampleRate", self.camera.default_sample_rate))
-
-        return self.camera.default_sample_rate
+        return get_audio_sample_rate(self.camera)
 
     def get_audio_codec_from_codec_id(self, codec_id: int) -> tuple[str, int]:
         sample_rate = self.get_audio_sample_rate()
-
-        codec_mapping = {
-            137: ("mulaw", sample_rate),
-            140: ("s16le", sample_rate),
-            141: ("aac", sample_rate),
-            143: ("alaw", sample_rate),
-            144: ("aac", 16000),  # aac_eld
-            146: ("opus", 16000),
-        }
-
-        codec, sample_rate = codec_mapping.get(codec_id, (None, None))
-
-        if not codec:
-            raise RuntimeError(f"\nUnknown audio codec {codec_id=}\n")
-
-        logger.info(f"[IOTC] Audio {codec=} {sample_rate=} {codec_id=}")
-        return codec, sample_rate or 16000
+        return resolve_audio_codec(codec_id, sample_rate)
 
     def identify_audio_codec(self, limit: int = 60) -> tuple[str, int]:
         """Identify audio codec."""
@@ -1301,7 +1234,3 @@ class WyzeIOTCSession:
 
         self.session_id = None
         self.state = WyzeIOTCSessionState.DISCONNECTED
-
-
-def redact_password(password: Optional[str]):
-    return f"{password[0]}{'*' * (len(password) - 1)}" if password else "NOT SET"
