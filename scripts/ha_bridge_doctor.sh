@@ -7,6 +7,9 @@ PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
 DEV_SLUG="${HA_DEV_ADDON_SLUG:-local_docker_wyze_bridge_local}"
 LINES="${HA_BRIDGE_DOCTOR_LOG_LINES:-80}"
 
+# Source shared library for validate_slug, section, redact_api_keys
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/ha_bridge_doctor.sh
@@ -35,24 +38,9 @@ case "${1:-}" in
     ;;
 esac
 
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
 validate_lines() {
   case "$LINES" in
-    ""|*[!0-9]*)
-      echo "Invalid HA_BRIDGE_DOCTOR_LOG_LINES: use a positive integer." >&2
-      exit 1
-      ;;
-    0)
+    ""|*[!0-9]*|0)
       echo "Invalid HA_BRIDGE_DOCTOR_LOG_LINES: use a positive integer." >&2
       exit 1
       ;;
@@ -63,13 +51,8 @@ validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
 validate_slug "HA_DEV_ADDON_SLUG" "$DEV_SLUG"
 validate_lines
 
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
-
-section() {
-  printf '\n## %s\n' "$1"
-}
+# redact wraps the shared library's redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 remote() {
   "$SCRIPT_DIR/ha_ssh.sh" "$@"

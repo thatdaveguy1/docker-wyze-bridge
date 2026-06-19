@@ -10,6 +10,9 @@ OUT="$TMP_DIR/phase3_prod_sd_only_${STAMP}.txt"
 PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
 BRIDGE_BASE="${HA_PHASE3_BRIDGE_BASE:-http://172.30.32.1:5000}"
 
+# Source shared library for local validation functions
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/ha_phase3_prod_sd_only_probe.sh
@@ -38,43 +41,15 @@ case "${1:-}" in
     ;;
 esac
 
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_base_url() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    http://*) host="${value#http://}" ;;
-    https://*) host="${value#https://}" ;;
-    *)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-  case "$host" in
-    ""|*/*|*\?*|*\&*|*\=*|*[!A-Za-z0-9_.:-]*)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-}
-
 validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
 validate_base_url "HA_PHASE3_BRIDGE_BASE" "$BRIDGE_BASE"
 
 mkdir -p "$TMP_DIR"
 
 set +e
-"$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE3_PROD_SLUG=$PROD_SLUG HA_PHASE3_BRIDGE_BASE=$BRIDGE_BASE sh -s" > "$OUT" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 PROD_SLUG="$HA_PHASE3_PROD_SLUG"
@@ -82,18 +57,8 @@ BRIDGE_BASE="$HA_PHASE3_BRIDGE_BASE"
 FAIL=0
 API_TOKEN=""
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
-mark_fail() {
-  echo "FAIL: $1"
-  FAIL=1
-}
-
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
+# redact is defined by ha_bridge_probe.sh as redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 fetch_bridge_json() {
   route="$1"
@@ -107,22 +72,9 @@ fetch_bridge_json() {
   printf '%s' "$code"
 }
 
-bool_true() {
-  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
-    true|1|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 INFO=$(curl -fsS -H "Authorization: Bearer $SUPERVISOR_TOKEN" "http://supervisor/addons/$PROD_SLUG/info" 2>/dev/null || true)
 if [ -n "$INFO" ]; then
-  STORED_API=$(printf '%s\n' "$INFO" | jq -r '.data.options.WB_API // .data.options.wb_api // ""' 2>/dev/null || true)
-  WYZE_EMAIL=$(printf '%s\n' "$INFO" | jq -r '.data.options.WYZE_EMAIL // ""' 2>/dev/null || true)
-  if [ -n "$STORED_API" ] && [ "$STORED_API" != "null" ]; then
-    API_TOKEN="$STORED_API"
-  elif [ -n "$WYZE_EMAIL" ] && [ "$WYZE_EMAIL" != "null" ]; then
-    API_TOKEN=$(printf '%s' "$WYZE_EMAIL" | sha256sum | awk '{print $1}' | xxd -r -p | base64 | tr '+/' '-_' | tr -d '=\n' | cut -c1-40)
-  fi
+  API_TOKEN=$(derive_bridge_token "$INFO")
 fi
 
 section "Production Phase 3 SD_ONLY Probe"
@@ -230,6 +182,7 @@ fi
 
 exit "$FAIL"
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE3_PROD_SLUG=$PROD_SLUG HA_PHASE3_BRIDGE_BASE=$BRIDGE_BASE sh -s" > "$OUT"
 rc=$?
 set -e
 

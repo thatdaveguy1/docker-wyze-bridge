@@ -109,7 +109,9 @@ class TestHANorthYardLiveProbe(unittest.TestCase):
                 self.assertIsNone(re.search(pattern, script))
 
         self.assertNotIn("options:.data.options", script)
-        self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
+        self.assertIn("ha_bridge_probe.sh", script)
+        self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
 
     def test_collects_phase1_north_yard_blocker_signals(self):
         script = PROBE.read_text()

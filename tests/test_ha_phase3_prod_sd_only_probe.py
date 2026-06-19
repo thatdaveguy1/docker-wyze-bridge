@@ -80,10 +80,15 @@ class TestHAPhase3ProdSdOnlyProbe(unittest.TestCase):
 
     def test_uses_api_header_and_redacts_query_auth(self):
         script = PROBE.read_text()
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
 
+        # Script must reference the shared library
+        self.assertIn("ha_bridge_probe.sh", script)
+        # Curl with api header stays in the script
         self.assertIn('-H "api: $API_TOKEN"', script)
         self.assertNotIn("?api=$API_TOKEN", script)
-        self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
+        # Redact pattern moved to the library
+        self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
 
     def test_checks_required_phase3_production_signals(self):
         script = PROBE.read_text()

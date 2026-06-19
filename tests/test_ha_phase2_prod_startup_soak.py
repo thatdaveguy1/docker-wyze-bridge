@@ -95,13 +95,16 @@ class TestHAPhase2ProdStartupSoak(unittest.TestCase):
 
     def test_api_auth_uses_header_and_output_is_sanitized(self):
         script = SOAK.read_text()
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
 
         self.assertIn('-H "api: $API_TOKEN"', script)
         self.assertNotIn("?api=$API_TOKEN", script)
         self.assertNotIn("api=$API_TOKEN", script)
         self.assertNotIn("python3 -", script)
-        self.assertIn("xxd -r -p", script)
-        self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
+        # Token derivation moved to the shared library
+        self.assertIn("ha_bridge_probe.sh", script)
+        self.assertIn("xxd -r -p", library)
+        self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
 
     def test_soak_checks_phase2_contract(self):
         script = SOAK.read_text()

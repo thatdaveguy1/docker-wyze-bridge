@@ -9,6 +9,9 @@ INTERVAL="${HA_WHEP_SOAK_INTERVAL_SECONDS:-30}"
 LOG_LINES="${HA_WHEP_SOAK_LOG_LINES:-160}"
 PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
 
+# Source shared library for validate_slug, section, mark_fail, redact_api_keys
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: HA_WHEP_SOAK_STREAMS="deck-sub garage-sub south-yard" scripts/ha_phase4_whep_soak.sh
@@ -45,23 +48,8 @@ validate_number() {
   name="$1"
   value="$2"
   case "$value" in
-    ""|*[!0-9]*)
+    ""|*[!0-9]*|0)
       echo "Invalid $name: use a positive integer." >&2
-      exit 1
-      ;;
-    0)
-      echo "Invalid $name: use a positive integer." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
       exit 1
       ;;
   esac
@@ -87,7 +75,9 @@ validate_number "HA_WHEP_SOAK_INTERVAL_SECONDS" "$INTERVAL"
 validate_number "HA_WHEP_SOAK_LOG_LINES" "$LOG_LINES"
 validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
 
-"$SCRIPT_DIR/ha_ssh.sh" "HA_WHEP_STREAMS='$STREAM_LIST' HA_WHEP_DURATION=$DURATION HA_WHEP_INTERVAL=$INTERVAL HA_WHEP_LOG_LINES=$LOG_LINES HA_WHEP_PROD_SLUG=$PROD_SLUG sh -s" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 STREAMS="$HA_WHEP_STREAMS"
@@ -97,18 +87,8 @@ LOG_LINES="$HA_WHEP_LOG_LINES"
 PROD_SLUG="$HA_WHEP_PROD_SLUG"
 FAIL=0
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
-mark_fail() {
-  echo "FAIL: $1"
-  FAIL=1
-}
-
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
+# redact is defined by ha_bridge_probe.sh as redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 check_health_ready() {
   health=$(curl -fsS --max-time 8 http://172.30.32.1:5000/health 2>/dev/null || true)
@@ -212,3 +192,4 @@ fi
 
 exit "$FAIL"
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_WHEP_STREAMS='$STREAM_LIST' HA_WHEP_DURATION=$DURATION HA_WHEP_INTERVAL=$INTERVAL HA_WHEP_LOG_LINES=$LOG_LINES HA_WHEP_PROD_SLUG=$PROD_SLUG sh -s"

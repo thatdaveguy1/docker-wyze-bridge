@@ -72,9 +72,12 @@ class TestHaPhase5ProdOverlayApiVerify(unittest.TestCase):
 
     def test_supervisor_output_stays_sanitized(self):
         script = SCRIPT.read_text(encoding="utf-8")
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
 
         self.assertIn("option_keys:(.data.options|keys? // [])", script)
-        self.assertIn("WB_API // .data.options.wb_api", script)
+        # WB_API check moved to the shared library
+        self.assertIn("ha_bridge_probe.sh", script)
+        self.assertIn("WB_API // .data.options.wb_api", library)
         self.assertNotIn("cat /data/options.json", script)
         self.assertNotIn("jq .data.options", script)
 
