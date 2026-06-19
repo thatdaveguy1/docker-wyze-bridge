@@ -6,7 +6,7 @@ from typing import Optional
 
 import requests
 
-from wyzebridge.bridge_utils import clean_cam_name
+from wyzebridge.camera_settings import apply_ha_cam_options
 from wyzebridge.logging import format_logging, logger
 
 def setup_hass(hass_token: Optional[str]) -> None:
@@ -35,37 +35,7 @@ def setup_hass(hass_token: Optional[str]) -> None:
         environ["MQTT_AUTH"] = f'{data["username"]}:{data["password"]}'
 
     if cam_options := conf.pop("CAM_OPTIONS", None):
-        for cam in cam_options:
-            if not (cam_name := clean_cam_name(cam.get("CAM_NAME", ""))):
-                continue
-            if "AUDIO" in cam:
-                environ[f"ENABLE_AUDIO_{cam_name}"] = str(cam["AUDIO"])
-            if "FFMPEG" in cam:
-                environ[f"FFMPEG_CMD_{cam_name}"] = str(cam["FFMPEG"])
-            if "NET_MODE" in cam:
-                environ[f"NET_MODE_{cam_name}"] = str(cam["NET_MODE"])
-            if "ROTATE" in cam:
-                environ[f"ROTATE_CAM_{cam_name}"] = str(cam["ROTATE"])
-            if "ROTATE_IMG" in cam:
-                environ[f"ROTATE_IMG_{cam_name}"] = str(cam["ROTATE_IMG"])
-            if "HD" in cam:
-                environ[f"HD_{cam_name}"] = str(cam["HD"])
-            if "SD" in cam:
-                environ[f"SD_{cam_name}"] = str(cam["SD"])
-            if "FORCE_FPS" in cam:
-                environ[f"FORCE_FPS_{cam_name}"] = str(cam["FORCE_FPS"])
-            if "LIVESTREAM" in cam:
-                environ[f"LIVESTREAM_{cam_name}"] = str(cam["LIVESTREAM"])
-            if "RECORD" in cam:
-                environ[f"RECORD_{cam_name}"] = str(cam["RECORD"])
-            if "SUB_RECORD" in cam:
-                environ[f"SUB_RECORD_{cam_name}"] = str(cam["SUB_RECORD"])
-            if "SUBSTREAM" in cam:
-                environ[f"SUBSTREAM_{cam_name}"] = str(cam["SUBSTREAM"])
-            if "STREAM" in cam:
-                environ[f"STREAM_{cam_name}"] = str(cam["STREAM"])
-            if "MOTION_WEBHOOKS" in cam:
-                environ[f"MOTION_WEBHOOKS_{cam_name}"] = str(cam["MOTION_WEBHOOKS"])
+        apply_ha_cam_options(cam_options)
 
     if mtx_options := conf.pop("MEDIAMTX", None):
         for opt in mtx_options:

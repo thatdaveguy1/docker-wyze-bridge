@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from wyzebridge.bridge_utils import clean_cam_name
@@ -7,6 +8,65 @@ from wyzebridge.logging import logger
 SETTINGS_PATH = Path("/config/wyze_camera_settings.json")
 VALID_STREAM_MODES = {"main", "sub", "both"}
 VALID_SETTING_KEYS = {"stream", "hd", "sd", "hd_kbps", "sd_kbps"}
+
+# HA option key → env var suffix mapping for per-camera options.
+_HA_CAM_OPTION_KEYS: dict[str, str] = {
+    "AUDIO": "ENABLE_AUDIO",
+    "FFMPEG": "FFMPEG_CMD",
+    "NET_MODE": "NET_MODE",
+    "ROTATE": "ROTATE_CAM",
+    "ROTATE_IMG": "ROTATE_IMG",
+    "HD": "HD",
+    "SD": "SD",
+    "FORCE_FPS": "FORCE_FPS",
+    "LIVESTREAM": "LIVESTREAM",
+    "RECORD": "RECORD",
+    "SUB_RECORD": "SUB_RECORD",
+    "SUBSTREAM": "SUBSTREAM",
+    "STREAM": "STREAM",
+    "MOTION_WEBHOOKS": "MOTION_WEBHOOKS",
+}
+
+
+@dataclass(slots=True)
+class CameraConfig:
+    """Per-camera configuration resolved from env vars, HA options, and JSON settings."""
+
+    cam_name: str
+    audio: bool = False
+    ffmpeg_cmd: str = ""
+    net_mode: str = ""
+    rotate: bool = False
+    rotate_img: bool = False
+    hd: str = ""
+    sd: str = ""
+    force_fps: int = 0
+    livestream: bool = False
+    record: bool = False
+    sub_record: bool = False
+    substream: bool = False
+    stream: str = ""
+    motion_webhooks: str = ""
+
+    @property
+    def slug(self) -> str:
+        return clean_cam_name(self.cam_name)
+
+
+def apply_ha_cam_options(cam_options: list[dict]) -> None:
+    """Resolve HA CAM_OPTIONS into environment variables.
+
+    Architecture review candidate #2: the HA cam option mapping is
+    centralized here instead of an inline if/elif chain in hass.py.
+    """
+    from os import environ
+
+    for cam in cam_options:
+        if not (cam_name := clean_cam_name(cam.get("CAM_NAME", ""))):
+            continue
+        for ha_key, env_prefix in _HA_CAM_OPTION_KEYS.items():
+            if ha_key in cam:
+                environ[f"{env_prefix}_{cam_name}"] = str(cam[ha_key])
 
 
 def _normalize_cam_name(cam_name: str) -> str:
