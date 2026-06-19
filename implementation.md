@@ -1,107 +1,157 @@
-# Architecture Refactor: Candidate #13 — FFmpeg Command Building
+# Architecture Refactor: Candidate #1 — WHEP Proxy God-File Split
 
 Last updated: 2026-06-19
 Status: in-progress
 
 ## Objective
 
-Extract shared ffmpeg/ffprobe command-building logic from 4 Python probe
-scripts into one `scripts/ffmpeg_helpers.py` module. A change to the common
-RTSP probe command flags (transport, timeout, progress pipe) propagates to
-all scripts automatically.
+Split the 2169-line `whep_proxy/main.go` into multiple files within
+`package main`, creating file-level seams for the 7 conceptual modules
+identified by the architecture review. This is the first step — making
+the boundaries visible without changing any behavior or tests.
+
+## Approach
+
+Go allows multiple files in the same package. All files share the same
+namespace, so splitting `main.go` into themed files creates seams without
+breaking tests or requiring import changes. The tests in
+`main_test.go` access `WebRTCStream` fields and methods directly —
+keeping everything in `package main` means zero test changes.
+
+The review says: "Internal seams are still seams even inside one Go
+package." File-level seams make the conceptual boundaries visible,
+reduce cognitive load, and set up for future deeper extraction
+(interfaces, separate packages).
+
+## File Split Plan
+
+### `state.go` — StreamStateMachine (~280 lines)
+Lifecycle, transitions, reaper, reuse logic.
+
+**Types:** `WebRTCStream` struct (the god struct stays here for now)
+**Constants:** `startupReuseWindow`, `maxNoMediaAge`, `maxRecoveryAge`,
+  `maxNoVideoReconnectAttempts`, `maxVideoParamReplayFailures`,
+  `streamHealthCheckInterval`, `upstreamAnswerTimeout`
+**Vars:** `streams`, `streamsMu`
+**Functions:**
+- `canReuse()` (190-240)
+- `markReconnectAttempt()` (242-248)
+- `clearReconnectMetrics()` (250-252)
+- `shouldForceRecreateNoVideo()` (254-262)
+- `setVideoSource()` (264-276)
+- `setAudioReady()` (278-280)
+- `markAudioPacketSeen()` (282-284)
+- `status()` (286-314)
+- `resetUpstreamMediaState()` (468-512)
+- `cleanupUpstreamLocked()` (984-990)
+- `cleanupUpstreamIfCurrent()` (992-999)
+- `destroyStreamLocked()` (1001-1005)
+- `destroyStream()` (1007-1011)
+- `destroyStreamIfCurrent()` (1013-1019)
+- `reapStaleStreams()` (1098-1131)
+- `runStreamHealthReaper()` (1133-1144)
+- `scheduleReconnect()` (1146-1201)
+- `handleUpstreamDisconnect()` (1203-1214)
+
+### `upstream.go` — UpstreamSession (~530 lines)
+Signaling, SDP, peer connection, websocket handling.
+
+**Types:** `UpstreamSession` struct, `wsCloseInfo` struct
+**Functions:**
+- `currentUpstream()` (432-436)
+- `setUpstream()` (450-455)
+- `clearUpstreamIfCurrent()` (457-466)
+- `closeUpstreamSession()` (514-528)
+- `classifyWSReadError()` (346-356)
+- `shouldLogTrackEnd()` (358-360)
+- `shouldLogRTCPEnd()` (362-364)
+- `logNormalClose()` (366-397)
+- `shouldReconnectOnNormalWSClosure()` (399-408)
+- `closeNormalRotationWebsocket()` (410-422)
+- `sendSignalingMessage()` (1333-1361)
+- `decodeSignalingPayload()` (1363-1369)
+- `generateCorrelationID()` (1371-1380)
+- `rewriteSessionLine()` (1382-1391)
+- `decodeSignalingURL()` (1393-1395)
+- `createPeerConnection()` (1397-1424)
+- `handleRemoteAnswer()` (1426-1454)
+- `markAnswerReceived()` (1456-1461)
+- `watchUpstreamAnswer()` (1463-1486)
+- `handleRemoteCandidate()` (1488-1521)
+- `createAndSendOffer()` (1523-1567)
+- `establishUpstream()` (1569-1875)
+
+### `kvs_config.go` — KVSConfigClient (~70 lines)
+Config fetch, retry, terminal error detection.
+
+**Types:** `refreshConfigError` struct
+**Functions:**
+- `isTerminalRefreshError()` (424-430)
+- `kvsConfigURL()` (1216-1229)
+- `fetchKVSConfig()` (1231-1260)
+- `recreateStreamFromBridge()` (1063-1090)
+- `recreateStreamFn` var + `init()` (1092-1096)
+
+### `media.go` — MediaForwarder (~420 lines)
+RTP forwarding, keyframe handling, H.264 packet parsing.
+
+**Functions:**
+- `outputTracks()` (163-178)
+- `ensureETag()` (180-188)
+- `requestVideoKeyframe()` (316-344)
+- `h264PacketInfo()` (530-576)
+- `h264FUAState()` (578-586)
+- `cloneRTPPacket()` (588-602)
+- `parseSTAPAParameterSets()` (604-628)
+- `bufferFragmentedSTAPA()` (630-680)
+- `bufferVideoParameterSet()` (682-726)
+- `replayVideoParameterSets()` (728-780)
+- `shouldForwardVideoPacket()` (782-795)
+- `recordVideoReplayFailure()` (797-799)
+- `writeLocalTrack()` (801-840)
+- `forwardTrack()` (842-961)
+- `readReceiverRTCP()` (963-982)
+
+### `handlers.go` — HTTP Handlers (~300 lines)
+**Functions:**
+- `websocketHandler()` (1877-1935)
+- `statusHandler()` (1937-1957)
+- `whepHandler()` (2000-2169)
+
+### `main.go` — Main + Shared Types/Helpers (~200 lines)
+**Types:** `ICEServer`, `WebRTCConfig`
+**Functions:**
+- `main()` (1282-1310)
+- `newWebRTCStream()` (1021-1052)
+- `startStreamUpstream()` (1054-1061)
+- `whepListenAddress()` (1271-1280)
+- `envListMatches()` (140-157)
+- `upstreamVideoOnly()` (159-161)
+- `isLoopbackRemoteAddr()` (1262-1269)
+- `redactURL()` (1312-1331)
+- `mustJSON()` (1959-1965)
+- `whepDebugEnabled()` (1967-1970)
+- `whepTraceStream()` (1972-1974)
+- `whepTraceEnabled()` (1976-1979)
+- `traceLogf()` (1981-1986)
+- `sanitizeLogURL()` (1988-1994)
+- `sdpHasMediaLine()` (1996-1998)
 
 ## Success Criteria
 
-1. `scripts/ffmpeg_helpers.py` exists and defines: `detect_timeout_flag`,
-   `ensure_binary`, `build_ffprobe_cmd`, `build_ffmpeg_rtsp_cmd`.
-2. Each migrated script imports from the shared module instead of
-   duplicating the function bodies.
-3. All existing tests pass (tests patch `MODULE.ffprobe_metadata` etc.,
-   which still exist on each module via import).
-4. New test `tests/test_ffmpeg_helpers.py` covers the shared module directly.
-5. No script gains new subprocess calls or changes probe behavior.
+1. `whep_proxy/` directory has 6 Go files instead of 1 god-file.
+2. `go test ./whep_proxy/... -v -count=1` passes with zero test changes.
+3. `go vet ./whep_proxy/...` passes.
+4. No function body changes — pure file split.
+5. `./scripts/build.sh --check` passes (the build script copies
+   `whep_proxy/` into `home_assistant/` and `.ha_live_addon/`).
 
-## Duplication Surface (confirmed by reading all 4 scripts)
+## What This Does NOT Do (future candidates)
 
-### Identical across 3 scripts
-- `detect_timeout_flag(binary_path)` — runs `binary -h full`, checks for
-  `rw_timeout`/`timeout`/`stimeout`. Identical in reolink, wyze_rtsp,
-  local_camera_uptime.
-- `ensure_binary(path, name)` — resolves/validates binary path. Slight
-  variants: local_camera_uptime uses `shutil.which` fallback, reolink and
-  wyze_rtsp check `Path.exists()`. Merge to use both.
+- Does not extract interfaces (e.g., `StreamState` interface for HTTP
+  handlers to depend on instead of 30 fields)
+- Does not create separate Go packages
+- Does not add new tests for state transitions or keyframe buffer
+- Does not change the `WebRTCStream` struct fields
 
-### Nearly identical command construction across 3 scripts
-- `ffprobe_metadata()` — all 3 scripts build the same ffprobe command:
-  `[ffprobe, "-hide_banner", "-loglevel", "error", "-rtsp_transport",
-  transport, ...timeout..., "-show_entries", "stream=...", "-of", "json",
-  url]`. Response parsing differs per script (different fields extracted).
-  Extract only the command builder; keep response parsing in each script.
-
-### Inline ffmpeg command construction across 4 scripts
-- `reolink_direct_stability_probe.py` — `[ffmpeg, "-hide_banner",
-  "-nostats", "-loglevel", "warning", "-nostdin", "-rtsp_transport",
-  transport, "-i", url, "-map", "0", "-c", "copy", "-t", duration, "-f",
-  "mpegts", "-progress", "pipe:2", "pipe:1"]`
-- `wyze_rtsp_stability_probe.py` — `[ffmpeg, "-hide_banner", "-nostats",
-  "-loglevel", loglevel, "-nostdin", "-rtsp_transport", transport, "-i",
-  url, "-t", duration, "-c", "copy", "-progress", "pipe:2", "-f", "null",
-  "/dev/null"]`
-- `local_camera_uptime_smoke_test.py` — `[ffmpeg, "-hide_banner",
-  "-nostats", "-loglevel", "error", "-nostdin", "-rtsp_transport",
-  transport, "-i", url, "-map", "0:v:0", "-an", "-t", duration, "-f",
-  "null", "-", "-progress", "pipe:1"]`
-- `wyze_cam_rtsp_smoke_test.py` — `["ffmpeg", "-hide_banner", "-loglevel",
-  "error", "-progress", "pipe:1", "-rtsp_transport", "tcp", "-i", url,
-  "-t", duration, "-f", "rawvideo", "-pix_fmt", "yuv420p", "/dev/null"]`
-
-## Functions Extracted
-
-### `detect_timeout_flag(binary_path: str) -> str | None`
-Runs `binary -h full` and returns the first supported timeout flag name.
-
-### `ensure_binary(path: str | None, name: str) -> str`
-Resolves `path` or `shutil.which(name)`, validates existence, returns path.
-
-### `build_ffprobe_cmd(ffprobe_path, url, transport, timeout_flag, timeout_us, entries) -> list[str]`
-Returns the ffprobe command list. `entries` defaults to the standard
-`stream=index,codec_name,codec_type,width,height,avg_frame_rate,r_frame_rate:format=format_name`.
-
-### `build_ffmpeg_rtsp_cmd(ffmpeg_path, url, transport, duration, *, loglevel="warning", nostats=True, nostdin=True, output_format="null", output_target="/dev/null", progress_pipe=None, extra_input_args=None, extra_output_args=None) -> list[str]`
-Returns the ffmpeg RTSP probe command list.
-
-## Functions NOT Extracted (vary per script)
-
-- `ffprobe_metadata()` response parsing — each script extracts different
-  fields (fps vs avg_frame_rate, error key names differ)
-- `probe_camera()` / `run_reolink_check()` — probe loop logic, output
-  handling, and progress parsing are script-specific
-- `count_frames()` in wyze_cam_rtsp_smoke_test — uses rawvideo output,
-  different progress parsing
-
-## Files Touched
-
-### New
-- `scripts/ffmpeg_helpers.py` — the shared module
-- `tests/test_ffmpeg_helpers.py` — module tests
-
-### Migrated (scripts)
-- `scripts/reolink_direct_stability_probe.py` (tracer bullet)
-- `scripts/wyze_rtsp_stability_probe.py`
-- `scripts/local_camera_uptime_smoke_test.py`
-- `scripts/wyze_cam_rtsp_smoke_test.py`
-
-### Test impact
-- `tests/test_reolink_direct_stability_probe.py` — patches
-  `MODULE.ensure_binary`, `MODULE.detect_timeout_flag` — still works
-  because imports create module-level references
-- `tests/test_local_camera_uptime_smoke_test.py` — patches
-  `MODULE.ffprobe_metadata`, `MODULE.ensure_binary`,
-  `MODULE.detect_timeout_flag` — same pattern, no changes needed
-
-## Tracer Bullet
-
-`scripts/reolink_direct_stability_probe.py` is the tracer — it has all
-duplicated patterns (`detect_timeout_flag`, `ensure_binary`,
-`ffprobe_metadata`, inline ffmpeg cmd) and has test coverage. Migrate it
-first, verify tests pass, then migrate the rest.
+These are deeper refactors that become easier once the file seams exist.

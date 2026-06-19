@@ -1,5 +1,9 @@
 # Todo
 
+## 2026-06-19 Architecture Review Candidate #1 — WHEP Proxy God-File Split
+
+- [completed] Split the 2169-line `whep_proxy/main.go` into 6 themed files within `package main`: `state.go` (StreamStateMachine: lifecycle, reaper, reuse), `upstream.go` (UpstreamSession: signaling, SDP, websocket), `kvs_config.go` (KVSConfigClient: fetch, retry, terminal error detection), `media.go` (MediaForwarder: RTP forwarding, H.264 packet parsing, keyframe handling), `handlers.go` (HTTP handlers: whep, websocket, status), and `main.go` (main + shared types/helpers). Pure file split — zero function body changes, zero test changes. All 30 Go tests pass, `go vet` clean, `build.sh --check` clean, 308 Python tests pass (same 6 pre-existing failures). New files synced to `home_assistant/whep_proxy/` and `.ha_live_addon/whep_proxy/`.
+
 ## 2026-06-19 Architecture Review Candidate #13 — FFmpeg Command Building
 
 - [completed] Extract shared ffmpeg/ffprobe command-building logic from 4 Python probe scripts into `scripts/ffmpeg_helpers.py`. Functions: `detect_timeout_flag`, `ensure_binary`, `build_ffprobe_cmd`, `build_ffmpeg_rtsp_cmd`. Migrated: `reolink_direct_stability_probe.py`, `wyze_rtsp_stability_probe.py`, `local_camera_uptime_smoke_test.py`, `wyze_cam_rtsp_smoke_test.py`. Each script keeps its own response parsing and probe loop logic; only command construction and binary resolution are shared. 15 new library tests pass, all existing script tests pass.
