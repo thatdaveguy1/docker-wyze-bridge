@@ -8,6 +8,20 @@ ROOT = Path(__file__).resolve().parent.parent
 ADDON_DIR = ROOT / "home_assistant"
 
 
+def _sidecar_helper_texts(base: Path) -> str:
+    """Read the go2rtc sidecar shell script and its extracted Python helpers.
+
+    Architecture review candidate #12: embedded Python was extracted from
+    go2rtc_sidecar.sh into go2rtc_sidecar_helpers.py. Tests that check for
+    patterns in the sidecar logic must read both files.
+    """
+    texts = [(base / "app" / "go2rtc_sidecar.sh").read_text()]
+    helpers = base / "app" / "wyzebridge" / "go2rtc_sidecar_helpers.py"
+    if helpers.exists():
+        texts.append(helpers.read_text())
+    return "\n".join(texts)
+
+
 class TestHomeAssistantAddonPackaging(unittest.TestCase):
     def test_runtime_overlay_build_matches_checked_in_artifacts(self):
         result = subprocess.run(
@@ -267,7 +281,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 for expected in expected_lines:
                     self.assertIn(
@@ -290,7 +304,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 for expected in expected_lines:
                     self.assertIn(
@@ -309,7 +323,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         stale_return = '    if [ "${GO2RTC_HAS_PERSISTED_STREAMS}" = "1" ]; then\n        return\n    fi\n'
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 self.assertNotIn(
                     stale_return,
@@ -338,7 +352,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 for expected in expected_snippets:
                     self.assertIn(
@@ -356,19 +370,19 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
 
         expected_snippets = [
             'WB_APP_API_BASE=""',
-            'BRIDGE_API_TOKEN=$(WYZE_EMAIL="${WYZE_EMAIL}" python3 - <<\'PY\'',
+            'BRIDGE_API_TOKEN=$(WYZE_EMAIL="${WYZE_EMAIL}" PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "import os; from go2rtc_sidecar_helpers import resolve_bridge_api_token; print(resolve_bridge_api_token(os.environ[\'WYZE_EMAIL\']))"',
             'candidate="http://127.0.0.1:${WB_APP_PORT}"',
             'curl -sf -H "api: ${BRIDGE_API_TOKEN}" "${candidate}/api"',
-            'payload = json.loads(os.environ.get("BRIDGE_API_PAYLOAD", ""))',
+            'payload = json.loads(payload_json)',
             'Bridge catalog ready after ${retry}x2s',
             'WB_APP_API_BASE="${candidate}"',
             "keeping stale alias fallback",
-            'def bridge_published_entries(cam_uri: str):',
-            'def bridge_camera_state(cam_uri: str) -> dict:',
+            'def _bridge_published_entries(cam_uri: str):',
+            'def _bridge_camera_state(cam_uri: str) -> dict:',
             'state["published"] = bool(enabled_entries)',
             'state["hd"] = any(',
             'state["sd"] = any(',
-            'fetch_json(f"{base_url}/api/{cam_path}/stream-config", api_token=api_token)',
+            '_fetch_json(f"{base_url}/api/{cam_path}/stream-config", api_token=api_token)',
             'bridge_catalog_empty = isinstance(catalog, dict) and not catalog',
             'if bridge_catalog_empty:',
             'published = None',
@@ -379,20 +393,20 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             'state["enabled"] = bool(state.get("hd") or state.get("sd"))',
             'for key, value in bridge_state.items():',
             'cam.setdefault(key, value)',
-            'published = helper_flag(cam, "published")',
-            'if published is False and helper_flag(cam, "hd") is False and helper_flag(cam, "sd") is False:',
+            'published = _helper_flag(cam, "published")',
+            'if published is False and _helper_flag(cam, "hd") is False and _helper_flag(cam, "sd") is False:',
             'Skipping camera not published by bridge',
-            'enabled = helper_flag(cam, "enabled")',
+            'enabled = _helper_flag(cam, "enabled")',
             'if enabled is False:',
-            'hd_supported = helper_flag(cam, "hd_supported")',
-            'sd_supported = helper_flag(cam, "sd_supported")',
+            'hd_supported = _helper_flag(cam, "hd_supported")',
+            'sd_supported = _helper_flag(cam, "sd_supported")',
             'if hd_supported is None and model == "HL_BC":',
             'aliases.append((f"{uri}-sd", "sd"))',
             'Skipping camera with no enabled native feeds',
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 for expected in expected_snippets:
                     self.assertIn(
@@ -418,13 +432,13 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 self.assertIn("GO2RTC_LAN_IP_OVERRIDES", helper_text)
                 self.assertIn("GO2RTC_FORCE_LAN_IP_OVERRIDES", helper_text)
                 self.assertIn('/data/options.json", encoding="utf-8"', helper_text)
-                self.assertIn("def normalize_mac(value: str) -> str:", helper_text)
-                self.assertIn("def camera_mac(cam: dict) -> str:", helper_text)
+                self.assertIn("def _normalize_mac(value: str) -> str:", helper_text)
+                self.assertIn("def _camera_mac(cam: dict) -> str:", helper_text)
                 self.assertIn("urllib.parse.parse_qs(parsed.query)", helper_text)
                 self.assertNotIn("80482C31C9E7", helper_text)
                 self.assertNotIn("192.168.1.177", helper_text)
@@ -437,14 +451,14 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         ]
 
         expected_snippets = [
-            "def is_private_lan_host(host: str) -> bool:",
-            'if is_private_lan_host(parsed.hostname or "") and not force_lan_ip_overrides():',
+            "def _is_private_lan_host(host: str) -> bool:",
+            'if _is_private_lan_host(parsed.hostname or "") and not _force_lan_ip_overrides():',
             "keeping helper LAN host",
             "GO2RTC_FORCE_LAN_IP_OVERRIDES",
         ]
 
         for helper_path in helper_files:
-            helper_text = helper_path.read_text()
+            helper_text = _sidecar_helper_texts(helper_path.parent.parent)
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 for expected in expected_snippets:
                     self.assertIn(
