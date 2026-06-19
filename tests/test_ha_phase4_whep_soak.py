@@ -92,8 +92,10 @@ class TestHAPhase4WhepSoak(unittest.TestCase):
 
     def test_static_output_is_sanitized(self):
         script = SOAK.read_text()
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
 
-        self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
+        self.assertIn("ha_bridge_probe.sh", script)
+        self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
         self.assertIn("| redact", script)
 
     def test_soak_checks_required_phase4_signals(self):

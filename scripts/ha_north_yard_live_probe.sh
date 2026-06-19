@@ -11,6 +11,10 @@ IPS="${HA_NORTH_YARD_PROBE_IPS:-192.168.1.175 192.168.1.179 192.168.1.183 192.16
 BRIDGE_BASE="${HA_NORTH_YARD_BRIDGE_BASE:-http://172.30.32.1:5000}"
 GO2RTC_BASE="${HA_NORTH_YARD_GO2RTC_BASE:-http://172.30.32.1:11984}"
 
+# Source shared library for validate_slug, validate_base_url, section,
+# redact_api_keys, derive_bridge_token
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/ha_north_yard_live_probe.sh
@@ -55,42 +59,12 @@ validate_name() {
   esac
 }
 
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
 validate_number() {
   name="$1"
   value="$2"
   case "$value" in
     ""|*[!0-9]*)
       echo "Invalid $name: use a non-negative integer." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_base_url() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    http://*) host="${value#http://}" ;;
-    https://*) host="${value#https://}" ;;
-    *)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-  case "$host" in
-    ""|*/*|*\?*|*\&*|*\=*|*[!A-Za-z0-9_.:-]*)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
       exit 1
       ;;
   esac
@@ -117,7 +91,9 @@ validate_base_url "HA_NORTH_YARD_BRIDGE_BASE" "$BRIDGE_BASE"
 validate_base_url "HA_NORTH_YARD_GO2RTC_BASE" "$GO2RTC_BASE"
 validate_ips
 
-"$SCRIPT_DIR/ha_ssh.sh" "HA_NY_CAMERA=$CAMERA HA_NY_PROD_SLUG=$PROD_SLUG HA_NY_SAMPLES=$SAMPLES HA_NY_INTERVAL=$INTERVAL HA_NY_IPS='$IPS' HA_NY_BRIDGE_BASE=$BRIDGE_BASE HA_NY_GO2RTC_BASE=$GO2RTC_BASE sh -s" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 CAMERA="$HA_NY_CAMERA"
@@ -129,13 +105,8 @@ BRIDGE_BASE="$HA_NY_BRIDGE_BASE"
 GO2RTC_BASE="$HA_NY_GO2RTC_BASE"
 API_TOKEN=""
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
+# redact is defined by ha_bridge_probe.sh as redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 file_summary() {
   path="$1"
@@ -174,13 +145,7 @@ fetch_plain() {
 
 INFO=$(curl -fsS -H "Authorization: Bearer $SUPERVISOR_TOKEN" "http://supervisor/addons/$PROD_SLUG/info" 2>/dev/null || true)
 if [ -n "$INFO" ]; then
-  STORED_API=$(printf '%s\n' "$INFO" | jq -r '.data.options.WB_API // .data.options.wb_api // ""' 2>/dev/null || true)
-  WYZE_EMAIL=$(printf '%s\n' "$INFO" | jq -r '.data.options.WYZE_EMAIL // ""' 2>/dev/null || true)
-  if [ -n "$STORED_API" ] && [ "$STORED_API" != "null" ]; then
-    API_TOKEN="$STORED_API"
-  elif [ -n "$WYZE_EMAIL" ] && [ "$WYZE_EMAIL" != "null" ]; then
-    API_TOKEN=$(printf '%s' "$WYZE_EMAIL" | sha256sum | awk '{print $1}' | xxd -r -p | base64 | tr '+/' '-_' | tr -d '=\n' | cut -c1-40)
-  fi
+  API_TOKEN=$(derive_bridge_token "$INFO")
 fi
 
 section "North Yard Live Probe"
@@ -238,3 +203,4 @@ for ip in $IPS; do
 done
 ip neigh show 2>/dev/null | grep -Ei '192\.168\.1\.(175|179|183|185)|80:48:2c:31:c9:e7|80482c31c9e7' || true
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_NY_CAMERA=$CAMERA HA_NY_PROD_SLUG=$PROD_SLUG HA_NY_SAMPLES=$SAMPLES HA_NY_INTERVAL=$INTERVAL HA_NY_IPS='$IPS' HA_NY_BRIDGE_BASE=$BRIDGE_BASE HA_NY_GO2RTC_BASE=$GO2RTC_BASE sh -s"

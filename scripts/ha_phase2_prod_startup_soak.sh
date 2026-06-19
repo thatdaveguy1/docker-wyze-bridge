@@ -9,6 +9,10 @@ LOG_LINES="${HA_PHASE2_STARTUP_LOG_LINES:-160}"
 PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
 BRIDGE_BASE="${HA_PHASE2_BRIDGE_BASE:-http://172.30.32.1:5000}"
 
+# Source shared library for validate_slug, validate_base_url, section, mark_fail,
+# redact_api_keys, derive_bridge_token, bool_true
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/ha_phase2_prod_startup_soak.sh
@@ -56,43 +60,15 @@ validate_number() {
   esac
 }
 
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_base_url() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    http://*) host="${value#http://}" ;;
-    https://*) host="${value#https://}" ;;
-    *)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-  case "$host" in
-    ""|*/*|*\?*|*\&*|*\=*|*[!A-Za-z0-9_.:-]*)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-}
-
 validate_number "HA_PHASE2_STARTUP_SECONDS" "$DURATION"
 validate_number "HA_PHASE2_STARTUP_INTERVAL_SECONDS" "$INTERVAL"
 validate_number "HA_PHASE2_STARTUP_LOG_LINES" "$LOG_LINES"
 validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
 validate_base_url "HA_PHASE2_BRIDGE_BASE" "$BRIDGE_BASE"
 
-"$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE2_DURATION=$DURATION HA_PHASE2_INTERVAL=$INTERVAL HA_PHASE2_LOG_LINES=$LOG_LINES HA_PHASE2_PROD_SLUG=$PROD_SLUG HA_PHASE2_BRIDGE_BASE=$BRIDGE_BASE sh -s" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 DURATION="$HA_PHASE2_DURATION"
@@ -103,18 +79,8 @@ BRIDGE_BASE="$HA_PHASE2_BRIDGE_BASE"
 FAIL=0
 API_TOKEN=""
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
-mark_fail() {
-  echo "FAIL: $1"
-  FAIL=1
-}
-
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
+# redact is defined by ha_bridge_probe.sh as redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 section "Production Phase 2 Startup/API Soak"
 echo "duration_seconds=$DURATION"
@@ -123,20 +89,7 @@ echo "bridge_base=$BRIDGE_BASE"
 
 INFO=$(curl -fsS -H "Authorization: Bearer $SUPERVISOR_TOKEN" "http://supervisor/addons/$PROD_SLUG/info" 2>/dev/null || true)
 if [ -n "$INFO" ]; then
-  STORED_API=$(printf '%s\n' "$INFO" | jq -r '.data.options.WB_API // .data.options.wb_api // ""' 2>/dev/null || true)
-  WYZE_EMAIL=$(printf '%s\n' "$INFO" | jq -r '.data.options.WYZE_EMAIL // ""' 2>/dev/null || true)
-  if [ -n "$STORED_API" ] && [ "$STORED_API" != "null" ]; then
-    API_TOKEN="$STORED_API"
-  elif [ -n "$WYZE_EMAIL" ] && [ "$WYZE_EMAIL" != "null" ]; then
-    API_TOKEN=$(printf '%s' "$WYZE_EMAIL" \
-      | sha256sum \
-      | awk '{print $1}' \
-      | xxd -r -p \
-      | base64 \
-      | tr '+/' '-_' \
-      | tr -d '=\n' \
-      | cut -c1-40)
-  fi
+  API_TOKEN=$(derive_bridge_token "$INFO")
 fi
 
 if [ -n "$API_TOKEN" ]; then
@@ -301,3 +254,4 @@ fi
 
 exit "$FAIL"
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE2_DURATION=$DURATION HA_PHASE2_INTERVAL=$INTERVAL HA_PHASE2_LOG_LINES=$LOG_LINES HA_PHASE2_PROD_SLUG=$PROD_SLUG HA_PHASE2_BRIDGE_BASE=$BRIDGE_BASE sh -s"

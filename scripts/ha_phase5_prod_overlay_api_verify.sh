@@ -11,6 +11,10 @@ MIN_CAMERAS="${HA_PHASE5_MIN_CAMERAS:-1}"
 EXPECTED_REPOSITORY="${HA_PHASE5_EXPECTED_REPOSITORY:-}"
 EXPECTED_VERSION="${HA_PHASE5_EXPECTED_VERSION:-}"
 
+# Source shared library for validate_slug, validate_base_url, section, mark_fail,
+# redact_api_keys, derive_bridge_token, bool_true
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: scripts/ha_phase5_prod_overlay_api_verify.sh
@@ -43,46 +47,13 @@ case "${1:-}" in
     ;;
 esac
 
+# Override validate_number to reject zero (phase5 needs positive integers)
 validate_number() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!0-9]*)
-      echo "Invalid $name: use a positive integer." >&2
-      exit 1
-      ;;
-    0)
-      echo "Invalid $name: use a positive integer." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
-validate_base_url() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    http://*) host="${value#http://}" ;;
-    https://*) host="${value#https://}" ;;
-    *)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
-      exit 1
-      ;;
-  esac
-  case "$host" in
-    ""|*/*|*\?*|*\&*|*\=*|*[!A-Za-z0-9_.:-]*)
-      echo "Invalid $name: use a simple http(s) URL without a path." >&2
+  _name="$1"
+  _value="$2"
+  case "$_value" in
+    ""|*[!0-9]*|0)
+      echo "Invalid $_name: use a positive integer." >&2
       exit 1
       ;;
   esac
@@ -111,7 +82,9 @@ validate_optional_metadata "HA_PHASE5_EXPECTED_VERSION" "$EXPECTED_VERSION"
 printf '\n## Local Overlay Build Check\n'
 "$ROOT_DIR/scripts/build.sh" --check
 
-"$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE5_PROD_SLUG=$PROD_SLUG HA_PHASE5_BRIDGE_BASE=$BRIDGE_BASE HA_PHASE5_LOG_LINES=$LOG_LINES HA_PHASE5_MIN_CAMERAS=$MIN_CAMERAS HA_PHASE5_EXPECTED_REPOSITORY=$EXPECTED_REPOSITORY HA_PHASE5_EXPECTED_VERSION=$EXPECTED_VERSION sh -s" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 PROD_SLUG="$HA_PHASE5_PROD_SLUG"
@@ -123,18 +96,8 @@ EXPECTED_VERSION="$HA_PHASE5_EXPECTED_VERSION"
 FAIL=0
 API_TOKEN=""
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
-mark_fail() {
-  echo "FAIL: $1"
-  FAIL=1
-}
-
-redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g'
-}
+# redact is defined by ha_bridge_probe.sh as redact_api_keys
+redact() { redact_api_keys "$@"; }
 
 curl_bridge() {
   path="$1"
@@ -164,8 +127,6 @@ else
   STATE=$(printf '%s\n' "$INFO" | jq -r '.data.state // ""')
   REPOSITORY=$(printf '%s\n' "$INFO" | jq -r '.data.repository // ""')
   VERSION=$(printf '%s\n' "$INFO" | jq -r '.data.version // ""')
-  STORED_API=$(printf '%s\n' "$INFO" | jq -r '.data.options.WB_API // .data.options.wb_api // ""' 2>/dev/null || true)
-  WYZE_EMAIL=$(printf '%s\n' "$INFO" | jq -r '.data.options.WYZE_EMAIL // ""' 2>/dev/null || true)
 
   if [ "$STATE" != "started" ]; then
     mark_fail "production add-on state must be started"
@@ -177,18 +138,7 @@ else
     mark_fail "production add-on version must match HA_PHASE5_EXPECTED_VERSION"
   fi
 
-  if [ -n "$STORED_API" ] && [ "$STORED_API" != "null" ]; then
-    API_TOKEN="$STORED_API"
-  elif [ -n "$WYZE_EMAIL" ] && [ "$WYZE_EMAIL" != "null" ]; then
-    API_TOKEN=$(printf '%s' "$WYZE_EMAIL" \
-      | sha256sum \
-      | awk '{print $1}' \
-      | xxd -r -p \
-      | base64 \
-      | tr '+/' '-_' \
-      | tr -d '=\n' \
-      | cut -c1-40)
-  fi
+  API_TOKEN=$(derive_bridge_token "$INFO")
 fi
 
 if [ -n "$API_TOKEN" ]; then
@@ -272,3 +222,4 @@ fi
 
 exit "$FAIL"
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE5_PROD_SLUG=$PROD_SLUG HA_PHASE5_BRIDGE_BASE=$BRIDGE_BASE HA_PHASE5_LOG_LINES=$LOG_LINES HA_PHASE5_MIN_CAMERAS=$MIN_CAMERAS HA_PHASE5_EXPECTED_REPOSITORY=$EXPECTED_REPOSITORY HA_PHASE5_EXPECTED_VERSION=$EXPECTED_VERSION sh -s"

@@ -8,6 +8,9 @@ FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-ccab4aaf_frigate}"
 SCRYPTED_SLUG="${HA_SCRYPTED_ADDON_SLUG:-09e60fb6_scrypted}"
 LINES="${HA_FRIGATE_DIAG_LOG_LINES:-160}"
 
+# Source shared library for validate_slug, section, redact_api_keys
+. "$SCRIPT_DIR/ha_bridge_probe.sh"
+
 usage() {
   cat <<EOF
 Usage: HA_FRIGATE_DIAG_CAMERAS="south_driveway" scripts/ha_frigate_input_diag.sh
@@ -39,26 +42,11 @@ case "${1:-}" in
     ;;
 esac
 
-validate_slug() {
-  name="$1"
-  value="$2"
-  case "$value" in
-    ""|*[!A-Za-z0-9_-]*)
-      echo "Invalid $name: only letters, numbers, '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-}
-
 validate_number() {
   name="$1"
   value="$2"
   case "$value" in
-    ""|*[!0-9]*)
-      echo "Invalid $name: use a positive integer." >&2
-      exit 1
-      ;;
-    0)
+    ""|*[!0-9]*|0)
       echo "Invalid $name: use a positive integer." >&2
       exit 1
       ;;
@@ -84,7 +72,9 @@ validate_slug "HA_FRIGATE_ADDON_SLUG" "$FRIGATE_SLUG"
 validate_slug "HA_SCRYPTED_ADDON_SLUG" "$SCRYPTED_SLUG"
 validate_number "HA_FRIGATE_DIAG_LOG_LINES" "$LINES"
 
-"$SCRIPT_DIR/ha_ssh.sh" "HA_FRIGATE_DIAG_CAMERAS='$CAMERA_LIST' HA_FRIGATE_DIAG_SLUG=$FRIGATE_SLUG HA_SCRYPTED_DIAG_SLUG=$SCRYPTED_SLUG HA_FRIGATE_DIAG_LINES=$LINES sh -s" <<'REMOTE'
+{
+  cat "$SCRIPT_DIR/ha_bridge_probe.sh"
+  cat <<'REMOTE'
 set -eu
 
 CAMERAS="$HA_FRIGATE_DIAG_CAMERAS"
@@ -92,12 +82,9 @@ FRIGATE_SLUG="$HA_FRIGATE_DIAG_SLUG"
 SCRYPTED_SLUG="$HA_SCRYPTED_DIAG_SLUG"
 LINES="$HA_FRIGATE_DIAG_LINES"
 
-section() {
-  printf '\n## %s\n' "$1"
-}
-
+# redact extends the shared library's redact_api_keys with rtsp:// credential redaction
 redact() {
-  sed -E 's/api=[^" ]+/api=<redacted>/g; s#(rtsp://)[^/@[:space:]]+:[^/@[:space:]]+@#\1<redacted>@#g'
+  redact_api_keys "$@" | sed -E 's#(rtsp://)[^/@[:space:]]+:[^/@[:space:]]+@#\1<redacted>@#g'
 }
 
 urlencode() {
@@ -169,3 +156,4 @@ for slug in "$FRIGATE_SLUG" "$SCRYPTED_SLUG"; do
     | redact || true
 done
 REMOTE
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_FRIGATE_DIAG_CAMERAS='$CAMERA_LIST' HA_FRIGATE_DIAG_SLUG=$FRIGATE_SLUG HA_SCRYPTED_DIAG_SLUG=$SCRYPTED_SLUG HA_FRIGATE_DIAG_LINES=$LINES sh -s"

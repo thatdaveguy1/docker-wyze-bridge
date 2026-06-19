@@ -78,10 +78,12 @@ class TestHAProdRecoveryVerify(unittest.TestCase):
 
     def test_static_output_is_sanitized_and_does_not_dump_options(self):
         script = VERIFY.read_text()
+        library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
 
         self.assertIn("option_keys:(.data.options|keys? // [])", script)
         self.assertNotIn("options:.data.options", script)
-        self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
+        self.assertIn("ha_bridge_probe.sh", script)
+        self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
         self.assertIn("| redact", script)
 
     def test_gate_checks_the_current_production_blocker_and_resume_signals(self):
