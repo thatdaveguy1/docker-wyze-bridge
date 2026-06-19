@@ -1,9 +1,13 @@
 # Todo
 
+## 2026-06-19 Architecture Review Candidate #13 — FFmpeg Command Building
+
+- [completed] Extract shared ffmpeg/ffprobe command-building logic from 4 Python probe scripts into `scripts/ffmpeg_helpers.py`. Functions: `detect_timeout_flag`, `ensure_binary`, `build_ffprobe_cmd`, `build_ffmpeg_rtsp_cmd`. Migrated: `reolink_direct_stability_probe.py`, `wyze_rtsp_stability_probe.py`, `local_camera_uptime_smoke_test.py`, `wyze_cam_rtsp_smoke_test.py`. Each script keeps its own response parsing and probe loop logic; only command construction and binary resolution are shared. 15 new library tests pass, all existing script tests pass.
+
 ## 2026-06-19 Architecture Review Candidate #7 — HA Bridge Probe Library
 
 - [completed] Extract shared functions (`section`, `mark_fail`, `redact_api_keys`, `derive_bridge_token`, `validate_slug`, `validate_base_url`, `validate_number`, `bool_true`) from 10 duplicated HA shell scripts into `scripts/ha_bridge_probe.sh`. Migrated: `ha_phase2_prod_startup_soak.sh`, `ha_phase3_prod_sd_only_probe.sh`, `ha_phase4_whep_soak.sh`, `ha_phase5_prod_overlay_api_verify.sh`, `ha_prod_recovery_verify.sh`, `ha_bridge_doctor.sh`, `ha_north_yard_live_probe.sh`, `ha_wyze_camera_matrix_probe.sh`, `ha_wyze_scrypted_snapshot_probe.sh`, `ha_frigate_input_diag.sh`. All 73 library + script tests pass. Scripts with custom redact patterns (scrypted: Bearer token, frigate: rtsp:// credentials) wrap `redact_api_keys` with local overrides. Scripts with positive-integer-only `validate_number` keep local overrides that reject zero.
-- [pending] Proceed to candidate #13 (FFmpeg command building extraction).
+- [completed] Proceed to candidate #13 (FFmpeg command building extraction).
 
 ## 2026-06-08 Local Camera Smoke Test
 
