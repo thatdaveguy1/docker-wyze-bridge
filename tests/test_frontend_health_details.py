@@ -47,6 +47,7 @@ fake_wyze_bridge.WyzeBridge = FakeBridge
 sys.modules["wyze_bridge"] = fake_wyze_bridge
 
 import frontend
+import wyzebridge.network_utils as network_utils_module
 
 
 class TestFrontendHealthDetails(unittest.TestCase):
@@ -84,12 +85,12 @@ class TestFrontendHealthDetails(unittest.TestCase):
 
     def test_network_snapshot_includes_dns_targets(self):
         with patch.object(
-            frontend,
+            network_utils_module,
             "_candidate_dns_targets",
             return_value=["auth-prod.api.wyze.com", "homeassistant.local"],
         ):
             with patch.object(
-                frontend,
+                network_utils_module,
                 "_resolve_dns_target",
                 side_effect=lambda host: {
                     "host": host,
@@ -100,9 +101,9 @@ class TestFrontendHealthDetails(unittest.TestCase):
                 },
             ):
                 with patch.object(
-                    frontend, "_tutk_library_hosts", return_value=("m1.iotcplatform.com",)
+                    network_utils_module, "_tutk_library_hosts", return_value=("m1.iotcplatform.com",)
                 ):
-                    snapshot = frontend.network_snapshot()
+                    snapshot = network_utils_module.network_snapshot()
 
         self.assertEqual(
             snapshot["dns"]["targets"],
@@ -126,14 +127,14 @@ class TestFrontendHealthDetails(unittest.TestCase):
         self.assertEqual(snapshot["dns"]["tutk_library_hosts"], ["m1.iotcplatform.com"])
 
     def test_tutk_library_scan_filters_symbol_like_junk(self):
-        frontend._tutk_library_hosts.cache_clear()
+        network_utils_module._tutk_library_hosts.cache_clear()
         fake_binary = b"iotcapis.o iotcplatform.com tutkssl.o kalayservice.com"
 
-        with patch.object(frontend, "TUTK_HOST_SCAN_PATHS", ("/tmp/fake.so",)):
+        with patch.object(network_utils_module, "TUTK_HOST_SCAN_PATHS", ("/tmp/fake.so",)):
             with patch("builtins.open", mock_open(read_data=fake_binary)):
-                hosts = frontend._tutk_library_hosts()
+                hosts = network_utils_module._tutk_library_hosts()
 
-        frontend._tutk_library_hosts.cache_clear()
+        network_utils_module._tutk_library_hosts.cache_clear()
         self.assertEqual(hosts, ("iotcplatform.com", "kalayservice.com"))
 
     def test_create_app_logs_network_snapshot_when_enabled(self):
