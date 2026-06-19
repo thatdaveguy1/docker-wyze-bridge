@@ -15,6 +15,7 @@ if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
             del sys.modules[module_name]
 
 import wyzebridge.wyze_stream as wyze_stream_module
+import wyzebridge.tutk_session as tutk_session_module
 from wyzebridge.wyze_stream import (
     QueueTuple,
     StreamStatus,
@@ -94,11 +95,11 @@ class TestAudioSessionLifetime(unittest.TestCase):
         state = c_int(StreamStatus.CONNECTING)
 
         with (
-            patch.object(wyze_stream_module, "WyzeIOTC", return_value=FakeIOTC(fake_session)),
-            patch.object(wyze_stream_module, "get_cam_params", return_value=("h264", {})),
-            patch.object(wyze_stream_module, "setup_control", return_value=None),
-            patch.object(wyze_stream_module, "get_ffmpeg_cmd", return_value=["ffmpeg"]),
-            patch.object(wyze_stream_module, "Popen", FakePopen),
+            patch.object(tutk_session_module, "WyzeIOTC", return_value=FakeIOTC(fake_session)),
+            patch.object(tutk_session_module, "get_cam_params", return_value=("h264", {})),
+            patch.object(tutk_session_module, "setup_control", return_value=None),
+            patch.object(tutk_session_module, "get_ffmpeg_cmd", return_value=["ffmpeg"]),
+            patch.object(tutk_session_module, "Popen", FakePopen),
         ):
             start_tutk_stream("garage", stream, QueueTuple(None, None), state)
 
