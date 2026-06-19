@@ -1,107 +1,107 @@
-# Architecture Refactor: Candidate #7 — HA Bridge Probe Library
+# Architecture Refactor: Candidate #13 — FFmpeg Command Building
 
 Last updated: 2026-06-19
 Status: in-progress
 
 ## Objective
 
-Extract shared HA bridge probe logic (token derivation, redaction, validation,
-section/mark_fail helpers) from ~18 shell scripts and the go2rtc sidecar into
-one `scripts/ha_bridge_probe.sh` library. A security fix or redaction rule
-change propagates to all scripts automatically. The AGENTS.md `api`-header
-rule becomes enforced code, not an advisory note.
+Extract shared ffmpeg/ffprobe command-building logic from 4 Python probe
+scripts into one `scripts/ffmpeg_helpers.py` module. A change to the common
+RTSP probe command flags (transport, timeout, progress pipe) propagates to
+all scripts automatically.
 
 ## Success Criteria
 
-1. `scripts/ha_bridge_probe.sh` exists and defines: `derive_bridge_token`,
-   `redact_api_keys`, `validate_slug`, `validate_base_url`, `section`,
-   `mark_fail`, `bool_true`.
-2. Each migrated script sources/cats the library instead of duplicating the
-   function bodies.
-3. All existing tests pass (updated to check the library for moved patterns).
-4. New test `tests/test_ha_bridge_probe.py` covers the library directly.
-5. `./scripts/run_master_local_gates.sh` is green.
-6. No script gains new forbidden patterns (ha apps stop, rm -rf, etc).
+1. `scripts/ffmpeg_helpers.py` exists and defines: `detect_timeout_flag`,
+   `ensure_binary`, `build_ffprobe_cmd`, `build_ffmpeg_rtsp_cmd`.
+2. Each migrated script imports from the shared module instead of
+   duplicating the function bodies.
+3. All existing tests pass (tests patch `MODULE.ffprobe_metadata` etc.,
+   which still exist on each module via import).
+4. New test `tests/test_ffmpeg_helpers.py` covers the shared module directly.
+5. No script gains new subprocess calls or changes probe behavior.
 
-## Architectural Constraint
+## Duplication Surface (confirmed by reading all 4 scripts)
 
-The scripts run remotely via `ha_ssh.sh "sh -s" <<'REMOTE'`. The shared
-functions live INSIDE the heredoc (on the remote HA host). The library is
-injected by piping `{ cat library; cat <<'REMOTE' ... REMOTE; }` to
-`ha_ssh.sh`. Validation functions are sourced locally before the SSH call.
+### Identical across 3 scripts
+- `detect_timeout_flag(binary_path)` — runs `binary -h full`, checks for
+  `rw_timeout`/`timeout`/`stimeout`. Identical in reolink, wyze_rtsp,
+  local_camera_uptime.
+- `ensure_binary(path, name)` — resolves/validates binary path. Slight
+  variants: local_camera_uptime uses `shutil.which` fallback, reolink and
+  wyze_rtsp check `Path.exists()`. Merge to use both.
 
-## Functions Extracted (identical across scripts)
+### Nearly identical command construction across 3 scripts
+- `ffprobe_metadata()` — all 3 scripts build the same ffprobe command:
+  `[ffprobe, "-hide_banner", "-loglevel", "error", "-rtsp_transport",
+  transport, ...timeout..., "-show_entries", "stream=...", "-of", "json",
+  url]`. Response parsing differs per script (different fields extracted).
+  Extract only the command builder; keep response parsing in each script.
 
-- `section()` — printf section header
-- `mark_fail()` — echo FAIL + set FAIL=1
-- `redact_api_keys()` — sed redaction (was `redact()`)
-- `derive_bridge_token(info_json)` — SHA256 email → base64 token
-- `validate_slug(name, value)` — validate slug env var
-- `validate_base_url(name, value)` — validate URL env var
-- `bool_true(value)` — check if string is true/1/yes/on
+### Inline ffmpeg command construction across 4 scripts
+- `reolink_direct_stability_probe.py` — `[ffmpeg, "-hide_banner",
+  "-nostats", "-loglevel", "warning", "-nostdin", "-rtsp_transport",
+  transport, "-i", url, "-map", "0", "-c", "copy", "-t", duration, "-f",
+  "mpegts", "-progress", "pipe:2", "pipe:1"]`
+- `wyze_rtsp_stability_probe.py` — `[ffmpeg, "-hide_banner", "-nostats",
+  "-loglevel", loglevel, "-nostdin", "-rtsp_transport", transport, "-i",
+  url, "-t", duration, "-c", "copy", "-progress", "pipe:2", "-f", "null",
+  "/dev/null"]`
+- `local_camera_uptime_smoke_test.py` — `[ffmpeg, "-hide_banner",
+  "-nostats", "-loglevel", "error", "-nostdin", "-rtsp_transport",
+  transport, "-i", url, "-map", "0:v:0", "-an", "-t", duration, "-f",
+  "null", "-", "-progress", "pipe:1"]`
+- `wyze_cam_rtsp_smoke_test.py` — `["ffmpeg", "-hide_banner", "-loglevel",
+  "error", "-progress", "pipe:1", "-rtsp_transport", "tcp", "-i", url,
+  "-t", duration, "-f", "rawvideo", "-pix_fmt", "yuv420p", "/dev/null"]`
+
+## Functions Extracted
+
+### `detect_timeout_flag(binary_path: str) -> str | None`
+Runs `binary -h full` and returns the first supported timeout flag name.
+
+### `ensure_binary(path: str | None, name: str) -> str`
+Resolves `path` or `shutil.which(name)`, validates existence, returns path.
+
+### `build_ffprobe_cmd(ffprobe_path, url, transport, timeout_flag, timeout_us, entries) -> list[str]`
+Returns the ffprobe command list. `entries` defaults to the standard
+`stream=index,codec_name,codec_type,width,height,avg_frame_rate,r_frame_rate:format=format_name`.
+
+### `build_ffmpeg_rtsp_cmd(ffmpeg_path, url, transport, duration, *, loglevel="warning", nostats=True, nostdin=True, output_format="null", output_target="/dev/null", progress_pipe=None, extra_input_args=None, extra_output_args=None) -> list[str]`
+Returns the ffmpeg RTSP probe command list.
 
 ## Functions NOT Extracted (vary per script)
 
-- `curl_bridge_*()` — max-time, output handling, and route patterns differ
-- `fetch_bridge_json()` — wraps curl with script-specific args
-- Probe logic, assertions, output format — all script-specific
+- `ffprobe_metadata()` response parsing — each script extracts different
+  fields (fps vs avg_frame_rate, error key names differ)
+- `probe_camera()` / `run_reolink_check()` — probe loop logic, output
+  handling, and progress parsing are script-specific
+- `count_frames()` in wyze_cam_rtsp_smoke_test — uses rawvideo output,
+  different progress parsing
 
 ## Files Touched
 
 ### New
-- `scripts/ha_bridge_probe.sh` — the shared library
-- `tests/test_ha_bridge_probe.py` — library tests
+- `scripts/ffmpeg_helpers.py` — the shared module
+- `tests/test_ffmpeg_helpers.py` — module tests
 
 ### Migrated (scripts)
-- `scripts/ha_phase2_prod_startup_soak.sh`
-- `scripts/ha_phase3_prod_sd_only_probe.sh` (tracer bullet)
-- `scripts/ha_phase4_whep_soak.sh`
-- `scripts/ha_phase5_prod_overlay_api_verify.sh`
-- `scripts/ha_prod_recovery_verify.sh`
-- `scripts/ha_bridge_doctor.sh`
-- `scripts/ha_north_yard_live_probe.sh`
-- `scripts/ha_wyze_camera_matrix_probe.sh`
-- `scripts/ha_wyze_scrypted_snapshot_probe.sh`
-- `scripts/ha_frigate_input_diag.sh`
-- `scripts/ha_bridge_diag.sh`
+- `scripts/reolink_direct_stability_probe.py` (tracer bullet)
+- `scripts/wyze_rtsp_stability_probe.py`
+- `scripts/local_camera_uptime_smoke_test.py`
+- `scripts/wyze_cam_rtsp_smoke_test.py`
 
-### Updated (tests)
-- `tests/test_ha_phase2_prod_startup_soak.py`
-- `tests/test_ha_phase3_prod_sd_only_probe.py`
-- `tests/test_ha_phase4_whep_soak.py`
-- `tests/test_ha_phase5_prod_overlay_api_verify.py`
-- `tests/test_ha_prod_recovery_verify.py`
-- `tests/test_ha_bridge_doctor.py`
-- `tests/test_ha_north_yard_live_probe.py`
-- `tests/test_ha_wyze_camera_matrix_probe.py`
-- `tests/test_ha_wyze_scrypted_snapshot_probe.py`
-- `tests/test_ha_frigate_input_diag.py`
-
-### Updated (tracking)
-- `tasks/todo.md`
-- `lessons.md`
-- `AGENTS.md`
-
-## Test Update Pattern
-
-For tests that checked for moved patterns in script text:
-```python
-# Before:
-self.assertIn('s/api=[^" ]+/api=<redacted>/g', script)
-self.assertIn("xxd -r -p", script)
-
-# After:
-library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
-self.assertIn("ha_bridge_probe.sh", script)  # script references library
-self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
-self.assertIn("xxd -r -p", library)
-```
-
-Patterns that stay in scripts (curl with `-H "api: $API_TOKEN"`) are still
-checked in script text.
+### Test impact
+- `tests/test_reolink_direct_stability_probe.py` — patches
+  `MODULE.ensure_binary`, `MODULE.detect_timeout_flag` — still works
+  because imports create module-level references
+- `tests/test_local_camera_uptime_smoke_test.py` — patches
+  `MODULE.ffprobe_metadata`, `MODULE.ensure_binary`,
+  `MODULE.detect_timeout_flag` — same pattern, no changes needed
 
 ## Tracer Bullet
 
-`ha_phase3_prod_sd_only_probe.sh` is the tracer — it has all duplicated
-patterns and a straightforward test. Migrate it first, verify tests pass,
-then migrate the rest.
+`scripts/reolink_direct_stability_probe.py` is the tracer — it has all
+duplicated patterns (`detect_timeout_flag`, `ensure_binary`,
+`ffprobe_metadata`, inline ffmpeg cmd) and has test coverage. Migrate it
+first, verify tests pass, then migrate the rest.
