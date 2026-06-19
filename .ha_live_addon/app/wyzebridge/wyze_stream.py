@@ -30,6 +30,12 @@ from wyzebridge.tutk_session import (
     start_tutk_stream,
     is_timedout,
 )
+from wyzebridge.source_selector import (
+    hl_cam4_main_probe_mode,
+    select_source,
+    uses_kvs_source as _uses_kvs_source,
+    uses_tutk_source as _uses_tutk_source,
+)
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 
@@ -57,13 +63,6 @@ def frame_size_to_resolution(frame_size: int | None) -> str | None:
     if frame_size is None:
         return None
     return FRAME_SIZE_LABELS.get(frame_size, str(frame_size))
-
-HL_CAM4_MAIN_PROBE_MODES = {"kvs", "tutk_dtls", "tutk_parallel"}
-
-
-def hl_cam4_main_probe_mode() -> str:
-    mode = os.getenv("HL_CAM4_MAIN_PROBE_MODE", "kvs").strip().lower()
-    return mode if mode in HL_CAM4_MAIN_PROBE_MODES else "kvs"
 
 
 def connect_watchdog_timeout() -> int:
@@ -197,19 +196,11 @@ class WyzeStream(Stream):
 
     @property
     def uses_kvs_source(self) -> bool:
-        return not self.uses_tutk_source
+        return _uses_kvs_source(self.camera, self.options.substream)
 
     @property
     def uses_tutk_source(self) -> bool:
-        if self.options.substream:
-            return self.camera.product_model == "HL_CAM3P" or (
-                self.camera.product_model == "HL_CAM4" and self.camera.is_kvs
-            )
-
-        if not (self.camera.product_model == "HL_CAM4" and self.camera.is_kvs):
-            return False
-
-        return hl_cam4_main_probe_mode() in {"tutk_dtls", "tutk_parallel"}
+        return _uses_tutk_source(self.camera, self.options.substream)
 
     def init(self) -> bool:
         self.state = StreamStatus.INITIALIZING
