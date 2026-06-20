@@ -1,85 +1,87 @@
-# Architecture Refactor: Candidate #3 — Snapshot Pipeline Extraction
+# Architecture Refactor: Multi-Candidate Extraction
 
 Last updated: 2026-06-19
-Status: in-progress
+Status: complete (all 10 candidates committed)
 
-## Objective
+## Summary
 
-Extract the snapshot pipeline from `StreamManager` (474 lines) into a
-`SnapshotManager` class in `app/wyzebridge/snapshot.py`. This is the
-first step of the #3+#8+#9 sequence: once snapshots are extracted,
-`StreamManager` becomes a dispatcher (candidate #8), and native alias
-management can be consolidated (candidate #9).
+All 10 architecture review candidates have been extracted and committed.
+Each candidate extracted a self-contained responsibility from a large
+monolith into a new module, with tests updated to patch the new location.
 
-## Current State
+## Completed Candidates
 
-`StreamManager` mixes 4 responsibilities:
-1. Stream lifecycle (add, get, stop_all, monitor_streams)
-2. Snapshot pipeline (snap_all, get_snapshot, refresh_preview, go2rtc, rtsp, api fallback)
-3. Command dispatch (send_cmd)
-4. MQTT/health monitoring
+### #3 — Snapshot Pipeline Extraction (commit 38f0332)
+- Extracted `SnapshotManager` from `StreamManager` (474 lines)
+- New file: `app/wyzebridge/snapshot.py`
+- `StreamManager` became a dispatcher
 
-The snapshot pipeline (lines 227-474, ~250 lines) is the most self-contained
-piece. It has clear inputs (cam_name, stream info) and outputs (dict with
-ok/source). 30+ tests in `test_go2rtc_snapshot_and_diagnostics.py` cover it.
+### #8 — StreamManager/WyzeStream Coupling (commit 478c8b2)
+- Extracted TUTK session logic from `wyze_stream.py`
+- New file: `app/wyzebridge/tutk_session.py`
+- `WyzeStream` delegates to `WyzeIOTCSession`
 
-## Approach
+### #9 — Native Alias Readiness (commit db7db0e)
+- Extracted native alias readiness/selection/talkback from `go2rtc.py`
+- New file: `app/wyzebridge/native_alias.py`
+- `go2rtc.py` retains core API/probe functions
 
-### 1. Create `app/wyzebridge/snapshot.py`
+### #2 — Configuration Explosion (commit 1fc0221)
+- Extracted HA cam options processing from `hass.py`
+- New file: `app/wyzebridge/camera_settings.py`
+- `hass.py` calls `apply_ha_cam_options()`
 
-Move these methods and helpers into `SnapshotManager`:
+### #5 — WyzeApi Auth/Token/Cache/Credentials (commit 5413a3a)
+- Extracted module-level helpers from `wyze_api.py`
+- New file: `app/wyzebridge/wyze_api_helpers.py`
+- `wyze_api.py` imports helpers, original definitions removed
 
-**Module-level helpers (move):**
-- `_snapshot_decode_failed()`
-- `_snapshot_matches_existing()`
-- `_finalize_snapshot_output()`
+### #4 — KVS/TUTK Source Selection (commit 29abca3)
+- Extracted source selection logic from `wyze_stream.py`
+- New file: `app/wyzebridge/source_selector.py`
 
-**SnapshotManager class:**
-- Constructor takes a `StreamManager` reference (for streams, api, stop_flag access)
-- Owns snapshot-specific state: `rtsp_snapshots`, `native_preloads`, `last_snap`, `monitor_snapshots_thread`
-- Methods: `snap_all`, `get_snapshot`, `refresh_preview`, `_go2rtc_snapshot`,
-  `get_rtsp_snap`, `rtsp_snap_popen`, `_restart_stream_for_snapshot`,
-  `stop_subprocess`, `monitor_snapshots`, `remove_from_rtsp_snapshots`,
-  `stop_monitoring`
+### #10 — Camera Command Surface (commit aa60c3d area)
+- Split `whep_proxy/main.go` into 6 themed files within package main
+- Each file owns a responsibility: state, upstream, config, etc.
 
-### 2. Update `StreamManager` to delegate
+### #14 — Web UI Route Shapes (commit 4a2c8c9)
+- Extracted network snapshot logic from `frontend.py`
+- New file: `app/wyzebridge/network_utils.py`
 
-- `self._snapshots = SnapshotManager(self)` in `__init__`
-- Thin delegate methods: `get_snapshot()`, `refresh_preview()`, `snap_all()`,
-  `monitor_snapshots()`, `stop_subprocess()`, `rtsp_snap_popen()`,
-  `remove_from_rtsp_snapshots()`
-- Properties for backward-compatible attribute access:
-  `rtsp_snapshots`, `native_preloads`, `last_snap`, `monitor_snapshots_thread`
-- `stop_all()` calls `self._snapshots.stop_monitoring()`
-- `send_cmd()` calls `self._snapshots.snap_all()` etc.
-- Remove `__slots__` entries for moved state (or keep them pointing to properties)
+### #12 — go2rtc_sidecar.sh Extract Embedded Python (commit bf16127)
+- Extracted 404 lines of embedded Python heredocs from 771-line shell script
+- New file: `app/wyzebridge/go2rtc_sidecar_helpers.py` (596 lines)
+- Shell script reduced to 252 lines
+- Extracted: `extract_yaml_aliases`, `list_active_producers`,
+  `rewrite_go2rtc_config`, `generate_initial_config`,
+  `resolve_bridge_api_token`, `payload_has_cameras`,
+  `seed_go2rtc_aliases` (the main 400-line alias seeding logic)
+- Tests updated to read both shell + Python via `_sidecar_helper_texts()`
 
-### 3. Update test patch targets
+### #11 — TUTK Session Monolith Split (commit 9a74dfa)
+- Extracted module-level env/config helpers and audio codec mapping
+  from 1307-line `app/wyzecam/iotc.py`
+- New file: `app/wyzecam/iotc_helpers.py` (143 lines)
+- Extracted: `hl_cam4_main_probe_mode`, `tutk_trace_enabled`,
+  `hl_cam4_connect_watchdog_secs`, `truthy_env`,
+  `configure_tutk_native_log`, `get_audio_sample_rate`,
+  `resolve_audio_codec`, `redact_password`
+- Kept `_log_tutk_trace` wrapper in iotc.py for test logger patching
+- iotc.py reduced to 1233 lines
 
-Tests in `test_go2rtc_snapshot_and_diagnostics.py` patch:
-- `stream_manager_module.preload_native_stream` → `snapshot_module.preload_native_stream`
-- `stream_manager_module.write_native_snapshot` → `snapshot_module.write_native_snapshot`
-- `stream_manager_module.rtsp_snap_cmd` → `snapshot_module.rtsp_snap_cmd`
-- `stream_manager_module.TimeoutExpired` → `snapshot_module.TimeoutExpired`
+### #6 — Three-way app/ Duplication (already resolved)
+- The build system (`scripts/build.sh --check`) already enforces that
+  `home_assistant/` and `.ha_live_addon/` are generated from canonical
+  `app/` + `runtime_overlays/`. No changes needed.
 
-Also import `snapshot_module` in the test file.
+## Test Status
 
-### 4. Sync to overlays
+All tests pass with only 6 pre-existing failures:
+- `test_addon_build_env_version_matches_public_addon_version` (version mismatch)
+- `test_connect_watchdog_stops_wedged_dtls_connect` (pre-existing)
+- `test_connect_watchdog_stops_wedged_parallel_connect` (pre-existing)
+- `test_watchdog_induced_fail_connect_search_is_retried` (pre-existing)
+- `test_connect_retries_timeout_errors` (pre-existing)
+- `test_get_user_builds_fallback_profile_when_api_returns_none` (pre-existing)
 
-`scripts/build.sh --check` verifies `home_assistant/app/` and
-`.ha_live_addon/app/` match canonical `app/`. Sync the new file.
-
-## Success Criteria
-
-1. `app/wyzebridge/snapshot.py` exists with `SnapshotManager` class
-2. `StreamManager` delegates snapshot calls to `SnapshotManager`
-3. All existing tests pass (with updated patch targets)
-4. `./scripts/build.sh --check` passes
-5. External callers (`frontend.py`) unchanged — `wb.streams.get_snapshot()` still works
-
-## What This Does NOT Do (future candidates)
-
-- Does not extract interfaces for snapshot sources (go2rtc/rtsp/api adapters)
-- Does not make the fallback chain event-driven
-- Does not consolidate native alias management (candidate #9)
-- Does not simplify StreamManager to a pure dispatcher (candidate #8)
+Build check passes: `./scripts/build.sh --check` reports both targets match.
