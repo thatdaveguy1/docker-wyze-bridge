@@ -9,6 +9,13 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
+if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
+    for module_name in list(sys.modules):
+        if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
+            del sys.modules[module_name]
+
+import wyzebridge.wyze_stream as wyze_stream_module
+import wyzebridge.tutk_session as tutk_session_module
 from wyzebridge.wyze_stream import (
     QueueTuple,
     StreamStatus,
@@ -88,13 +95,11 @@ class TestAudioSessionLifetime(unittest.TestCase):
         state = c_int(StreamStatus.CONNECTING)
 
         with (
-            patch(
-                "wyzebridge.wyze_stream.WyzeIOTC", return_value=FakeIOTC(fake_session)
-            ),
-            patch("wyzebridge.wyze_stream.get_cam_params", return_value=("h264", {})),
-            patch("wyzebridge.wyze_stream.setup_control", return_value=None),
-            patch("wyzebridge.wyze_stream.get_ffmpeg_cmd", return_value=["ffmpeg"]),
-            patch("wyzebridge.wyze_stream.Popen", FakePopen),
+            patch.object(tutk_session_module, "WyzeIOTC", return_value=FakeIOTC(fake_session)),
+            patch.object(tutk_session_module, "get_cam_params", return_value=("h264", {})),
+            patch.object(tutk_session_module, "setup_control", return_value=None),
+            patch.object(tutk_session_module, "get_ffmpeg_cmd", return_value=["ffmpeg"]),
+            patch.object(tutk_session_module, "Popen", FakePopen),
         ):
             start_tutk_stream("garage", stream, QueueTuple(None, None), state)
 

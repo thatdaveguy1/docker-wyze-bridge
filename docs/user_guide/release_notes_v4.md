@@ -1,5 +1,33 @@
 # Release Notes 4.3
 
+## 4.3.5 Release
+
+`4.3.5` is a narrow native-SD durability patch for the `4.3` release line.
+
+- The Home Assistant go2rtc sidecar now respects explicit per-feed bridge config when it builds native aliases, so a camera configured with `HD=false` and `SD=true` no longer seeds a competing fake HD alias alongside the real `-sd` alias.
+- Native snapshot refresh now forces one fresh re-preload attempt when the selected native alias has gone stale, which helps the bridge recover from the split-brain case where go2rtc still has producer metadata but `frame.jpeg` is no longer returning a real JPEG.
+- The regression coverage now locks both behaviors in place: SD-only alias generation stays honest, and stale selected native aliases get a single forced warm-up retry before fallback.
+
+## 4.3.3 Release
+
+`4.3.3` is a narrow SD-only native-feed reliability patch for the `4.3` release line.
+
+- Native `go2rtc` stream diagnostics now fall back from the fast per-alias probe to the full stream table when the fast probe times out or returns invalid data.
+- SD-only setups can keep a working `*-sd` alias selected when `go2rtc` is already producing that stream, instead of falling back to a dead main/KVS route because one readiness probe was slow.
+- Snapshot paths that depend on a stable RTSP/prebuffer feed benefit from the same alias stability, especially when the still image is captured from the SD stream rather than forced through a fresh snapshot request.
+- The regression test covers the slow per-alias probe case and proves the full stream table can still mark the SD alias alive.
+
+## 4.3.2 Release
+
+`4.3.2` is a Home Assistant stability and release-hygiene patch for the `4.3` release line.
+
+- Startup readiness now waits for the authenticated camera catalog and semantic `/api/ready` state before publishing ready, which prevents empty boot-time catalogs from clearing native `go2rtc` aliases.
+- Snapshot refresh now validates content rather than trusting status codes or mtimes: empty, tiny, non-image, stale, and byte-identical frames are rejected before they replace cached stills.
+- `SD_ONLY=true` is now a hard Home Assistant mode. Production proof covers one SD feed per camera, HD controls and HD enable paths rejected or hidden, and only `*-sd` native aliases exposed by `go2rtc`.
+- The WHEP proxy now keeps recently healthy streams in a bounded recovering state during short reconnect windows, while still expiring and recreating streams that fail to recover media.
+- The runtime overlay build is now the packaging source of truth, with release hygiene checks that keep local agent notes, scratch files, option payloads, SSH env files, and private SDK values out of public artifacts.
+- Current live proof is intentionally scoped: Phase 1 snapshots, Phase 2 startup/API, Phase 3 SD-only, and Phase 5 overlay/API pass. The strict one-hour Phase 4 gate remains red because Frigate/Scrypted skipped-FPS blips occurred even while WHEP media stayed ready.
+
 ## 4.3.1 Release
 
 `4.3.1` is the preview-integrity and snapshot-refresh follow-up for the `4.3` release line.

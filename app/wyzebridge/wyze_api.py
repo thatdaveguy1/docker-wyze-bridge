@@ -1,15 +1,11 @@
 import contextlib
 import json
 import pickle
-from urllib.parse import urlsplit
-from datetime import datetime
-from functools import wraps
-from os import environ, utime
-from os.path import getmtime
+from urllib.parse import unquote
+from os import environ
 from pathlib import Path
 from time import sleep, time
-from typing import Any, Callable, Optional
-from urllib.parse import parse_qs, unquote, urlparse
+from typing import Any, Optional
 
 import requests
 from requests import get
@@ -33,124 +29,39 @@ from wyzebridge.auth import get_secret
 from wyzebridge.bridge_utils import env_bool, env_cam, env_list
 from wyzebridge.config import IMG_PATH, MOTION, TOKEN_PATH
 from wyzebridge.logging import logger
-from wyzebridge.preview_validation import preview_bytes_are_valid_image, preview_file_is_image
+from wyzebridge.preview_validation import (
+    preview_bytes_are_valid_image,
+    preview_file_is_image,
+    preview_payload_matches_existing,
+    record_preview_hash,
+)
+from wyzebridge.wyze_api_helpers import (
+    cached,
+    authenticated,
+    sanitize_url,
+    kvs_trace_enabled,
+    sanitize_kvs_trace,
+    sanitize_kvs_trace_field,
+    log_kvs_trace,
+    url_timestamp,
+    valid_s3_url,
+    _looks_like_html,
+    _looks_like_image_bytes,
+    _thumbnail_response_is_image,
+    _cached_thumbnail_is_valid,
+    env_filter,
+    filter_cams,
+    pickle_dump,
+    parse_token,
+)
 
 API_THUMBNAIL_MAX_AGE = int(environ.get("API_THUMBNAIL_MAX_AGE", "300"))
+WHEP_PROXY_PORT = environ.get("WHEP_PROXY_PORT", "8080")
 
 import wyzecam.api as wyzecam_api_module
 
 get_camera_stream = getattr(wyzecam_api_module, "get_camera_stream", None)
 wakeup_kvs_camera = getattr(wyzecam_api_module, "wakeup_kvs_camera", None)
-
-
-def cached(func: Callable[..., Any]) -> Callable[..., Any]:
-    def wrapper(self, *args: Any, **kwargs: Any):
-        name = "auth" if func.__name__ == "login" else func.__name__.split("_", 1)[-1]
-        if not self.auth and not self.creds.is_set and name != "auth":
-            return
-        if not kwargs.get("fresh_data"):
-            if getattr(self, name, None):
-                return func(self, *args, **kwargs)
-            try:
-                with open(TOKEN_PATH + name + ".pickle", "rb") as pkl_f:
-                    if not (data := pickle.load(pkl_f)):
-                        raise OSError
-                if name == "user" and not self.creds.same_email(data.email):
-                    raise ValueError("🕵️ Cached email doesn't match 'WYZE_EMAIL'")
-                cache_logger = logger.debug if name == "cameras" else logger.info
-                cache_logger(f"📚 Using '{name}' from local cache...")
-                setattr(self, name, data)
-                return data
-            except OSError:
-                cache_logger = logger.debug if name == "cameras" else logger.info
-                cache_logger(f"🔍 Could not find local cache for '{name}'")
-            except Exception as ex:
-                logger.warning(
-                    f"Error restoring data for '{name}': [{type(ex).__name__}] {ex}"
-                )
-                self.clear_cache()
-        fetch_logger = logger.debug if name == "cameras" else logger.info
-        fetch_logger(f"☁️ Fetching '{name}' from the Wyze API...")
-        result = func(self, *args, **kwargs)
-        if result and (data := getattr(self, name, None)):
-            pickle_dump(name, data)
-        return result
-
-    return wrapper
-
-
-def authenticated(func: Callable[..., Any]) -> Callable[..., Any]:
-    @wraps(func)
-    def wrapper(self, *args: Any, **kwargs: Any):
-        if not self.auth and not self.login():
-            return
-
-        try:
-            return func(self, *args, **kwargs)
-        except AccessTokenError:
-            logger.warning("[API] ⚠️ Expired token?")
-            self.refresh_token()
-            return func(self, *args, **kwargs)
-        except (RateLimitError, WyzeAPIError) as ex:
-            logger.error(f"[API] [{type(ex).__name__}] {ex}")
-        except ConnectionError as ex:
-            logger.error(f"[API] [{type(ex).__name__}] {ex}")
-
-    return wrapper
-
-
-def sanitize_url(url: str) -> str:
-    parts = urlsplit(url)
-    return (
-        f"{parts.scheme}://{parts.netloc}{parts.path}"
-        if parts.scheme and parts.netloc
-        else parts.path or "<redacted>"
-    )
-
-
-def kvs_trace_enabled(stream_name: str) -> bool:
-    raw = environ.get("KVS_TRACE_STREAM", "").strip()
-    if not raw:
-        return False
-    if raw.lower() in {"1", "true", "yes", "all", "*"}:
-        return True
-    return stream_name.upper() in env_list("KVS_TRACE_STREAM")
-
-
-def sanitize_kvs_trace(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: sanitize_kvs_trace_field(key, val) for key, val in value.items()}
-    if isinstance(value, list):
-        return [sanitize_kvs_trace(item) for item in value]
-    return value
-
-
-def sanitize_kvs_trace_field(key: str, value: Any) -> Any:
-    lowered = key.lower()
-    if lowered in {
-        "auth_token",
-        "signaltoken",
-        "authorization",
-        "credential",
-        "username",
-        "phone_id",
-        "clientid",
-    }:
-        return "<redacted>"
-    if lowered in {"signaling_url", "url", "urls"} and isinstance(value, str):
-        return sanitize_url(value)
-    return sanitize_kvs_trace(value)
-
-
-def log_kvs_trace(stream_name: str, stage: str, payload: Any) -> None:
-    if not kvs_trace_enabled(stream_name):
-        return
-    trace = {
-        "camera": stream_name,
-        "stage": stage,
-        "payload": sanitize_kvs_trace(payload),
-    }
-    logger.info(f"[KVS_TRACE] {json.dumps(trace, sort_keys=True)}")
 
 
 class WyzeCredentials:
@@ -373,14 +284,6 @@ class WyzeApi:
             with contextlib.suppress(OSError):
                 save_path.unlink()
 
-        with contextlib.suppress(FileNotFoundError):
-            if cached_valid and s3_timestamp and s3_timestamp <= int(getmtime(save_to)):
-                if time() - getmtime(save_to) <= API_THUMBNAIL_MAX_AGE:
-                    logger.debug(f"[API] Using recent cached thumbnail for {uri}")
-                    return True
-                logger.debug(f"[API] Thumbnail for {uri} is unchanged and stale; keeping existing preview")
-                return False
-
         logger.info(f'☁️ Pulling "{uri}" thumbnail to {save_to}')
 
         try:
@@ -396,20 +299,13 @@ class WyzeApi:
                 return False
 
             temp_path = save_path.with_name(save_path.name + ".tmp")
-            if cached_valid and save_path.read_bytes() == img.content:
+            if cached_valid and preview_payload_matches_existing(save_path, img.content):
                 logger.debug(f"[API] Downloaded thumbnail for {uri} matched existing preview")
                 return False
             with temp_path.open("wb") as handle:
                 handle.write(img.content)
             temp_path.replace(save_path)
-
-            if modified := s3_timestamp or img.headers.get("Last-Modified"):
-                ts_format = "%a, %d %b %Y %H:%M:%S %Z"
-
-                if isinstance(modified, int):
-                    utime(save_to, (modified, modified))
-                elif ts := int(datetime.strptime(modified, ts_format).timestamp()):
-                    utime(save_to, (ts, ts))
+            record_preview_hash(save_path, img.content, camera=uri, source="wyze-api")
 
             return True
         except Exception as ex:
@@ -459,7 +355,7 @@ class WyzeApi:
             return {"result": str(ex), "cam": cam_name}
 
     def _maybe_wake_kvs_camera(self, cam: WyzeCamera) -> None:
-        if cam.product_model not in {"LD_CFP", "HL_CAM4", "WYZE_CAKP2JFUS"}:
+        if cam.product_model not in {"LD_CFP", "HL_CAM4", "HL_BC", "WYZE_CAKP2JFUS"}:
             return
         wake_key = cam.name_uri
         now = time()
@@ -496,8 +392,10 @@ class WyzeApi:
                 f"[API] Camera is not KVS in get_kvs_proxy_config(): {stream_name}"
             )
             return None
+        if cam.product_model == "HL_BC" and not substream:
+            quality = env_cam("sub_quality", stream_name, "sd30")
         self._maybe_wake_kvs_camera(cam)
-        if cam.product_model in {"LD_CFP", "HL_CAM4"}:
+        if cam.product_model in {"LD_CFP", "HL_CAM4", "HL_BC"}:
             if not get_camera_stream:
                 raise ValueError("KVS stream API unavailable in this branch")
             kvs_stream = get_camera_stream(self.auth, cam)
@@ -578,14 +476,14 @@ class WyzeApi:
                             f"failed to build KVS config for {uri}"
                         )
                     response = requests.post(
-                        f"http://127.0.0.1:8080/websocket/{uri}",
+                        f"http://127.0.0.1:{WHEP_PROXY_PORT}/websocket/{uri}",
                         json=kvs_config,
                         headers={"Content-Type": "application/json"},
                         timeout=10,
                     )
                     response.raise_for_status()
                     status = requests.get(
-                        f"http://127.0.0.1:8080/status/{uri}", timeout=2
+                        f"http://127.0.0.1:{WHEP_PROXY_PORT}/status/{uri}", timeout=2
                     )
                     status.raise_for_status()
                     last_error = None
@@ -760,103 +658,3 @@ class WyzeApi:
                 setattr(self, data_attr, None)
             for token_file in Path(TOKEN_PATH).glob("*.pickle"):
                 token_file.unlink()
-
-
-def url_timestamp(url: str) -> int:
-    try:
-        path_parts = [part for part in urlparse(url).path.split("/") if part]
-        for part in reversed(path_parts):
-            for token in part.split("_"):
-                if token.isdigit() and len(token) >= 10:
-                    value = int(token)
-                    return value // 1000 if len(token) > 10 else value
-    except Exception:
-        pass
-    return 0
-
-
-def valid_s3_url(url: Optional[str]) -> bool:
-    if not url:
-        return False
-
-    try:
-        query_parameters = parse_qs(urlparse(url).query)
-        x_amz_date = query_parameters["X-Amz-Date"][0]
-        x_amz_expires = query_parameters["X-Amz-Expires"][0]
-        amz_date = datetime.strptime(x_amz_date, "%Y%m%dT%H%M%SZ")
-        return amz_date.timestamp() + int(x_amz_expires) > time()
-    except (ValueError, TypeError, KeyError):
-        return False
-
-
-def _looks_like_html(payload: bytes) -> bool:
-    snippet = payload.lstrip().lower()[:64]
-    return snippet.startswith((b"<!doctype html", b"<html", b"<?xml"))
-
-
-def _looks_like_image_bytes(payload: bytes) -> bool:
-    if not payload or _looks_like_html(payload):
-        return False
-
-    header = payload[:16]
-    return (
-        header.startswith(b"\xff\xd8\xff")
-        or header.startswith(b"\x89PNG\r\n\x1a\n")
-        or header.startswith((b"GIF87a", b"GIF89a"))
-        or (len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP")
-    )
-
-
-def _thumbnail_response_is_image(response: requests.Response) -> bool:
-    return preview_bytes_are_valid_image(response.content or b"")
-
-
-def _cached_thumbnail_is_valid(path: Path) -> bool:
-    return preview_file_is_image(path)
-
-
-def env_filter(cam: WyzeCamera) -> bool:
-    """Check if cam is being filtered in any env."""
-    if not cam.nickname:
-        return False
-    return (
-        cam.nickname.upper().strip() in env_list("FILTER_NAMES")
-        or cam.mac in env_list("FILTER_MACS")
-        or cam.product_model in env_list("FILTER_MODELS")
-        or cam.model_name.upper() in env_list("FILTER_MODELS")
-    )
-
-
-def filter_cams(cams: list[WyzeCamera]) -> list[WyzeCamera]:
-    total = len(cams)
-    if env_bool("FILTER_BLOCK"):
-        if filtered := list(filter(lambda cam: not env_filter(cam), cams)):
-            logger.info(f"🪄 FILTER BLOCKING: {total - len(filtered)} of {total} cams")
-            return filtered
-    elif any(key.startswith("FILTER_") for key in environ):
-        if filtered := list(filter(env_filter, cams)):
-            logger.info(f"🪄 FILTER ALLOWING: {len(filtered)} of {total} cams")
-            return filtered
-    return cams
-
-
-def pickle_dump(name: str, data: object):
-    with open(TOKEN_PATH + name + ".pickle", "wb") as f:
-        save_logger = logger.debug if name == "cameras" else logger.info
-        save_logger(f"💾 Saving '{name}' to local cache...")
-        pickle.dump(data, f)
-
-
-def parse_token(access_token: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-    if not access_token:
-        return None, None
-
-    access_token = access_token.strip(" '\"")
-
-    try:
-        json_token = json.loads(access_token)
-        json_token = json_token.get("data", json_token)
-
-        return json_token.get("access_token"), json_token.get("refresh_token")
-    except ValueError:
-        return access_token, None

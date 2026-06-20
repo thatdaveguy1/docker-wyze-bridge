@@ -1,13 +1,10 @@
 import contextlib
 import json
 import os
-import re
-import socket
 import tempfile
-import time
-from functools import lru_cache, wraps
+from functools import wraps
 from pathlib import Path
-from urllib.parse import quote_plus, urlsplit
+from urllib.parse import quote_plus
 
 from flask import (
     Flask,
@@ -25,180 +22,22 @@ from wyzebridge.build_config import VERSION
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
-from wyzebridge.go2rtc import send_native_talkback
+from wyzebridge.go2rtc import go2rtc_probe, send_native_talkback
 from wyzebridge.camera_settings import set_camera_stream_mode
-from wyzebridge.preview_validation import preview_file_is_image
+from wyzebridge.network_utils import (
+    WYZE_DNS_URLS,
+    WEBRTC_SIGNAL_API,
+    TUTK_HOST_SCAN_PATHS,
+    _truthy_query_value,
+    _tutk_library_hosts,
+    network_snapshot,
+)
+from wyzebridge.preview_validation import (
+    preview_file_is_image,
+    read_snapshot_hash_registry,
+    snapshot_hash_entry,
+)
 from wyzebridge.web_ui import url_for
-
-WYZE_DNS_URLS = (
-    "https://auth-prod.api.wyze.com",
-    "https://api.wyzecam.com/app",
-    "https://app-core.cloud.wyze.com/app",
-    "https://app.wyzecam.com/app",
-    "https://devicemgmt-service.wyze.com",
-    "https://webrtc.api.wyze.com",
-)
-WEBRTC_SIGNAL_API = "https://webrtc.api.wyze.com"
-TUTK_HOST_SCAN_PATHS = (
-    "/usr/local/lib/libIOTCAPIs_ALL.so",
-    "/usr/local/lib/libAVAPIs.so",
-)
-TUTK_HOST_KEYWORDS = ("iotc", "tutk", "throughtek", "kalay")
-HOSTNAME_PATTERN = re.compile(rb"(?<![A-Za-z0-9-])([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
-
-
-def _truthy_query_value(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _parse_resolv_conf(path: str = "/etc/resolv.conf") -> dict:
-    data = {"path": path, "nameservers": [], "search": [], "options": []}
-    try:
-        with open(path, encoding="utf-8") as handle:
-            for raw_line in handle:
-                line = raw_line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                key, *values = line.split()
-                if key == "nameserver" and values:
-                    data["nameservers"].append(values[0])
-                elif key == "search":
-                    data["search"] = values
-                elif key == "options":
-                    data["options"] = values
-    except OSError as ex:
-        data["error"] = f"{type(ex).__name__}: {ex}"
-    return data
-
-
-def _decode_route_ipv4(hex_value: str) -> str:
-    return socket.inet_ntoa(bytes.fromhex(hex_value)[::-1])
-
-
-def _parse_default_routes(path: str = "/proc/net/route") -> dict:
-    routes = {"path": path, "default": []}
-    try:
-        with open(path, encoding="utf-8") as handle:
-            next(handle, None)
-            for raw_line in handle:
-                fields = raw_line.split()
-                if len(fields) < 4:
-                    continue
-                iface, destination_hex, gateway_hex, flags_hex = fields[:4]
-                if destination_hex != "00000000":
-                    continue
-                routes["default"].append(
-                    {
-                        "interface": iface,
-                        "gateway": _decode_route_ipv4(gateway_hex),
-                        "flags": flags_hex,
-                    }
-                )
-    except OSError as ex:
-        routes["error"] = f"{type(ex).__name__}: {ex}"
-    return routes
-
-
-def _detect_outbound_ipv4(target: tuple[str, int] = ("8.8.8.8", 53)) -> dict:
-    probe = {"target": f"{target[0]}:{target[1]}", "source_ip": None}
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(target)
-        probe["source_ip"] = sock.getsockname()[0]
-    except OSError as ex:
-        probe["error"] = f"{type(ex).__name__}: {ex}"
-    finally:
-        sock.close()
-    return probe
-
-
-def _host_from_url(value: str) -> str | None:
-    host = urlsplit(value).hostname
-    return host.lower() if host else None
-
-
-def _is_plausible_hostname(host: str) -> bool:
-    labels = [label for label in host.split(".") if label]
-    if len(labels) < 2:
-        return False
-    tld = labels[-1]
-    return len(tld) >= 2 and tld.isalpha()
-
-
-@lru_cache(maxsize=1)
-def _tutk_library_hosts() -> tuple[str, ...]:
-    hosts: set[str] = set()
-    for path in TUTK_HOST_SCAN_PATHS:
-        try:
-            with open(path, "rb") as handle:
-                data = handle.read()
-        except OSError:
-            continue
-        for match in HOSTNAME_PATTERN.finditer(data):
-            host = match.group(1).decode("ascii", "ignore").lower().strip(".")
-            if _is_plausible_hostname(host) and any(
-                keyword in host for keyword in TUTK_HOST_KEYWORDS
-            ):
-                hosts.add(host)
-    return tuple(sorted(hosts))
-
-
-def _candidate_dns_targets() -> list[str]:
-    hosts = {"homeassistant.local"}
-    for url in WYZE_DNS_URLS:
-        if host := _host_from_url(url):
-            hosts.add(host)
-    hosts.update(_tutk_library_hosts())
-    return sorted(hosts)
-
-
-def _socket_enum_name(value: int, prefix: str) -> str:
-    for name in dir(socket):
-        if name.startswith(prefix) and getattr(socket, name, object()) == value:
-            return name
-    return str(value)
-
-
-def _resolve_dns_target(host: str, port: int = 443) -> dict:
-    result = {"host": host, "port": port, "addresses": []}
-    started = time.perf_counter()
-    try:
-        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-        seen: set[tuple[int, int, int, str | None]] = set()
-        for family, socktype, proto, _canonname, sockaddr in infos:
-            address = sockaddr[0] if sockaddr else None
-            key = (family, socktype, proto, address)
-            if key in seen:
-                continue
-            seen.add(key)
-            result["addresses"].append(
-                {
-                    "family": _socket_enum_name(family, "AF_"),
-                    "socktype": _socket_enum_name(socktype, "SOCK_"),
-                    "proto": proto,
-                    "address": address,
-                }
-            )
-        result["reachable"] = bool(result["addresses"])
-    except OSError as ex:
-        result["reachable"] = False
-        result["error"] = f"{type(ex).__name__}: {ex}"
-    result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
-    return result
-
-
-def network_snapshot() -> dict:
-    return {
-        "hostname": socket.gethostname(),
-        "wb_ip": os.getenv("WB_IP"),
-        "outbound_ipv4": _detect_outbound_ipv4(),
-        "resolv_conf": _parse_resolv_conf(),
-        "routes": _parse_default_routes(),
-        "dns": {
-            "targets": [_resolve_dns_target(host) for host in _candidate_dns_targets()],
-            "tutk_library_hosts": list(_tutk_library_hosts()),
-        },
-    }
 
 
 def create_app():
@@ -233,6 +72,37 @@ def create_app():
         if hasattr(wb, "camera_info"):
             return wb.camera_info(cam_name)
         return wb.streams.get_info(cam_name)
+
+    def catalog_loading(cameras: dict | None = None) -> bool:
+        return bool(wb.api.total_cams and not (cameras if cameras is not None else camera_catalog()))
+
+    def ready_response(cameras: dict | None = None) -> tuple[dict, int]:
+        catalog = cameras if cameras is not None else camera_catalog()
+        if catalog_loading(catalog):
+            return {"status": "loading"}, 503
+
+        expected_aliases = {
+            camera.get("native_alias")
+            for camera in catalog.values()
+            if isinstance(camera, dict)
+            and camera.get("native_selected")
+            and camera.get("native_alias")
+            and camera.get("source") == "go2rtc"
+        }
+        try:
+            probe = go2rtc_probe(timeout=0.5, include_streams=bool(expected_aliases))
+        except Exception:
+            return {"status": "loading"}, 503
+        if not probe.get("api", {}).get("reachable"):
+            return {"status": "loading"}, 503
+
+        aliases = probe.get("aliases")
+        if expected_aliases:
+            alias_set = set(aliases) if isinstance(aliases, list) else set()
+            if not expected_aliases.issubset(alias_set):
+                return {"status": "loading"}, 503
+
+        return {"status": "ready"}, 200
 
     def auth_required(view):
         @wraps(view)
@@ -385,7 +255,24 @@ def create_app():
     @app.route("/api")
     @auth_required
     def api_all_cams():
-        return web_ui.all_cams(wb.streams, wb.api.total_cams, cameras=camera_catalog())
+        cameras = camera_catalog()
+        if catalog_loading(cameras):
+            return {"status": "loading"}
+        return web_ui.all_cams(wb.streams, wb.api.total_cams, cameras=cameras)
+
+    @app.route("/api/ready")
+    @auth_required
+    def api_ready():
+        payload, status = ready_response(camera_catalog())
+        return payload, status
+
+    @app.route("/api/snapshot-hashes")
+    @auth_required
+    def api_snapshot_hashes():
+        return {
+            "registry": read_snapshot_hash_registry(config.IMG_PATH),
+            "source": config.IMG_PATH,
+        }
 
     @app.route("/api/<string:cam_name>")
     @auth_required
@@ -555,7 +442,9 @@ def create_app():
                     os.remove(img_path)
                 raise NotFound
             if exp := request.args.get("exp"):
-                created_at = os.path.getmtime(img_path)
+                created_at = snapshot_hash_entry(config.IMG_PATH, Path(img_file).stem).get(
+                    "recorded_at", 0
+                )
                 if time.time() - created_at > int(exp):
                     raise NotFound
             return send_from_directory(config.IMG_PATH, img_file)
@@ -620,7 +509,7 @@ def create_app():
         """
         Generate an m3u8 playlist with all enabled cameras.
         """
-        hostname = request.host.split(":")[0]
+        hostname = request.host
         cameras = web_ui.format_streams(wb.streams.get_all_cam_info())
         resp = make_response(
             render_template("m3u8.html", cameras=cameras, hostname=hostname)
