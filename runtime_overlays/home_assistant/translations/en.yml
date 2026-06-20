@@ -186,6 +186,12 @@ configuration:
   GO2RTC_FORCE_LAN_IP_OVERRIDES:
     name: Force go2rtc LAN IP overrides
     description: Advanced. Replace helper-provided private LAN addresses with the configured go2rtc LAN IP override. Leave off unless a helper address is proven stale.
+  GO2RTC_WYZE_VERBOSE_ALIASES:
+    name: Verbose go2rtc Wyze aliases
+    description: Advanced. Optional comma-separated native alias names that should append verbose=true to their Wyze helper URLs for targeted DTLS and auth logging.
+  GO2RTC_DIAGNOSTIC_ALIASES:
+    name: go2rtc diagnostic aliases
+    description: Advanced. Optional comma-separated alias=source:subtype entries for temporary native probe aliases, for example north-yard-v4-hd-probe=north-yard-sd:hd.
   STUN_SERVER:
     name: STUN server
     description: Optional. Override the STUN server used for WebRTC NAT traversal. Leave blank unless you know you need a different one.

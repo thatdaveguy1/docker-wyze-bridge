@@ -2,7 +2,7 @@ name: Docker Wyze Bridge (Dev Build)
 description: Local staging build of Docker Wyze Bridge for SSH-driven validation before production promotion.
 slug: docker_wyze_bridge_dev
 url: https://github.com/thatdaveguy1/docker-wyze-bridge
-version: 4.3.5-dev
+version: 4.4.0-dev
 stage: stable
 arch:
   - armv7
@@ -48,6 +48,8 @@ options:
   SD_ONLY: false
   MOTION_API: true
   CAM_OPTIONS: []
+  GO2RTC_WYZE_VERBOSE_ALIASES: ""
+  GO2RTC_DIAGNOSTIC_ALIASES: ""
   CONNECT_TIMEOUT: 60
   CONNECT_RETRIES: 3
   CONNECT_RETRY_DELAY: 2.0
@@ -114,6 +116,8 @@ schema:
   H264_ENC: str?
   FORCE_ENCODE: bool?
   WB_IP: str?
+  GO2RTC_WYZE_VERBOSE_ALIASES: str?
+  GO2RTC_DIAGNOSTIC_ALIASES: str?
   STUN_SERVER: str?
   DOMAIN: str?
   CONNECT_TIMEOUT: int?
