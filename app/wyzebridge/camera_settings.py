@@ -1,5 +1,4 @@
 import json
-from dataclasses import dataclass
 from pathlib import Path
 
 from wyzebridge.bridge_utils import clean_cam_name
@@ -26,31 +25,6 @@ _HA_CAM_OPTION_KEYS: dict[str, str] = {
     "STREAM": "STREAM",
     "MOTION_WEBHOOKS": "MOTION_WEBHOOKS",
 }
-
-
-@dataclass(slots=True)
-class CameraConfig:
-    """Per-camera configuration resolved from env vars, HA options, and JSON settings."""
-
-    cam_name: str
-    audio: bool = False
-    ffmpeg_cmd: str = ""
-    net_mode: str = ""
-    rotate: bool = False
-    rotate_img: bool = False
-    hd: str = ""
-    sd: str = ""
-    force_fps: int = 0
-    livestream: bool = False
-    record: bool = False
-    sub_record: bool = False
-    substream: bool = False
-    stream: str = ""
-    motion_webhooks: str = ""
-
-    @property
-    def slug(self) -> str:
-        return clean_cam_name(self.cam_name)
 
 
 def apply_ha_cam_options(cam_options: list[dict]) -> None:

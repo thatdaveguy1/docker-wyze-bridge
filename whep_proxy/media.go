@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -13,19 +14,62 @@ import (
 	"github.com/pion/webrtc/v3"
 )
 
+// MediaForwarder holds the per-stream RTP/H.264 forwarding state that was
+// previously inlined in the WebRTCStream god-struct.  It owns the local and
+// remote track references, the SPS/PPS replay buffers, the downstream sequence
+// number counters, and the media-readiness atomics.  WebRTCStream holds it by
+// pointer (see WebRTCStream.media) so the file-level split between state.go
+// (lifecycle) and media.go (forwarding) is backed by a real type boundary.
+type MediaForwarder struct {
+	mu sync.RWMutex
+
+	videoSource *webrtc.TrackRemote
+	videoTrack  *webrtc.TrackLocalStaticRTP
+	audioTrack  *webrtc.TrackLocalStaticRTP
+	videoTrackMu sync.Mutex
+	audioTrackMu sync.Mutex
+
+	forwardWg sync.WaitGroup
+
+	videoParamPacket  *rtp.Packet
+	videoSPSPacket    *rtp.Packet
+	videoPPSPacket    *rtp.Packet
+	videoSPSBytes     int
+	videoPPSBytes     int
+	videoParamFUA     []byte
+	videoParamFUASeq  uint16
+	videoParamFUAOpen bool
+
+	videoOutSeq    uint16
+	audioOutSeq    uint16
+	videoOutSeqSet bool
+	audioOutSeqSet bool
+
+	videoReady        atomic.Bool
+	videoPrimed       atomic.Bool
+	audioReady        atomic.Bool
+	audioPacketsSeen  atomic.Uint64
+	videoPLIRequested atomic.Bool
+	videoReplayLogged atomic.Bool
+	videoIDRLogged    atomic.Bool
+	videoParamsMissed atomic.Bool
+	videoReplayMisses atomic.Int32
+}
+
 func (stream *WebRTCStream) outputTracks() []*webrtc.TrackLocalStaticRTP {
-	stream.mediaMu.RLock()
-	defer stream.mediaMu.RUnlock()
+	m := stream.mediaState()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	tracks := make([]*webrtc.TrackLocalStaticRTP, 0, 2)
-	if !stream.videoReady.Load() {
+	if !m.videoReady.Load() {
 		return tracks
 	}
-	if stream.videoTrack != nil {
-		tracks = append(tracks, stream.videoTrack)
+	if m.videoTrack != nil {
+		tracks = append(tracks, m.videoTrack)
 	}
-	if stream.audioTrack != nil && stream.audioReady.Load() && stream.audioPacketsSeen.Load() > 0 {
-		tracks = append(tracks, stream.audioTrack)
+	if m.audioTrack != nil && m.audioReady.Load() && m.audioPacketsSeen.Load() > 0 {
+		tracks = append(tracks, m.audioTrack)
 	}
 	return tracks
 }
@@ -41,9 +85,10 @@ func (stream *WebRTCStream) ensureETag() string {
 }
 
 func (stream *WebRTCStream) requestVideoKeyframe(reason string) error {
-	stream.mediaMu.RLock()
-	videoSource := stream.videoSource
-	stream.mediaMu.RUnlock()
+	m := stream.mediaState()
+	m.mu.RLock()
+	videoSource := m.videoSource
+	m.mu.RUnlock()
 	session := stream.currentUpstream()
 	var peerConnection *webrtc.PeerConnection
 	if session != nil {
@@ -182,31 +227,31 @@ func (stream *WebRTCStream) bufferFragmentedSTAPA(pkt *rtp.Packet) bool {
 		return false
 	}
 
-	stream.mediaMu.Lock()
-	defer stream.mediaMu.Unlock()
+	stream.mediaState().mu.Lock()
+	defer stream.mediaState().mu.Unlock()
 
 	if start {
 		reconstructedHeader := (pkt.Payload[0] & 0xE0) | origType
-		stream.videoParamFUA = append([]byte{reconstructedHeader}, pkt.Payload[2:]...)
-		stream.videoParamFUASeq = pkt.SequenceNumber
-		stream.videoParamFUAOpen = true
+		stream.mediaState().videoParamFUA = append([]byte{reconstructedHeader}, pkt.Payload[2:]...)
+		stream.mediaState().videoParamFUASeq = pkt.SequenceNumber
+		stream.mediaState().videoParamFUAOpen = true
 	} else {
-		if !stream.videoParamFUAOpen || pkt.SequenceNumber != stream.videoParamFUASeq+1 {
-			stream.videoParamFUA = nil
-			stream.videoParamFUAOpen = false
+		if !stream.mediaState().videoParamFUAOpen || pkt.SequenceNumber != stream.mediaState().videoParamFUASeq+1 {
+			stream.mediaState().videoParamFUA = nil
+			stream.mediaState().videoParamFUAOpen = false
 			return true
 		}
-		stream.videoParamFUA = append(stream.videoParamFUA, pkt.Payload[2:]...)
-		stream.videoParamFUASeq = pkt.SequenceNumber
+		stream.mediaState().videoParamFUA = append(stream.mediaState().videoParamFUA, pkt.Payload[2:]...)
+		stream.mediaState().videoParamFUASeq = pkt.SequenceNumber
 	}
 
 	if !end {
 		return true
 	}
 
-	payload := append([]byte(nil), stream.videoParamFUA...)
-	stream.videoParamFUA = nil
-	stream.videoParamFUAOpen = false
+	payload := append([]byte(nil), stream.mediaState().videoParamFUA...)
+	stream.mediaState().videoParamFUA = nil
+	stream.mediaState().videoParamFUAOpen = false
 	spsBytes, ppsBytes := parseSTAPAParameterSets(payload)
 	if spsBytes == 0 && ppsBytes == 0 {
 		return true
@@ -214,11 +259,11 @@ func (stream *WebRTCStream) bufferFragmentedSTAPA(pkt *rtp.Packet) bool {
 
 	paramPacket := cloneRTPPacket(pkt)
 	paramPacket.Payload = payload
-	stream.videoParamPacket = paramPacket
-	stream.videoSPSPacket = nil
-	stream.videoPPSPacket = nil
-	stream.videoSPSBytes = spsBytes
-	stream.videoPPSBytes = ppsBytes
+	stream.mediaState().videoParamPacket = paramPacket
+	stream.mediaState().videoSPSPacket = nil
+	stream.mediaState().videoPPSPacket = nil
+	stream.mediaState().videoSPSBytes = spsBytes
+	stream.mediaState().videoPPSBytes = ppsBytes
 	return true
 }
 
@@ -232,38 +277,38 @@ func (stream *WebRTCStream) bufferVideoParameterSet(pkt *rtp.Packet) {
 
 	naluType := pkt.Payload[0] & 0x1F
 
-	stream.mediaMu.Lock()
-	defer stream.mediaMu.Unlock()
+	stream.mediaState().mu.Lock()
+	defer stream.mediaState().mu.Unlock()
 
 	switch naluType {
 	case 7:
-		stream.videoParamPacket = nil
-		stream.videoSPSPacket = cloneRTPPacket(pkt)
-		stream.videoSPSBytes = len(pkt.Payload)
+		stream.mediaState().videoParamPacket = nil
+		stream.mediaState().videoSPSPacket = cloneRTPPacket(pkt)
+		stream.mediaState().videoSPSBytes = len(pkt.Payload)
 	case 8:
-		stream.videoParamPacket = nil
-		stream.videoPPSPacket = cloneRTPPacket(pkt)
-		stream.videoPPSBytes = len(pkt.Payload)
+		stream.mediaState().videoParamPacket = nil
+		stream.mediaState().videoPPSPacket = cloneRTPPacket(pkt)
+		stream.mediaState().videoPPSBytes = len(pkt.Payload)
 	case 24:
 		spsBytes, ppsBytes := parseSTAPAParameterSets(pkt.Payload)
 		if spsBytes == 0 && ppsBytes == 0 {
 			return
 		}
 		if spsBytes > 0 && ppsBytes > 0 {
-			stream.videoParamPacket = cloneRTPPacket(pkt)
-			stream.videoSPSPacket = nil
-			stream.videoPPSPacket = nil
-			stream.videoSPSBytes = spsBytes
-			stream.videoPPSBytes = ppsBytes
+			stream.mediaState().videoParamPacket = cloneRTPPacket(pkt)
+			stream.mediaState().videoSPSPacket = nil
+			stream.mediaState().videoPPSPacket = nil
+			stream.mediaState().videoSPSBytes = spsBytes
+			stream.mediaState().videoPPSBytes = ppsBytes
 			return
 		}
 		if spsBytes > 0 {
-			stream.videoSPSPacket = cloneRTPPacket(pkt)
-			stream.videoSPSBytes = spsBytes
+			stream.mediaState().videoSPSPacket = cloneRTPPacket(pkt)
+			stream.mediaState().videoSPSBytes = spsBytes
 		}
 		if ppsBytes > 0 {
-			stream.videoPPSPacket = cloneRTPPacket(pkt)
-			stream.videoPPSBytes = ppsBytes
+			stream.mediaState().videoPPSPacket = cloneRTPPacket(pkt)
+			stream.mediaState().videoPPSBytes = ppsBytes
 		}
 	}
 }
@@ -273,13 +318,13 @@ func (stream *WebRTCStream) replayVideoParameterSets(
 	streamID string,
 	timestamp uint32,
 ) bool {
-	stream.mediaMu.RLock()
-	paramPacket := cloneRTPPacket(stream.videoParamPacket)
-	spsPacket := cloneRTPPacket(stream.videoSPSPacket)
-	ppsPacket := cloneRTPPacket(stream.videoPPSPacket)
-	spsBytes := stream.videoSPSBytes
-	ppsBytes := stream.videoPPSBytes
-	stream.mediaMu.RUnlock()
+	stream.mediaState().mu.RLock()
+	paramPacket := cloneRTPPacket(stream.mediaState().videoParamPacket)
+	spsPacket := cloneRTPPacket(stream.mediaState().videoSPSPacket)
+	ppsPacket := cloneRTPPacket(stream.mediaState().videoPPSPacket)
+	spsBytes := stream.mediaState().videoSPSBytes
+	ppsBytes := stream.mediaState().videoPPSBytes
+	stream.mediaState().mu.RUnlock()
 
 	if paramPacket != nil && spsBytes > 0 && ppsBytes > 0 {
 		paramPacket.Timestamp = timestamp
@@ -287,16 +332,16 @@ func (stream *WebRTCStream) replayVideoParameterSets(
 			log.Printf("[WHEP_PROXY] Failed replaying STAP-A SPS/PPS before IDR for %s: %v", streamID, err)
 			return false
 		}
-		stream.videoPrimed.Store(true)
-		if whepDebugEnabled() && stream.videoReplayLogged.CompareAndSwap(false, true) {
+		stream.mediaState().videoPrimed.Store(true)
+		if whepDebugEnabled() && stream.mediaState().videoReplayLogged.CompareAndSwap(false, true) {
 			log.Printf("[WHEP_PROXY] Replayed SPS (%d bytes) + PPS (%d bytes) before IDR for %s", spsBytes, ppsBytes, streamID)
 		}
-		stream.videoParamsMissed.Store(false)
+		stream.mediaState().videoParamsMissed.Store(false)
 		return true
 	}
 
 	if spsPacket == nil || ppsPacket == nil || spsBytes == 0 || ppsBytes == 0 {
-		if stream.videoParamsMissed.CompareAndSwap(false, true) {
+		if stream.mediaState().videoParamsMissed.CompareAndSwap(false, true) {
 			log.Printf("[WHEP_PROXY] Missing buffered SPS/PPS before IDR for %s: sps=%d pps=%d", streamID, spsBytes, ppsBytes)
 		}
 		return false
@@ -313,12 +358,12 @@ func (stream *WebRTCStream) replayVideoParameterSets(
 		return false
 	}
 
-	stream.videoPrimed.Store(true)
-	if whepDebugEnabled() && stream.videoReplayLogged.CompareAndSwap(false, true) {
+	stream.mediaState().videoPrimed.Store(true)
+	if whepDebugEnabled() && stream.mediaState().videoReplayLogged.CompareAndSwap(false, true) {
 		log.Printf("[WHEP_PROXY] Replayed SPS (%d bytes) + PPS (%d bytes) before IDR for %s", spsBytes, ppsBytes, streamID)
 	}
-	stream.videoParamsMissed.Store(false)
-	stream.videoReplayMisses.Store(0)
+	stream.mediaState().videoParamsMissed.Store(false)
+	stream.mediaState().videoReplayMisses.Store(0)
 	return true
 }
 
@@ -326,19 +371,19 @@ func (stream *WebRTCStream) shouldForwardVideoPacket(pkt *rtp.Packet) bool {
 	if pkt == nil {
 		return false
 	}
-	if stream.videoPrimed.Load() {
+	if stream.mediaState().videoPrimed.Load() {
 		return true
 	}
 	isIDR, _ := h264PacketInfo(pkt.Payload)
 	if isIDR {
-		stream.videoPrimed.Store(true)
+		stream.mediaState().videoPrimed.Store(true)
 		return true
 	}
 	return false
 }
 
 func (stream *WebRTCStream) recordVideoReplayFailure() bool {
-	return stream.videoReplayMisses.Add(1) >= maxVideoParamReplayFailures
+	return stream.mediaState().videoReplayMisses.Add(1) >= maxVideoParamReplayFailures
 }
 
 func (stream *WebRTCStream) writeLocalTrack(localTrack *webrtc.TrackLocalStaticRTP, pkt *rtp.Packet) error {
@@ -346,12 +391,13 @@ func (stream *WebRTCStream) writeLocalTrack(localTrack *webrtc.TrackLocalStaticR
 		return fmt.Errorf("local track or packet unavailable")
 	}
 
+	m := stream.mediaState()
 	var mu *sync.Mutex
 	switch localTrack {
-	case stream.videoTrack:
-		mu = &stream.videoTrackMu
-	case stream.audioTrack:
-		mu = &stream.audioTrackMu
+	case m.videoTrack:
+		mu = &m.videoTrackMu
+	case m.audioTrack:
+		mu = &m.audioTrackMu
 	}
 
 	if mu != nil {
@@ -360,21 +406,21 @@ func (stream *WebRTCStream) writeLocalTrack(localTrack *webrtc.TrackLocalStaticR
 
 		// Keep downstream RTP sequence numbers monotonic per local track.
 		switch localTrack {
-		case stream.videoTrack:
-			if !stream.videoOutSeqSet {
-				stream.videoOutSeq = pkt.SequenceNumber
-				stream.videoOutSeqSet = true
+		case m.videoTrack:
+			if !m.videoOutSeqSet {
+				m.videoOutSeq = pkt.SequenceNumber
+				m.videoOutSeqSet = true
 			} else {
-				stream.videoOutSeq++
-				pkt.SequenceNumber = stream.videoOutSeq
+				m.videoOutSeq++
+				pkt.SequenceNumber = m.videoOutSeq
 			}
-		case stream.audioTrack:
-			if !stream.audioOutSeqSet {
-				stream.audioOutSeq = pkt.SequenceNumber
-				stream.audioOutSeqSet = true
+		case m.audioTrack:
+			if !m.audioOutSeqSet {
+				m.audioOutSeq = pkt.SequenceNumber
+				m.audioOutSeqSet = true
 			} else {
-				stream.audioOutSeq++
-				pkt.SequenceNumber = stream.audioOutSeq
+				m.audioOutSeq++
+				pkt.SequenceNumber = m.audioOutSeq
 			}
 		}
 	}
@@ -389,8 +435,9 @@ func forwardTrack(
 	track *webrtc.TrackRemote,
 	localTrack *webrtc.TrackLocalStaticRTP,
 ) {
-	stream.forwardWg.Add(1)
-	defer stream.forwardWg.Done()
+	m := stream.mediaState()
+	m.forwardWg.Add(1)
+	defer m.forwardWg.Done()
 
 	var readCount uint64
 	var writtenCount uint64
@@ -455,7 +502,7 @@ func forwardTrack(
 					droppedCount++
 					continue
 				}
-				if whepDebugEnabled() && stream.videoIDRLogged.CompareAndSwap(false, true) {
+				if whepDebugEnabled() && m.videoIDRLogged.CompareAndSwap(false, true) {
 					log.Printf(
 						"[WHEP_PROXY] First IDR for %s: seq=%d marker=%t bytes=%d desc=%s",
 						streamID,
@@ -478,10 +525,10 @@ func forwardTrack(
 			droppedCount++
 		} else {
 			writtenCount++
-			if track.Kind() == webrtc.RTPCodecTypeVideo && stream.videoPLIRequested.CompareAndSwap(true, false) {
+			if track.Kind() == webrtc.RTPCodecTypeVideo && m.videoPLIRequested.CompareAndSwap(true, false) {
 				if pliErr := stream.requestVideoKeyframe("first downstream write"); pliErr != nil {
 					log.Printf("[WHEP_PROXY] Failed to request keyframe for %s after first write: %v", streamID, pliErr)
-					stream.videoPLIRequested.Store(true)
+					m.videoPLIRequested.Store(true)
 				}
 			}
 			if track.Kind() == webrtc.RTPCodecTypeVideo && videoFUAEnded {

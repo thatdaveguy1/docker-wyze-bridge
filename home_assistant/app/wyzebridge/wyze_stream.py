@@ -20,7 +20,7 @@ from wyzebridge.wyze_stream_options import WyzeStreamOptions
 from wyzebridge.stream import Stream
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import CONNECT_TIMEOUT, COOLDOWN, DISABLE_CONTROL, MQTT_TOPIC
-from wyzebridge.go2rtc import native_stream_info
+from wyzebridge.native_alias import native_stream_info
 from wyzebridge.logging import logger, isDebugEnabled
 from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook

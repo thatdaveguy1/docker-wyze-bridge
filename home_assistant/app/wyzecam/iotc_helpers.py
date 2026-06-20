@@ -14,6 +14,7 @@ from ctypes import CDLL, c_uint32
 from typing import Optional
 
 from wyzebridge.config import CONNECT_TIMEOUT
+from wyzebridge.source_selector import hl_cam4_main_probe_mode
 from wyzecam.api_models import WyzeCamera
 from wyzecam.tutk import tutk
 
@@ -21,11 +22,6 @@ logger = logging.getLogger(__name__)
 
 
 # --- Environment / config helpers ---
-
-def hl_cam4_main_probe_mode() -> str:
-    mode = os.getenv("HL_CAM4_MAIN_PROBE_MODE", "kvs").strip().lower()
-    return mode if mode in {"kvs", "tutk_dtls", "tutk_parallel"} else "kvs"
-
 
 def tutk_trace_enabled(camera: WyzeCamera) -> bool:
     raw = os.getenv("TUTK_TRACE_STREAM", "").strip().lower()

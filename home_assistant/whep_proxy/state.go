@@ -8,17 +8,18 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 )
 
 // WebRTCStream is the per-stream state object.  It carries lifecycle flags,
-// media readiness atomics, upstream session state, and RTP forwarding buffers.
-// The architecture review (candidate #1) identifies this as a god-struct that
-// mixes 7 conceptual modules; future refactors will split it into separate
-// types behind interfaces.  For now the file-level seams (state.go,
-// upstream.go, media.go, kvs_config.go, handlers.go) make the boundaries
-// visible without changing behavior.
+// upstream session state, and recovery bookkeeping.  The media-specific RTP
+// forwarding state (tracks, SPS/PPS buffers, sequence counters, readiness
+// atomics) has been extracted into a separate MediaForwarder struct held by
+// pointer in the `media` field — see media.go.  The architecture review
+// (candidate #1) originally identified this as a god-struct that mixed 7
+// conceptual modules; this extraction makes the file-level seams (state.go,
+// upstream.go, media.go, kvs_config.go, handlers.go) backed by real type
+// boundaries without changing runtime behavior.
 type WebRTCStream struct {
 	streamID          string
 	configMu          sync.RWMutex
@@ -27,38 +28,12 @@ type WebRTCStream struct {
 	upstream          *UpstreamSession
 	mediaMu           sync.RWMutex
 	etag              string
-	videoTrack        *webrtc.TrackLocalStaticRTP
-	audioTrack        *webrtc.TrackLocalStaticRTP
-	videoTrackMu      sync.Mutex
-	audioTrackMu      sync.Mutex
-	forwardWg         sync.WaitGroup
-	videoSource       *webrtc.TrackRemote
+	media             *MediaForwarder
 	whepClients       atomic.Int32
-	videoPLIRequested atomic.Bool
-	videoParamPacket  *rtp.Packet
-	videoSPSPacket    *rtp.Packet
-	videoPPSPacket    *rtp.Packet
-	videoSPSBytes     int
-	videoPPSBytes     int
-	videoParamFUA     []byte
-	videoParamFUASeq  uint16
-	videoParamFUAOpen bool
-	videoOutSeq       uint16
-	audioOutSeq       uint16
-	videoOutSeqSet    bool
-	audioOutSeqSet    bool
-	videoReady        atomic.Bool
-	videoPrimed       atomic.Bool
-	audioReady        atomic.Bool
-	audioPacketsSeen  atomic.Uint64
 	upstreamAlive     atomic.Bool
 	reconnecting      atomic.Bool
 	reconnectAttempts atomic.Int32
 	destroyed         atomic.Bool
-	videoReplayLogged atomic.Bool
-	videoIDRLogged    atomic.Bool
-	videoParamsMissed atomic.Bool
-	videoReplayMisses atomic.Int32
 	// streamCreatedAt is set once when the stream is first registered and never
 	// reset.  Together with hasEverHadMedia it lets canReuse() detect streams
 	// that have been wedged since birth (upstream never reaches "connected") and
@@ -67,6 +42,17 @@ type WebRTCStream struct {
 	recoveryStartedAt time.Time
 	hasEverHadMedia   atomic.Bool
 	staleLogged       atomic.Bool
+}
+
+// mediaState returns the MediaForwarder for this stream, lazily initializing it
+// if nil.  In production the forwarder is created in newWebRTCStream; the lazy
+// path exists so tests and edge cases that construct a bare &WebRTCStream{}
+// still work without nil-pointer dereferences.
+func (stream *WebRTCStream) mediaState() *MediaForwarder {
+	if stream.media == nil {
+		stream.media = &MediaForwarder{}
+	}
+	return stream.media
 }
 
 var streams = make(map[string]*WebRTCStream)
@@ -115,7 +101,7 @@ func (stream *WebRTCStream) canReuse() bool {
 		}
 		return false
 	}
-	if stream.videoReady.Load() || stream.audioReady.Load() {
+	if stream.mediaState().videoReady.Load() || stream.mediaState().audioReady.Load() {
 		return true
 	}
 	if stream.reconnecting.Load() {
@@ -138,7 +124,7 @@ func (stream *WebRTCStream) canReuse() bool {
 }
 
 func (stream *WebRTCStream) markReconnectAttempt(attempt int) {
-	if !stream.videoReady.Load() && !stream.hasEverHadMedia.Load() {
+	if !stream.mediaState().videoReady.Load() && !stream.hasEverHadMedia.Load() {
 		stream.reconnectAttempts.Add(1)
 		return
 	}
@@ -154,31 +140,34 @@ func (stream *WebRTCStream) shouldForceRecreateNoVideo() bool {
 		return false
 	}
 	return stream.reconnecting.Load() &&
-		!stream.videoReady.Load() &&
+		!stream.mediaState().videoReady.Load() &&
 		!stream.hasEverHadMedia.Load() &&
 		stream.reconnectAttempts.Load() > maxNoVideoReconnectAttempts
 }
 
 func (stream *WebRTCStream) setVideoSource(track *webrtc.TrackRemote) {
-	stream.mediaMu.Lock()
-	defer stream.mediaMu.Unlock()
-	stream.videoSource = track
-	stream.videoReady.Store(track != nil)
+	m := stream.mediaState()
+	m.mu.Lock()
+	m.videoSource = track
+	m.videoReady.Store(track != nil)
+	m.mu.Unlock()
 	if track != nil {
 		// Once we have a video track the stream has produced real media; disable
 		// the maxNoMediaAge guard for the rest of this stream's lifetime.
 		stream.hasEverHadMedia.Store(true)
+		stream.mediaMu.Lock()
 		stream.recoveryStartedAt = time.Time{}
+		stream.mediaMu.Unlock()
 		stream.clearReconnectMetrics()
 	}
 }
 
 func (stream *WebRTCStream) setAudioReady(ready bool) {
-	stream.audioReady.Store(ready)
+	stream.mediaState().audioReady.Store(ready)
 }
 
 func (stream *WebRTCStream) markAudioPacketSeen() {
-	stream.audioPacketsSeen.Add(1)
+	stream.mediaState().audioPacketsSeen.Add(1)
 }
 
 func (stream *WebRTCStream) status() map[string]interface{} {
@@ -198,13 +187,14 @@ func (stream *WebRTCStream) status() map[string]interface{} {
 		streamAgeSec = time.Since(stream.streamCreatedAt).Seconds()
 	}
 
+	m := stream.mediaState()
 	return map[string]interface{}{
 		"upstream_state":     upstreamState,
 		"upstream_alive":     stream.upstreamAlive.Load(),
 		"can_reuse":          stream.canReuse(),
-		"video_ready":        stream.videoReady.Load(),
-		"audio_ready":        stream.audioReady.Load(),
-		"audio_packets_seen": stream.audioPacketsSeen.Load(),
+		"video_ready":        m.videoReady.Load(),
+		"audio_ready":        m.audioReady.Load(),
+		"audio_packets_seen": m.audioPacketsSeen.Load(),
 		"whep_clients":       stream.whepClients.Load(),
 		"has_ever_had_media": stream.hasEverHadMedia.Load(),
 		"stream_age_sec":     streamAgeSec,
@@ -212,49 +202,52 @@ func (stream *WebRTCStream) status() map[string]interface{} {
 }
 
 func (stream *WebRTCStream) resetUpstreamMediaState() {
+	m := stream.mediaState()
 	if stream.hasEverHadMedia.Load() {
+		m.mu.Lock()
+		m.videoSource = nil
+		m.videoParamPacket = nil
+		m.videoSPSPacket = nil
+		m.videoPPSPacket = nil
+		m.videoSPSBytes = 0
+		m.videoPPSBytes = 0
+		m.videoParamFUA = nil
+		m.videoParamFUASeq = 0
+		m.videoParamFUAOpen = false
+		m.mu.Unlock()
 		stream.mediaMu.Lock()
-		stream.videoSource = nil
 		if stream.recoveryStartedAt.IsZero() {
 			stream.recoveryStartedAt = time.Now()
 		}
-		stream.videoParamPacket = nil
-		stream.videoSPSPacket = nil
-		stream.videoPPSPacket = nil
-		stream.videoSPSBytes = 0
-		stream.videoPPSBytes = 0
-		stream.videoParamFUA = nil
-		stream.videoParamFUASeq = 0
-		stream.videoParamFUAOpen = false
 		stream.mediaMu.Unlock()
-		stream.videoPLIRequested.Store(false)
-		stream.videoPrimed.Store(false)
-		stream.videoReplayLogged.Store(false)
-		stream.videoIDRLogged.Store(false)
-		stream.videoParamsMissed.Store(false)
-		stream.videoReplayMisses.Store(0)
+		m.videoPLIRequested.Store(false)
+		m.videoPrimed.Store(false)
+		m.videoReplayLogged.Store(false)
+		m.videoIDRLogged.Store(false)
+		m.videoParamsMissed.Store(false)
+		m.videoReplayMisses.Store(0)
 		return
 	}
 
 	stream.setVideoSource(nil)
 	stream.setAudioReady(false)
-	stream.videoPLIRequested.Store(false)
-	stream.videoPrimed.Store(false)
-	stream.videoReplayLogged.Store(false)
-	stream.videoIDRLogged.Store(false)
-	stream.videoParamsMissed.Store(false)
-	stream.mediaMu.Lock()
-	stream.videoParamPacket = nil
-	stream.videoSPSPacket = nil
-	stream.videoPPSPacket = nil
-	stream.videoSPSBytes = 0
-	stream.videoPPSBytes = 0
-	stream.videoParamFUA = nil
-	stream.videoParamFUASeq = 0
-	stream.videoParamFUAOpen = false
-	stream.mediaMu.Unlock()
-	stream.audioPacketsSeen.Store(0)
-	stream.videoReplayMisses.Store(0)
+	m.videoPLIRequested.Store(false)
+	m.videoPrimed.Store(false)
+	m.videoReplayLogged.Store(false)
+	m.videoIDRLogged.Store(false)
+	m.videoParamsMissed.Store(false)
+	m.mu.Lock()
+	m.videoParamPacket = nil
+	m.videoSPSPacket = nil
+	m.videoPPSPacket = nil
+	m.videoSPSBytes = 0
+	m.videoPPSBytes = 0
+	m.videoParamFUA = nil
+	m.videoParamFUASeq = 0
+	m.videoParamFUAOpen = false
+	m.mu.Unlock()
+	m.audioPacketsSeen.Store(0)
+	m.videoReplayMisses.Store(0)
 }
 
 func cleanupUpstreamLocked(stream *WebRTCStream) {
@@ -351,7 +344,7 @@ func (stream *WebRTCStream) scheduleReconnect(reason string) {
 	}
 
 	go func() {
-		stream.forwardWg.Wait()
+		stream.mediaState().forwardWg.Wait()
 		for attempt := 1; ; attempt++ {
 			if stream.destroyed.Load() {
 				stream.reconnecting.Store(false)

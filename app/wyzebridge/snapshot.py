@@ -7,7 +7,12 @@ from typing import Callable, Optional
 
 from wyzebridge.config import IMG_PATH, IMG_TYPE, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd, wait_for_purges
-from wyzebridge.go2rtc import native_alias, preload_native_stream, write_native_snapshot
+from wyzebridge.native_alias import (
+    RECOVERY_ALIASES,
+    native_alias,
+    preload_native_stream,
+    write_native_snapshot,
+)
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_topic, update_preview
 from wyzebridge.preview_validation import (
@@ -74,41 +79,34 @@ class SnapshotManager:
     """
 
     __slots__ = (
-        "sm",
+        "streams",
+        "api",
+        "_stop_flag",
+        "_enabled_streams",
+        "_active_streams",
         "rtsp_snapshots",
         "native_preloads",
         "last_snap",
         "monitor_snapshots_thread",
     )
 
-    def __init__(self, stream_manager: "StreamManager") -> None:
-        self.sm: "StreamManager" = stream_manager
+    def __init__(
+        self,
+        streams: dict,
+        api: "WyzeApi",
+        stop_flag: Callable[[], bool],
+        enabled_streams: Callable[[], list[str]],
+        active_streams: Callable[[], list[str]],
+    ) -> None:
+        self.streams = streams
+        self.api = api
+        self._stop_flag = stop_flag
+        self._enabled_streams = enabled_streams
+        self._active_streams = active_streams
         self.rtsp_snapshots: dict[str, Popen] = {}
         self.native_preloads: set[str] = set()
         self.last_snap: float = 0
         self.monitor_snapshots_thread: Optional[Thread] = None
-
-    # --- Properties reading from StreamManager ---
-
-    @property
-    def streams(self) -> dict:
-        return self.sm.streams
-
-    @property
-    def api(self):
-        return self.sm.api
-
-    @property
-    def stop_flag(self) -> bool:
-        return self.sm.stop_flag
-
-    @property
-    def enabled_streams(self) -> list[str]:
-        return self.sm.enabled_streams()
-
-    @property
-    def active_streams(self) -> list[str]:
-        return self.sm.active_streams()
 
     # --- Snapshot monitoring ---
 
@@ -118,13 +116,13 @@ class SnapshotManager:
             try:
                 # emit to MQTT the current snapshots on file system
                 for cam in self.streams:
-                    if not self.stop_flag:
+                    if not self._stop_flag():
                         update_preview(cam)
 
-                while not self.stop_flag:
+                while not self._stop_flag():
                     for cam, ffmpeg in list(self.rtsp_snapshots.items()):
                         if (
-                            not self.stop_flag
+                            not self._stop_flag()
                             and ffmpeg is not None
                             and (returncode := ffmpeg.returncode) is not None
                         ):
@@ -183,9 +181,9 @@ class SnapshotManager:
         if force or should_take_snapshot(SNAPSHOT_TYPE, self.last_snap):
             self.last_snap = time.time()
             snapshot_targets = cams or (
-                self.enabled_streams
+                self._enabled_streams()
                 if SNAPSHOT_TYPE == "api"
-                else self.active_streams
+                else self._active_streams()
             )
             for cam_name in snapshot_targets:
                 if should_skip_snapshot(cam_name):
@@ -269,10 +267,7 @@ class SnapshotManager:
             alternate_alias = native_alias(cam_name, substream=True)
             if alternate_alias not in aliases:
                 aliases.append(alternate_alias)
-            if cam_name == "north-yard":
-                recovery_alias = "north-yard-v4-hd-recovery"
-                if recovery_alias not in aliases:
-                    aliases.append(recovery_alias)
+            aliases.extend(a for a in RECOVERY_ALIASES.get(cam_name, []) if a not in aliases)
             return any(
                 write_native_snapshot(alias, cam_name, warn_on_failure=False)
                 for alias in aliases
@@ -290,10 +285,7 @@ class SnapshotManager:
             alternate_alias = native_alias(cam_name, substream=True)
             if (not skip_primary_alias or alternate_alias != alias) and alternate_alias not in aliases:
                 aliases.append(alternate_alias)
-            if cam_name == "north-yard":
-                recovery_alias = "north-yard-v4-hd-recovery"
-                if recovery_alias not in aliases:
-                    aliases.append(recovery_alias)
+            aliases.extend(a for a in RECOVERY_ALIASES.get(cam_name, []) if a not in aliases)
         for candidate_alias in aliases:
             warn_on_failure = require_selected and candidate_alias == alias
             for attempt in range(2):

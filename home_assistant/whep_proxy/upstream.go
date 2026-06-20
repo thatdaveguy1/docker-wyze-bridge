@@ -533,19 +533,19 @@ func establishUpstream(stream *WebRTCStream) error {
 		switch track.Kind() {
 		case webrtc.RTPCodecTypeVideo:
 			stream.setVideoSource(track)
-			localTrack = stream.videoTrack
+			localTrack = stream.mediaState().videoTrack
 			if session.videoTrackLogged.CompareAndSwap(false, true) {
 				traceLogf(stream.streamID, "first upstream video track codec=%s payload=%d after=%s", track.Codec().MimeType, track.PayloadType(), time.Since(session.startedAt).Round(time.Millisecond))
 			}
 			if stream.whepClients.Load() > 0 {
-				stream.videoPLIRequested.Store(true)
+				stream.mediaState().videoPLIRequested.Store(true)
 				if err := stream.requestVideoKeyframe("upstream track available"); err != nil {
 					log.Printf("[WHEP_PROXY] Failed to request keyframe for %s on upstream track: %v", stream.streamID, err)
 				}
 			}
 		case webrtc.RTPCodecTypeAudio:
 			stream.setAudioReady(true)
-			localTrack = stream.audioTrack
+			localTrack = stream.mediaState().audioTrack
 			if session.audioTrackLogged.CompareAndSwap(false, true) {
 				traceLogf(stream.streamID, "first upstream audio track codec=%s payload=%d after=%s", track.Codec().MimeType, track.PayloadType(), time.Since(session.startedAt).Round(time.Millisecond))
 			}
@@ -588,8 +588,8 @@ func establishUpstream(stream *WebRTCStream) error {
 					state = session.peerConnection.ConnectionState()
 					iceState = session.peerConnection.ICEConnectionState()
 				}
-				videoReady := stream.videoReady.Load()
-				audioReady := stream.audioReady.Load()
+				videoReady := stream.mediaState().videoReady.Load()
+				audioReady := stream.mediaState().audioReady.Load()
 				upstreamAlive := stream.upstreamAlive.Load()
 				whepClients := stream.whepClients.Load()
 				if closeInfo.normal {

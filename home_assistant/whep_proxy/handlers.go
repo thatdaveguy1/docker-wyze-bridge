@@ -159,7 +159,7 @@ func whepHandler(w http.ResponseWriter, r *http.Request) {
 			case webrtc.PeerConnectionStateConnected:
 				if countedClient.CompareAndSwap(false, true) {
 					stream.whepClients.Add(1)
-					stream.videoPLIRequested.Store(true)
+					stream.mediaState().videoPLIRequested.Store(true)
 				}
 				if err := stream.requestVideoKeyframe("downstream connected"); err != nil {
 					log.Printf("[WHEP_PROXY] Failed to request keyframe for %s on connect: %v", streamID, err)
@@ -168,7 +168,7 @@ func whepHandler(w http.ResponseWriter, r *http.Request) {
 				if countedClient.CompareAndSwap(true, false) {
 					stream.whepClients.Add(-1)
 					if stream.whepClients.Load() == 0 {
-						stream.videoPLIRequested.Store(false)
+						stream.mediaState().videoPLIRequested.Store(false)
 					}
 				}
 				if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {

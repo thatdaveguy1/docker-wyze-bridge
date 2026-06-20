@@ -1,5 +1,46 @@
 # Todo
 
+## 2026-06-20 Thermo-Nuclear Code Quality Remediation
+
+Plan: `implementation.md`. Phases 1–2 are BLOCKERs, 3–5 are MAJOR, 6 is optional.
+
+### Phase 1 — Delete the indirection (BLOCKER, low risk)
+- [completed] 1.1 Remove `go2rtc.py` re-export facade (delete lines 19–53, update callers/tests, delete dup port helpers in `native_alias.py` lines 27–46) — `subagent_general`
+- [completed] 1.2 Remove `wyze_api.py` re-export block (delete 19-name import block, update callers/tests) — `subagent_general`
+- [completed] 1.3 Delete dead `CameraConfig` dataclass (`camera_settings.py` lines 31–53) — `subagent_general`
+- [completed] 1.4 Remove duplicate imports in `go2rtc_sidecar_helpers.py` (consolidate two import blocks) — `subagent_general`
+- [completed] Phase 1 gate: 342 passed, 7 pre-existing failures, build.sh --check clean
+
+### Phase 2 — Fix the spaghetti (BLOCKER, low risk)
+- [completed] 2.1 Extract `north-yard` recovery alias into `RECOVERY_ALIASES` map in `native_alias.py`, collapse two duplicated blocks in `snapshot.py` — `subagent_general`
+- [completed] 2.2 Convert `logger.info("[DEBUG]...")` to `logger.debug` in `tutk_session.py` — `subagent_general`
+- [completed] 2.3 De-duplicate `hl_cam4_main_probe_mode` (keep in `source_selector.py`, import in `iotc_helpers.py`) — `subagent_general`
+- [completed] Phase 2 gate: 342 passed, 7 pre-existing failures, build.sh --check clean
+
+### Phase 3 — Tighten StreamManager/Snapshot boundary (MAJOR, medium risk)
+- [completed] 3.1 Break `SnapshotManager` ↔ `StreamManager` back-reference (pass concrete deps, delete 4 back-ref properties) — `subagent_general`
+- [completed] 3.2 Document 7 StreamManager delegate methods as public API (external callers depend on them) — `subagent_explore` → `subagent_general`
+- [completed] Phase 3 gate: 342 passed, 7 pre-existing failures, build.sh --check clean
+
+### Phase 4 — Decompose `native_alias.py` and `iotc.py` (MAJOR, medium risk)
+- [completed] 4.1 Extract talkback to `native_talkback.py` (251 lines) — `subagent_general`. native_alias.py 601→367 lines.
+- [completed] 4.2 Extract connect/auth state machine to `iotc_connect.py` (533 lines) — `subagent_general`. iotc.py 1236→834 lines.
+- [skipped] 4.3 Extract audio pipe to `iotc_audio.py` — skipped, iotc.py already under 1k at 834 lines
+- [completed] Phase 4 gate: 342 passed, 7 pre-existing failures, build.sh --check clean
+
+### Phase 5 — Extract `MediaForwarder` from `WebRTCStream` (MAJOR, high risk)
+- [completed] 5.1 Pull 26 media fields into `MediaForwarder` struct in `media.go`, update `state.go`/`upstream.go`/`handlers.go`/`main.go` — `subagent_general`
+- [completed] Phase 5 gate: 30/30 Go tests pass, go vet clean, build.sh --check clean
+
+### Phase 6 — Pre-existing debt cleanup (OPTIONAL, not 4.4.0 blockers)
+- [completed] 6.1 Split `tutk_protocol.py` (1,404→232 lines) into `protocol_core.py` (170) / `protocol_messages.py` (594) / `protocol_messages_ptz.py` (599) — `subagent_general`. Facade preserves all caller imports.
+- [completed] 6.2 Split `tutk.py` (1,217→20 lines) into `tutk_core.py` (342) / `tutk_structures.py` (390) / `tutk_ffi.py` (589) — `subagent_general`. Facade preserves all caller imports.
+- [completed] Phase 6 gate: 342 passed, 7 pre-existing failures, build.sh --check clean
+
+## 2026-06-20 Thermo-Nuclear Remediation COMPLETE
+
+All 6 phases done. No Python file over 1k lines (largest: iotc.py 834). No Go file over 1k lines (largest: upstream.go 723). 342 Python tests pass, 30 Go tests pass, build.sh --check clean. 7 pre-existing test failures unchanged throughout.
+
 ## 2026-06-19 Architecture Review Candidate #3 — Snapshot Pipeline Extraction
 
 - [completed] Extracted the snapshot pipeline from `StreamManager` (474 lines) into a new `SnapshotManager` class in `app/wyzebridge/snapshot.py` (~330 lines). Moved: `_snapshot_decode_failed`, `_snapshot_matches_existing`, `_finalize_snapshot_output` helpers; `snap_all`, `get_snapshot`, `refresh_preview`, `_go2rtc_snapshot`, `get_rtsp_snap`, `rtsp_snap_popen`, `_restart_stream_for_snapshot`, `stop_subprocess`, `monitor_snapshots`, `remove_from_rtsp_snapshots`, `stop_monitoring` methods. `StreamManager` now delegates snapshot calls via thin wrapper methods and backward-compatible properties (`rtsp_snapshots`, `native_preloads`, `last_snap`, `monitor_snapshots_thread`). `send_cmd` uses delegate methods (`self.snap_all`, `self.refresh_preview`, `self.get_snapshot`) so test patches on `StreamManager` still work. Updated 22 patch targets in `test_go2rtc_snapshot_and_diagnostics.py` from `stream_manager_module` to `snapshot_module`. 35/37 snapshot tests pass (2 pre-existing go2rtc failures unchanged). 308 Python tests pass (same 6 pre-existing failures). `build.sh --check` clean. Synced to `home_assistant/app/` and `.ha_live_addon/app/`.

@@ -25,7 +25,13 @@ class StreamManager:
         self.api: WyzeApi = api
         self.stop_flag: bool = False
         self.streams: dict[str, Stream] = {}
-        self._snapshots: SnapshotManager = SnapshotManager(self)
+        self._snapshots: SnapshotManager = SnapshotManager(
+            streams=self.streams,
+            api=self.api,
+            stop_flag=lambda: self.stop_flag,
+            enabled_streams=self.enabled_streams,
+            active_streams=self.active_streams,
+        )
 
     # --- Backward-compatible snapshot attribute access ---
 
@@ -183,7 +189,12 @@ class StreamManager:
 
         return cam_resp if "status" in cam_resp else resp | cam_resp
 
-    # --- Snapshot delegates (backward compatibility) ---
+    # --- Snapshot public API ---
+    # These delegate to SnapshotManager. They are the public snapshot interface
+    # used by frontend.py (wb.streams.get_snapshot, wb.streams.refresh_preview)
+    # and by tests (manager.get_snapshot, manager.get_rtsp_snap, etc.).
+    # Internal callers in send_cmd use self.X so test patches on StreamManager
+    # still intercept. Do not remove without updating all external callers.
 
     def snap_all(self, cams: Optional[list[str]] = None, force: bool = False):
         return self._snapshots.snap_all(cams, force)

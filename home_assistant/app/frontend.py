@@ -22,7 +22,8 @@ from wyzebridge.build_config import VERSION
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
-from wyzebridge.go2rtc import go2rtc_probe, send_native_talkback
+from wyzebridge.go2rtc import go2rtc_probe
+from wyzebridge.native_talkback import send_native_talkback
 from wyzebridge.camera_settings import set_camera_stream_mode
 from wyzebridge.network_utils import (
     WYZE_DNS_URLS,

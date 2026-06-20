@@ -5,11 +5,17 @@ Architecture review candidate #12: move inline `python3 -c`/heredoc
 snippets out of the shell script into a reusable module. The shell
 script calls these via `python3 -c "from go2rtc_sidecar_helpers import ..."`.
 """
+import base64
+import hashlib
+import ipaddress
 import json
 import os
+import re
 import socket
 import sys
+import urllib.error
 import urllib.parse
+import urllib.request
 from pathlib import Path
 
 
@@ -174,14 +180,6 @@ def payload_has_cameras(payload_json: str) -> bool:
 
 
 # --- Alias seeding logic (extracted from go2rtc_sidecar.sh heredoc) ---
-
-import base64
-import hashlib
-import ipaddress
-import re
-import urllib.error
-import urllib.parse
-import urllib.request
 
 
 def _q(value: str) -> str:

@@ -21,7 +21,7 @@ func TestShouldForwardVideoPacketDropsPreIDRFrames(t *testing.T) {
 		t.Fatal("expected pre-IDR video packet to be dropped until stream is primed")
 	}
 
-	stream.videoPrimed.Store(true)
+	stream.mediaState().videoPrimed.Store(true)
 	if !stream.shouldForwardVideoPacket(nonIDR) {
 		t.Fatal("expected video packet to pass once stream is primed")
 	}
@@ -35,7 +35,7 @@ func TestShouldForwardVideoPacketPrimesOnFirstIDR(t *testing.T) {
 		t.Fatal("expected first IDR packet to prime and pass through")
 	}
 
-	if !stream.videoPrimed.Load() {
+	if !stream.mediaState().videoPrimed.Load() {
 		t.Fatal("expected first IDR to mark stream video primed")
 	}
 }
@@ -58,17 +58,18 @@ func TestOutputTracksRequireReadyMedia(t *testing.T) {
 		t.Fatalf("create audio track: %v", err)
 	}
 
-	stream := &WebRTCStream{videoTrack: videoTrack, audioTrack: audioTrack}
+	stream := &WebRTCStream{}
+	stream.media = &MediaForwarder{videoTrack: videoTrack, audioTrack: audioTrack}
 	if got := len(stream.outputTracks()); got != 0 {
 		t.Fatalf("expected no output tracks before upstream media is ready, got %d", got)
 	}
 
-	stream.audioReady.Store(true)
+	stream.mediaState().audioReady.Store(true)
 	if got := len(stream.outputTracks()); got != 0 {
 		t.Fatalf("expected no output tracks while only audio is ready, got %d", got)
 	}
 
-	stream.videoReady.Store(true)
+	stream.mediaState().videoReady.Store(true)
 	if got := len(stream.outputTracks()); got != 1 {
 		t.Fatalf("expected video-only output before real audio packets arrive, got %d", got)
 	}
@@ -80,8 +81,8 @@ func TestOutputTracksRequireReadyMedia(t *testing.T) {
 	if !stream.canReuse() {
 		t.Fatal("expected stream with ready media to be reusable")
 	}
-	stream.videoReady.Store(false)
-	stream.audioReady.Store(false)
+	stream.mediaState().videoReady.Store(false)
+	stream.mediaState().audioReady.Store(false)
 	if stream.canReuse() {
 		t.Fatal("expected stream without upstream session or ready media to stay non-reusable")
 	}
@@ -180,14 +181,13 @@ func TestRecoveredStreamKeepsReadyStatusDuringReconnectWindow(t *testing.T) {
 
 	stream := &WebRTCStream{
 		streamID:          "deck-sub",
-		videoTrack:        videoTrack,
-		audioTrack:        audioTrack,
 		streamCreatedAt:   time.Now().Add(-10 * time.Minute),
 		recoveryStartedAt: time.Now(),
 	}
-	stream.videoReady.Store(true)
-	stream.audioReady.Store(true)
-	stream.audioPacketsSeen.Store(42)
+	stream.media = &MediaForwarder{videoTrack: videoTrack, audioTrack: audioTrack}
+	stream.mediaState().videoReady.Store(true)
+	stream.mediaState().audioReady.Store(true)
+	stream.mediaState().audioPacketsSeen.Store(42)
 	stream.hasEverHadMedia.Store(true)
 	stream.reconnecting.Store(true)
 	stream.setUpstream(&UpstreamSession{peerConnection: peerConnection, startedAt: time.Now()})
@@ -213,7 +213,7 @@ func TestRecoveredStreamExpiresAfterRecoveryWindow(t *testing.T) {
 		streamCreatedAt:   time.Now().Add(-10 * time.Minute),
 		recoveryStartedAt: time.Now().Add(-maxRecoveryAge - time.Second),
 	}
-	stream.videoReady.Store(true)
+	stream.mediaState().videoReady.Store(true)
 	stream.hasEverHadMedia.Store(true)
 
 	if stream.canReuse() {
@@ -240,13 +240,14 @@ func TestBufferVideoParameterSetReassemblesFragmentedSTAPA(t *testing.T) {
 	stream.bufferVideoParameterSet(start)
 	stream.bufferVideoParameterSet(end)
 
-	if stream.videoParamPacket == nil {
+	m := stream.mediaState()
+	if m.videoParamPacket == nil {
 		t.Fatal("expected fragmented STAP-A SPS/PPS to be buffered as a replay packet")
 	}
-	if stream.videoSPSBytes != 2 || stream.videoPPSBytes != 2 {
-		t.Fatalf("expected SPS/PPS sizes 2/2, got %d/%d", stream.videoSPSBytes, stream.videoPPSBytes)
+	if m.videoSPSBytes != 2 || m.videoPPSBytes != 2 {
+		t.Fatalf("expected SPS/PPS sizes 2/2, got %d/%d", m.videoSPSBytes, m.videoPPSBytes)
 	}
-	if got := stream.videoParamPacket.Payload[0] & 0x1f; got != 24 {
+	if got := m.videoParamPacket.Payload[0] & 0x1f; got != 24 {
 		t.Fatalf("expected reassembled STAP-A payload, got nalu type %d", got)
 	}
 }
@@ -278,7 +279,7 @@ func TestNoVideoReconnectAttemptsForceRecreate(t *testing.T) {
 		t.Fatal("expected fourth no-video reconnect attempt to force recreate")
 	}
 
-	stream.videoReady.Store(true)
+	stream.mediaState().videoReady.Store(true)
 	if stream.shouldForceRecreateNoVideo() {
 		t.Fatal("expected video-ready stream not to force recreate")
 	}

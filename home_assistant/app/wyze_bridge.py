@@ -23,7 +23,7 @@ from wyzebridge.hass import setup_hass
 from wyzebridge.logging import logger
 from wyzebridge.mtx_server import MtxServer
 from wyzebridge.stream_manager import StreamManager
-from wyzebridge.go2rtc import native_stream_info
+from wyzebridge.native_alias import native_stream_info
 from wyzebridge.wyze_api import WyzeApi
 from wyzebridge.wyze_stream import WyzeStream, WyzeStreamOptions
 from wyzecam.api_models import WyzeAccount, WyzeCamera

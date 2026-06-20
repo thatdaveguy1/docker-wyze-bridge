@@ -29,40 +29,40 @@ def start_tutk_stream(uri, stream, queue, state):
     # Late import to avoid circular dependency
     from wyzebridge.wyze_stream import NET_MODE, StreamStatus
 
-    # DEBUG: Log camera details at start
+    # Log camera details at start
     cam = stream.camera
-    logger.info(f"[DEBUG] Starting stream for {uri}")
-    logger.info(f"[DEBUG] Camera model: {cam.product_model} ({cam.model_name})")
-    logger.info(f"[DEBUG] Camera MAC: {cam.mac}")
-    logger.info(f"[DEBUG] Camera IP: {cam.ip}")
-    logger.info(
-        f"[DEBUG] Camera P2P ID: {cam.p2p_id[:20]}..."
+    logger.debug(f"Starting stream for {uri}")
+    logger.debug(f"Camera model: {cam.product_model} ({cam.model_name})")
+    logger.debug(f"Camera MAC: {cam.mac}")
+    logger.debug(f"Camera IP: {cam.ip}")
+    logger.debug(
+        f"Camera P2P ID: {cam.p2p_id[:20]}..."
         if cam.p2p_id
-        else "[DEBUG] Camera P2P ID: None"
+        else "Camera P2P ID: None"
     )
-    logger.info(f"[DEBUG] DTLS: {cam.dtls}, Parent DTLS: {cam.parent_dtls}")
-    logger.info(f"[DEBUG] ENR: {cam.enr[:20]}..." if cam.enr else "[DEBUG] ENR: None")
-    logger.info(f"[DEBUG] is_2k: {cam.is_2k}, is_floodlight: {cam.is_floodlight}")
+    logger.debug(f"DTLS: {cam.dtls}, Parent DTLS: {cam.parent_dtls}")
+    logger.debug(f"ENR: {cam.enr[:20]}..." if cam.enr else "ENR: None")
+    logger.debug(f"is_2k: {cam.is_2k}, is_floodlight: {cam.is_floodlight}")
 
     was_offline = state.value == StreamStatus.OFFLINE
     state.value = StreamStatus.CONNECTING
     exit_code = StreamStatus.STOPPING
     control_thread = audio_thread = None
     try:
-        logger.info(f"[DEBUG] {uri}: Entering WyzeIOTC context manager...")
+        logger.debug(f"{uri}: Entering WyzeIOTC context manager...")
         with WyzeIOTC() as iotc:
-            logger.info(f"[DEBUG] {uri}: WyzeIOTC initialized, creating session...")
+            logger.debug(f"{uri}: WyzeIOTC initialized, creating session...")
             with iotc.session(stream, state) as sess:
-                logger.info(f"[DEBUG] {uri}: Session created, state={state.value}")
+                logger.debug(f"{uri}: Session created, state={state.value}")
                 assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
-                logger.info(f"[DEBUG] {uri}: Getting camera params...")
+                logger.debug(f"{uri}: Getting camera params...")
                 v_codec, audio = get_cam_params(sess, uri)
-                logger.info(f"[DEBUG] {uri}: v_codec={v_codec}, audio={audio}")
+                logger.debug(f"{uri}: v_codec={v_codec}, audio={audio}")
                 control_thread = (
                     setup_control(sess, queue) if not stream.options.substream else None
                 )
                 audio_thread = setup_audio(sess, uri) if sess.enable_audio else None
-                logger.info(f"[DEBUG] {uri}: Starting ffmpeg...")
+                logger.debug(f"{uri}: Starting ffmpeg...")
                 ffmpeg_cmd = get_ffmpeg_cmd(
                     uri, v_codec, audio, stream.camera.is_vertical
                 )

@@ -77,8 +77,7 @@ func newWebRTCStream(streamID string, config WebRTCConfig) (*WebRTCStream, error
 
 	stream := &WebRTCStream{
 		streamID:        streamID,
-		videoTrack:      videoTrack,
-		audioTrack:      audioTrack,
+		media:           &MediaForwarder{videoTrack: videoTrack, audioTrack: audioTrack},
 		streamCreatedAt: time.Now(),
 	}
 	stream.setConfig(config)

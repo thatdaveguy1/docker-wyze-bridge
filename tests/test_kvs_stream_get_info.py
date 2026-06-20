@@ -111,7 +111,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertFalse(info["native_supported"])
         self.assertFalse(info["native_selected"])
 
-    @patch("wyzebridge.go2rtc.requests.get")
+    @patch("wyzebridge.native_alias.requests.get")
     def test_hl_cam4_reports_native_selection_when_go2rtc_api_is_reachable(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()
@@ -147,7 +147,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["talkback_alias"], "garage")
         self.assertEqual(info["talkback_source"], "go2rtc")
 
-    @patch("wyzebridge.go2rtc.requests.get")
+    @patch("wyzebridge.native_alias.requests.get")
     def test_sd_only_bridge_feed_does_not_report_native_snapshot_source(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()
@@ -181,7 +181,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["snapshot_source"], "rtsp")
         self.assertFalse(info["talkback_supported"])
 
-    @patch("wyzebridge.go2rtc.requests.get")
+    @patch("wyzebridge.native_alias.requests.get")
     def test_hl_bc_reports_talkback_as_unavailable_when_bridge_first(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()
@@ -215,7 +215,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["talkback_alias"], "garage")
         self.assertIn("native-selected cameras", info["talkback_reason"])
 
-    @patch("wyzebridge.go2rtc.requests.get")
+    @patch("wyzebridge.native_alias.requests.get")
     def test_hl_cam3p_selects_only_native_sd_feed(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()
@@ -269,7 +269,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(sub_info["snapshot_source"], "go2rtc")
         self.assertFalse(sub_info["talkback_supported"])
 
-    @patch("wyzebridge.go2rtc.requests.get")
+    @patch("wyzebridge.native_alias.requests.get")
     def test_hl_bc_reports_sd_resolution_for_main_feed(self, mock_get):
         user = SimpleNamespace()
         camera = make_camera()

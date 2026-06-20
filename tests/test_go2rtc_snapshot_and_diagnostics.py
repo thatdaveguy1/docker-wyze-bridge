@@ -93,6 +93,7 @@ import wyzebridge.bridge_diagnostics as bridge_diagnostics_module
 import wyzebridge.ffmpeg as ffmpeg_module
 import wyzebridge.go2rtc as go2rtc_module
 import wyzebridge.native_alias as native_alias_module
+import wyzebridge.native_talkback as native_talkback_module
 import wyzebridge.snapshot as snapshot_module
 import wyzebridge.stream_manager as stream_manager_module
 from wyzebridge.bridge_diagnostics import collect_bridge_diagnostics
@@ -414,29 +415,29 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertTrue(info["native_alias_wedged"])
         self.assertFalse(info["native_alias_ready"])
 
-    @patch.object(native_alias_module.time, "sleep")
-    @patch.object(native_alias_module, "preload_native_stream")
-    @patch.object(native_alias_module, "_talkback_ffmpeg_codec")
+    @patch.object(native_talkback_module.time, "sleep")
+    @patch.object(native_talkback_module, "preload_native_stream")
+    @patch.object(native_talkback_module, "_talkback_ffmpeg_codec")
     def test_talkback_codec_resolution_preloads_and_retries(
         self, mock_codec, mock_preload, _mock_sleep
     ):
         mock_codec.side_effect = [None, "aac/16000"]
 
-        codec = native_alias_module._resolve_talkback_ffmpeg_codec("north-yard")
+        codec = native_talkback_module._resolve_talkback_ffmpeg_codec("north-yard")
 
         self.assertEqual(codec, "aac/16000")
         mock_preload.assert_called_once_with("north-yard", timeout=2.0)
         self.assertEqual(mock_codec.call_count, 2)
 
-    @patch.object(native_alias_module, "_resolve_talkback_ffmpeg_codec")
-    @patch.object(native_alias_module, "_go2rtc_stream_request")
+    @patch.object(native_talkback_module, "_resolve_talkback_ffmpeg_codec")
+    @patch.object(native_talkback_module, "_go2rtc_stream_request")
     def test_send_native_talkback_uses_resolved_codec_for_audio_url(
         self, mock_stream_request, mock_resolve_codec
     ):
         mock_resolve_codec.return_value = "aac/16000"
         mock_stream_request.return_value = {"status": "success"}
 
-        result = native_alias_module.send_native_talkback(
+        result = native_talkback_module.send_native_talkback(
             {"audio_url": "http://127.0.0.1:55000/api/talkback-file/test.wav"},
             "north-yard",
         )
@@ -912,10 +913,10 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         vf_index = cmd.index("-vf")
         self.assertIn(r"select=gte(n\,15)", cmd[vf_index + 1])
 
-    @patch.object(native_alias_module, "_resolve_talkback_ffmpeg_codec")
-    @patch.object(native_alias_module, "_go2rtc_stream_request")
-    @patch.object(native_alias_module, "_cleanup_stale_talkback_files")
-    @patch.object(native_alias_module, "_talkback_temp_dir")
+    @patch.object(native_talkback_module, "_resolve_talkback_ffmpeg_codec")
+    @patch.object(native_talkback_module, "_go2rtc_stream_request")
+    @patch.object(native_talkback_module, "_cleanup_stale_talkback_files")
+    @patch.object(native_talkback_module, "_talkback_temp_dir")
     def test_send_native_talkback_audio_b64_writes_temp_file_and_calls_stream_request(
         self, mock_temp_dir, mock_cleanup, mock_stream_request, mock_resolve_codec
     ):
@@ -933,7 +934,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             audio_bytes = b"RIFF\x00\x00\x00\x00WAVEfmt "
             audio_b64 = base64.b64encode(audio_bytes).decode()
 
-            result = native_alias_module.send_native_talkback(
+            result = native_talkback_module.send_native_talkback(
                 {"audio_b64": audio_b64, "file_ext": "wav"},
                 "north-yard",
             )
@@ -951,7 +952,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         import base64
 
         audio_b64 = base64.b64encode(b"fake audio").decode()
-        result = native_alias_module.send_native_talkback(
+        result = native_talkback_module.send_native_talkback(
             {"audio_b64": audio_b64, "audio_url": "http://example.com/audio.wav"},
             "north-yard",
         )
