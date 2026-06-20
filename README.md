@@ -15,10 +15,28 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - WebRTC/KVS-backed bridge path for modern Wyze models.
 - Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 4.3 workflows.
 
+## 4.4.0 Highlights
+
+- **Architecture refactor**: 10 monolith candidates extracted into focused modules for testability and AI-navigability. No user-facing behavior changes; all tests pass with the same pre-existing failure set.
+  - `SnapshotManager` → `app/wyzebridge/snapshot.py` (from `StreamManager`)
+  - `WyzeIOTCSession` → `app/wyzebridge/tutk_session.py` (from `wyze_stream.py`)
+  - Native alias readiness → `app/wyzebridge/native_alias.py` (from `go2rtc.py`)
+  - HA cam options → `app/wyzebridge/camera_settings.py` (from `hass.py`)
+  - WyzeApi helpers → `app/wyzebridge/wyze_api_helpers.py` (from `wyze_api.py`)
+  - KVS/TUTK source selection → `app/wyzebridge/source_selector.py` (from `wyze_stream.py`)
+  - Network snapshot utils → `app/wyzebridge/network_utils.py` (from `frontend.py`)
+  - `go2rtc_sidecar.sh` embedded Python → `app/wyzebridge/go2rtc_sidecar_helpers.py` (shell script 771→252 lines)
+  - `iotc.py` env/audio helpers → `app/wyzecam/iotc_helpers.py` (1307→1233 lines)
+  - `whep_proxy/main.go` split into 6 themed files within package main
+- **Build system**: `scripts/build.sh --check` now enforces that `home_assistant/` and `.ha_live_addon/` are generated from canonical `app/` + `runtime_overlays/`, eliminating three-way drift.
+- This is an internal-only refactor release; all runtime behavior, ports, configs, and camera paths are unchanged from 4.3.5.
+
 ## 4.3.5 Highlights
 
 - Native SD-only Home Assistant cameras no longer seed a competing fake HD `go2rtc` alias when per-camera feed config explicitly disables HD. This keeps the intended `*-sd` RTSP target stable for downstream consumers like Scrypted and HomeKit.
 - When a selected native alias goes stale, the bridge now forces one fresh native preload before giving up on the native snapshot path. That narrows the split-brain case where producer metadata still exists but `frame.jpeg` has stopped returning real images.
+- North Yard `HL_CAM4` snapshots now get one extra hidden HD recovery lane before dropping to RTSP fallback. This stays intentionally narrow: only `north-yard` seeds `north-yard-v4-hd-recovery`, based on live proof that `subtype=hd` could return real JPEGs when the usual SD still-image lane was the one wedging.
+- Native snapshot diagnostics now expose producer and go2rtc consumer counters, and empty `frame.jpeg` responses with active producers fail fast instead of burning the whole snapshot timeout. That makes North Yard-style native wedges easier to prove and lets the bridge fall through sooner.
 - This is a narrow reliability patch for the `4.3` line; the broader Home Assistant startup, snapshot, SD-only, WHEP, and packaging hygiene work remains from `4.3.2`.
 
 ## 4.3.4 Highlights
@@ -168,9 +186,35 @@ Full caveats, firmware notes, and public limitations live in [Camera Support](./
 - [Troubleshooting Guide](./docs/user_guide/troubleshooting.md)
 - [Upgrade Guide](./docs/user_guide/upgrade.md)
 
+## Local Smoke Test
+
+For a Mac-side camera smoke run that does not SSH into Home Assistant or mutate live config, use:
+
+```bash
+python3 scripts/local_camera_smoke_test.py --duration 3600 --heartbeat-interval 60 --test-name local-smoke
+```
+
+What it does:
+
+- Reolink cameras use the existing direct RTSP probe with `ffprobe` metadata plus sustained `ffmpeg` streaming proof.
+- Wyze cameras use bridge `/api/<camera>` connected-state checks plus `go2rtc` `frame.jpeg` fetches.
+- The wrapper prints heartbeat updates while both child probes run and writes a combined summary under `tmp/`.
+
+Required local env:
+
+- `REOLINK_USERNAME`
+- `REOLINK_PASSWORD`
+- `WYZE_BRIDGE_API_KEY`
+
+Optional local env:
+
+- `WYZE_BRIDGE_BASE` to override the default `http://192.168.1.244:5000`
+- `WYZE_GO2RTC_BASE` to override the default `http://192.168.1.244:1984`
+
 ## Operational Notes
 
 - Current master-goal proof is split into safe local proof and live Home Assistant proof. Run `./scripts/run_master_local_gates.sh` for the non-live proof bundle: it checks the canonical app overlays, snapshot tests, packaging safety, WHEP proxy tests, the master status summary, and the Python suite.
+- For a local mixed-camera smoke test from this Mac only, use the `Local Smoke Test` section above. The canonical command is `python3 scripts/local_camera_smoke_test.py`, and the required local secret is `WYZE_BRIDGE_API_KEY`, not a repo hardcoded value.
 - Run `python3 scripts/master_goal_status.py` for the short scoreboard. For `4.3.3`, the release patch is scoped to SD-only native alias reliability; the broader `4.3.2` proof boundary still applies, with Phase 1 snapshots, Phase 2 startup/API, Phase 3 SD-only, and Phase 5 overlay/API green and the strict Phase 4 soak still red when Frigate/Scrypted skipped-FPS blips occur.
 - Run `./scripts/ha_bridge_doctor.sh` for a read-only live Home Assistant bridge check. It gathers add-on state, production health, redacted MediaMTX logs, host port clues, and Frigate FPS without stopping, rebuilding, rebooting, or printing secret option values.
 - After an explicitly approved live recovery action, run `./scripts/ha_prod_recovery_verify.sh` before resuming the remaining live gates. It is read-only and fails unless production health, recent logs, and Frigate FPS prove the bridge is recovered enough for the WHEP and production rebuild checks.
@@ -181,6 +225,7 @@ Full caveats, firmware notes, and public limitations live in [Camera Support](./
 - On the April 12, 2026 Home Assistant host audit, the HA core and LAN frontend remained healthy while the active remote path was a Cloudflare Access-protected hostname and Home Assistant's saved internal/external URLs still pointed at an older DuckDNS address. If the companion app shows a generic connection failure in this state, check URL drift and remote-auth gates before treating it as a server outage.
 - The same April 12 follow-up fixed that mismatch by setting Home Assistant `internal_url` to `http://192.168.1.244:8123` for LAN use and `external_url` to `https://ha.tokentradegames.com` for remote use through Cloudflare Access.
 - A separate April 12 Frigate outage on the same host turned out to be a stale Supervisor media-mount problem rather than bad Frigate camera config. Reloading the `frigate` network mount and then starting the add-on restored Frigate to a healthy `started` state with live `/api/stats` camera fps again.
+- On the June 4, 2026 Home Assistant host, a later Frigate startup failure was a different class of outage: Docker could not bind host TCP `8555` because the separate standalone `go2rtc` add-on was still using its default WebRTC listener on that port. The durable host fix was to back up `/homeassistant/go2rtc.yaml`, set standalone `go2rtc` `webrtc.listen` to `:18555`, restart standalone `go2rtc`, and then start Frigate. Keep any later `south_driveway` ffmpeg churn in a separate RTSP/input stability lane unless Frigate itself stops staying up again.
 - A later April 12 Frigate live-view follow-up confirmed the stable production pattern for the driveway cameras on this host: keep the direct HD `record` and SD `detect` ffmpeg inputs, and add persisted `go2rtc` HD live streams only for `south_driveway` and `north_driveway`. A 15-minute soak with both live streams held open stayed around `10 camera_fps`, `10 process_fps`, and `0 skipped_fps`, while fresh recording segments remained `2560x1440`.
 - Use `scripts/ha_frigate_reliability.sh` for a repeatable live audit of Frigate add-on state, per-camera fps health, go2rtc stream presence, and recent watchdog/timestamp/AAC log issues from the Home Assistant host.
 - On the April 14, 2026 HomeKit instability pass, the main production failure was a bridge-side startup bug in the native `go2rtc` sidecar rather than a Scrypted or HomeKit transport outage. In the SD-only production setup, the authenticated bridge `/api` camera catalog could be empty during startup, and the sidecar treated that empty catalog as authoritative enough to rewrite `/addon_configs/0eb0428f_docker_wyze_bridge_v4/go2rtc_wyze.yaml` with an empty `streams:` block. That made native `:19554/*-sd` URLs return `404 Not Found` in Scrypted. Falling back to explicit `/api/<camera>/stream-config` feed flags when the catalog is empty restored the live alias table on rebuild and brought `deck-sd`, `garage-sd`, `back-yard-sd`, and `north-yard-sd` back. `HAMSTER` remained a separate camera-specific native-path follow-up after the alias-table repair.
