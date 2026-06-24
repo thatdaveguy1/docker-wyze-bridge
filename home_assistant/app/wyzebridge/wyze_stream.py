@@ -1,41 +1,35 @@
 import contextlib
-import json
 import multiprocessing as mp
-import os
 import zoneinfo
 from collections import namedtuple
 from ctypes import c_int
 from datetime import datetime
 from enum import IntEnum
 from queue import Empty, Full
-from threading import Thread
 from time import sleep, time
-from typing import Optional
 
+from wyzebridge.bridge_utils import env_bool
+from wyzebridge.config import COOLDOWN, DISABLE_CONTROL, MQTT_TOPIC, connect_timeout_seconds
+from wyzebridge.logging import logger
+from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
+from wyzebridge.native_alias import native_stream_info
+from wyzebridge.source_selector import (
+    hl_cam4_main_probe_mode,
+)
+from wyzebridge.source_selector import (
+    uses_kvs_source as _uses_kvs_source,
+)
+from wyzebridge.source_selector import (
+    uses_tutk_source as _uses_tutk_source,
+)
+from wyzebridge.tutk_session import start_tutk_stream
+from wyzebridge.wyze_api import WyzeApi
+from wyzebridge.wyze_commands import GET_CMDS, PARAMS, SET_CMDS
+from wyzebridge.wyze_stream_options import WyzeStreamOptions
+from wyzecam.api_models import WyzeAccount, WyzeCamera
 from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
 from wyzecam.tutk import tutk
 from wyzecam.tutk.tutk import TutkError
-from wyzecam.api_models import WyzeAccount, WyzeCamera
-from wyzebridge.wyze_stream_options import WyzeStreamOptions
-from wyzebridge.stream import Stream
-from wyzebridge.bridge_utils import env_bool, env_cam
-from wyzebridge.config import CONNECT_TIMEOUT, COOLDOWN, DISABLE_CONTROL, MQTT_TOPIC
-from wyzebridge.native_alias import native_stream_info
-from wyzebridge.logging import logger, isDebugEnabled
-from wyzebridge.mqtt import publish_discovery, publish_messages, update_mqtt_state
-from wyzebridge.webhooks import send_webhook
-from wyzebridge.wyze_api import WyzeApi
-from wyzebridge.wyze_commands import GET_CMDS, PARAMS, SET_CMDS
-from wyzebridge.tutk_session import (
-    start_tutk_stream,
-    is_timedout,
-)
-from wyzebridge.source_selector import (
-    hl_cam4_main_probe_mode,
-    select_source,
-    uses_kvs_source as _uses_kvs_source,
-    uses_tutk_source as _uses_tutk_source,
-)
 
 NET_MODE = {0: "P2P", 1: "RELAY", 2: "LAN"}
 
@@ -66,9 +60,7 @@ def frame_size_to_resolution(frame_size: int | None) -> str | None:
 
 
 def connect_watchdog_timeout() -> int:
-    retries = max(int(os.getenv("CONNECT_RETRIES", 3)), 1)
-    retry_delay = max(float(os.getenv("CONNECT_RETRY_DELAY", 2.0)), 0.0)
-    return int(CONNECT_TIMEOUT * retries + retry_delay * max(retries - 1, 0) + 6)
+    return connect_timeout_seconds()
 
 
 class StreamStatus(IntEnum):
@@ -81,7 +73,7 @@ class StreamStatus(IntEnum):
     CONNECTED = 3
 
 
-class WyzeStream(Stream):
+class WyzeStream:
     __slots__ = (
         "api",
         "cam_cmd",
@@ -113,7 +105,7 @@ class WyzeStream(Stream):
         self.options: WyzeStreamOptions = options
         self.rtsp_fw_enabled: bool = False
         self.start_time: float = 0
-        self.tutk_stream_process: Optional[mp.Process] = None
+        self.tutk_stream_process: mp.Process | None = None
         self.uri: str = camera.name_uri + ("-sub" if options.substream else "")
         self.user: WyzeAccount = user
         self._motion: bool = False
@@ -123,29 +115,19 @@ class WyzeStream(Stream):
 
     def setup(self):
         if self.camera.ip is None or self.camera.ip == "":
-            logger.warning(
-                f"⚠︎ [{self.camera.product_model}] {self.camera.nickname} has no IP"
-            )
+            logger.warning(f"⚠︎ [{self.camera.product_model}] {self.camera.nickname} has no IP")
             self.state = StreamStatus.OFFLINE
             return
 
         if self.camera.is_gwell or self.camera.product_model == "LD_CFP":
-            logger.info(
-                f"⚠︎ [{self.camera.product_model}] {self.camera.nickname} may not be supported"
-            )
+            logger.info(f"⚠︎ [{self.camera.product_model}] {self.camera.nickname} may not be supported")
             self.state = StreamStatus.DISABLED
 
-        if (
-            self.options.substream
-            and not self.camera.bridge_can_substream
-            and self.camera.product_model != "HL_BC"
-        ):
+        if self.options.substream and not self.camera.bridge_can_substream and self.camera.product_model != "HL_BC":
             logger.error(f"❗ {self.camera.nickname} may not support multiple streams!")
             self.state = StreamStatus.DISABLED
         elif self.uses_tutk_source:
-            logger.info(
-                f"[TUTK] Using mixed-protocol substream path for {self.camera.nickname}"
-            )
+            logger.info(f"[TUTK] Using mixed-protocol substream path for {self.camera.nickname}")
         elif self.camera.product_model == "HL_CAM4" and not self.options.substream:
             logger.info(
                 f"[HL_CAM4] {self.camera.nickname} main probe mode={hl_cam4_main_probe_mode()} source={'tutk' if self.uses_tutk_source else 'kvs'}"
@@ -214,9 +196,7 @@ class WyzeStream(Stream):
         if self.health_check(False) != StreamStatus.STOPPED:
             return False
         if self.uses_tutk_source and self.camera.ip is None:
-            logger.warning(
-                f"Skipping {self.camera.nickname}: no IP available for TUTK substream."
-            )
+            logger.warning(f"Skipping {self.camera.nickname}: no IP available for TUTK substream.")
             self.state = StreamStatus.DISABLED
             return False
         self.start_time = time()
@@ -296,23 +276,13 @@ class WyzeStream(Stream):
             if state < StreamStatus.STOPPING:
                 self.start_time = time() + COOLDOWN
                 logger.info(f"🌬️ {self.camera.nickname} will cooldown for {COOLDOWN}s.")
-        elif (
-            self.state == StreamStatus.STOPPED
-            and self.options.reconnect
-            and should_start
-        ):
+        elif self.state == StreamStatus.STOPPED and self.options.reconnect and should_start:
             self.start()
-        elif self.state == StreamStatus.CONNECTING and is_timedout(
-            self.start_time, connect_watchdog_timeout()
-        ):
+        elif self.state == StreamStatus.CONNECTING and self.start_time and time() - self.start_time > connect_watchdog_timeout():
             logger.warning(f"⏰ Timed out connecting to {self.camera.nickname}.")
             self.stop()
 
-        if (
-            should_start
-            and self.camera.is_battery
-            and self.state == StreamStatus.STOPPED
-        ):
+        if should_start and self.camera.is_battery and self.state == StreamStatus.STOPPED:
             return StreamStatus.DISABLED
 
         return self.state if self.start_time < time() else StreamStatus.DISABLED
@@ -330,7 +300,7 @@ class WyzeStream(Stream):
         except ValueError:
             return "error"
 
-    def get_info(self, item: Optional[str] = None) -> dict:
+    def get_info(self, item: str | None = None) -> dict:
         if item == "boa_info":
             return self.boa_info()
         data = {
@@ -364,9 +334,8 @@ class WyzeStream(Stream):
         if self.camera.camera_info and "boa_info" in self.camera.camera_info:
             data["boa_url"] = f"http://{self.camera.ip}/cgi-bin/hello.cgi?name=/"
         native_info = native_stream_info(self.camera, self.options.substream)
-        sd_only_bridge_feed = (
-            env_bool("SD_ONLY", style="bool")
-            and str(self.options.quality or "").lower().startswith("sd")
+        sd_only_bridge_feed = env_bool("SD_ONLY", style="bool") and str(self.options.quality or "").lower().startswith(
+            "sd"
         )
         if sd_only_bridge_feed:
             native_info = native_info | {
@@ -510,7 +479,7 @@ class WyzeStream(Stream):
 
         return cam_resp.pop(cmd, None) or {"response": "could not get result"}
 
-    def check_rtsp_fw(self, force: bool = False) -> Optional[str]:
+    def check_rtsp_fw(self, force: bool = False) -> str | None:
         """Check and add rtsp."""
         if not self.camera.rtsp_fw:
             return
@@ -518,16 +487,10 @@ class WyzeStream(Stream):
         try:
             with (
                 WyzeIOTC() as iotc,
-                WyzeIOTCSession(
-                    iotc.tutk_platform_lib, self.user, self.camera
-                ) as session,
+                WyzeIOTCSession(iotc.tutk_platform_lib, self.user, self.camera) as session,
             ):
-                if (
-                    session.session_check().mode != 2
-                ):  # 0: P2P mode, 1: Relay mode, 2: LAN mode
-                    logger.warning(
-                        f"⚠️ [{self.camera.nickname}] Camera is not on same LAN"
-                    )
+                if session.session_check().mode != 2:  # 0: P2P mode, 1: Relay mode, 2: LAN mode
+                    logger.warning(f"⚠️ [{self.camera.nickname}] Camera is not on same LAN")
                     return
                 return session.check_native_rtsp(start_rtsp=force)
         except TutkError:

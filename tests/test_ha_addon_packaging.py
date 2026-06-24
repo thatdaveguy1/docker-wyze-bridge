@@ -3,7 +3,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 ADDON_DIR = ROOT / "home_assistant"
 
@@ -45,11 +44,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
 
         for overlay_name in ("home_assistant", "ha_live_addon"):
             app_overlay = ROOT / "runtime_overlays" / overlay_name / "app"
-            overlay_files = {
-                path.relative_to(app_overlay)
-                for path in app_overlay.rglob("*")
-                if path.is_file()
-            }
+            overlay_files = {path.relative_to(app_overlay) for path in app_overlay.rglob("*") if path.is_file()}
             with self.subTest(overlay=overlay_name):
                 self.assertEqual(
                     overlay_files,
@@ -61,11 +56,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         for overlay_name in ("home_assistant", "ha_live_addon"):
             whep_overlay = ROOT / "runtime_overlays" / overlay_name / "whep_proxy"
             overlay_files = (
-                {
-                    path.relative_to(whep_overlay)
-                    for path in whep_overlay.rglob("*")
-                    if path.is_file()
-                }
+                {path.relative_to(whep_overlay) for path in whep_overlay.rglob("*") if path.is_file()}
                 if whep_overlay.exists()
                 else set()
             )
@@ -345,7 +336,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
 
         expected_snippets = [
             "preload_go2rtc_aliases()",
-            "curl -sf -X PUT \"${GO2RTC_API_BASE}/api/preload?src=${alias}\"",
+            'curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}"',
             "Native preload readiness attempt ${attempt}/5",
             "sleep 60",
             "start_go2rtc_preload_refresh_loop",
@@ -373,36 +364,36 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             'BRIDGE_API_TOKEN=$(WYZE_EMAIL="${WYZE_EMAIL}" PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "import os; from go2rtc_sidecar_helpers import resolve_bridge_api_token; print(resolve_bridge_api_token(os.environ[\'WYZE_EMAIL\']))"',
             'candidate="http://127.0.0.1:${WB_APP_PORT}"',
             'curl -sf -H "api: ${BRIDGE_API_TOKEN}" "${candidate}/api"',
-            'payload = json.loads(payload_json)',
-            'Bridge catalog ready after ${retry}x2s',
+            "payload = json.loads(payload_json)",
+            "Bridge catalog ready after ${retry}x2s",
             'WB_APP_API_BASE="${candidate}"',
             "keeping stale alias fallback",
-            'def _bridge_published_entries(cam_uri: str):',
-            'def _bridge_camera_state(cam_uri: str) -> dict:',
+            "def _bridge_published_entries(cam_uri: str):",
+            "def _bridge_camera_state(cam_uri: str) -> dict:",
             'state["published"] = bool(enabled_entries)',
             'state["hd"] = any(',
             'state["sd"] = any(',
             '_fetch_json(f"{base_url}/api/{cam_path}/stream-config", api_token=api_token)',
-            'bridge_catalog_empty = isinstance(catalog, dict) and not catalog',
-            'if bridge_catalog_empty:',
-            'published = None',
+            "bridge_catalog_empty = isinstance(catalog, dict) and not catalog",
+            "if bridge_catalog_empty:",
+            "published = None",
             'if not feed.get("enabled"):',
-            'state[feed_name] = False',
+            "state[feed_name] = False",
             'if published is None or feed.get("path") == "native":',
             'if "enabled" not in state:',
             'state["enabled"] = bool(state.get("hd") or state.get("sd"))',
-            'for key, value in bridge_state.items():',
-            'cam.setdefault(key, value)',
+            "for key, value in bridge_state.items():",
+            "cam.setdefault(key, value)",
             'published = _helper_flag(cam, "published")',
             'if published is False and _helper_flag(cam, "hd") is False and _helper_flag(cam, "sd") is False:',
-            'Skipping camera not published by bridge',
+            "Skipping camera not published by bridge",
             'enabled = _helper_flag(cam, "enabled")',
-            'if enabled is False:',
+            "if enabled is False:",
             'hd_supported = _helper_flag(cam, "hd_supported")',
             'sd_supported = _helper_flag(cam, "sd_supported")',
             'if hd_supported is None and model == "HL_BC":',
             'aliases.append((f"{uri}-sd", "sd"))',
-            'Skipping camera with no enabled native feeds',
+            "Skipping camera with no enabled native feeds",
         ]
 
         for helper_path in helper_files:

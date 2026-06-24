@@ -4,9 +4,7 @@ import pathlib
 import sys
 import unittest
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent / ".ha_v4kvs_trial_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / ".ha_v4kvs_trial_addon" / "app"))
 
 from wyzecam.api_models import WyzeCamera
 

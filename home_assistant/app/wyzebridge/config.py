@@ -1,15 +1,18 @@
+import logging
+import math
 from os import environ, getenv
 from pathlib import Path
 
-from wyzebridge.build_config import BUILD_STR
 from wyzebridge.bridge_utils import env_bool, split_int_str
+from wyzebridge.build_config import BUILD_STR
 from wyzebridge.hass import setup_hass
+
+logger = logging.getLogger(__name__)
 
 HASS_TOKEN: str = getenv("SUPERVISOR_TOKEN", "")
 
 setup_hass(HASS_TOKEN)
 
-MQTT: bool = bool(env_bool("MQTT", style="bool"))
 MQTT_HOST: str = env_bool("MQTT_HOST", "", style="original")
 MQTT_DISCOVERY: str = env_bool("MQTT_DTOPIC")
 MQTT_TOPIC: str = env_bool("MQTT_TOPIC", "wyzebridge").strip("/")
@@ -22,6 +25,14 @@ MQTT_RETRIES: int = int(getenv("MQTT_RETRIES", "3"))
 ON_DEMAND: bool = bool(env_bool("on_demand") if getenv("ON_DEMAND") else True)
 CONNECT_TIMEOUT: int = env_bool("CONNECT_TIMEOUT", "20", style="int")
 
+
+def connect_timeout_seconds() -> int:
+    """Total seconds for connect watchdog: CONNECT_TIMEOUT * retries + retry_delay * (retries-1) + 6."""
+    retries = max(int(getenv("CONNECT_RETRIES", "3")), 1)
+    retry_delay = max(float(getenv("CONNECT_RETRY_DELAY", "2.0")), 0.0)
+    return math.ceil(CONNECT_TIMEOUT * retries + retry_delay * max(retries - 1, 0) + 6)
+
+
 def _runtime_dir(preferred: str, fallback: str) -> str:
     if Path(preferred).exists():
         return preferred
@@ -32,7 +43,7 @@ def _runtime_dir(preferred: str, fallback: str) -> str:
 # TODO: change TOKEN_PATH  to /config for all:
 TOKEN_PATH: str = _runtime_dir("/config/" if HASS_TOKEN else "/tokens/", ".runtime/tokens/")
 IMG_PATH: str = _runtime_dir(
-    f'/{env_bool("IMG_DIR", r"/media/wyze/img").strip("/")}/',
+    f"/{env_bool('IMG_DIR', r'/media/wyze/img').strip('/')}/",
     ".runtime/img/",
 )
 
@@ -75,7 +86,7 @@ MTX_WRITEQUEUESIZE: int = env_bool("MTX_WRITEQUEUESIZE", "2048", style="int")
 
 STUN_SERVER: str = env_bool("STUN_SERVER", "", style="original")
 
-FORCE_IOTC_DETAIL: bool = bool(env_bool("FORCE_IOTC_DETAIL", style="bool") or False)
+FORCE_IOTC_DETAIL: bool = env_bool("FORCE_IOTC_DETAIL", style="bool")
 
 SDK_KEY: str = env_bool("SDK_KEY", style="original")
 FRESH_DATA: bool = env_bool("FRESH_DATA", style="bool")
@@ -92,15 +103,15 @@ DEPRECATED = {"DEBUG_FFMPEG", "OFFLINE_IFTTT", "TOTP_KEY", "MFA_TYPE"}
 
 for env in DEPRECATED:
     if getenv(env):
-        print(f"\n\n[!] WARNING: {env} is deprecated\n\n")
+        logger.warning(f"{env} is deprecated")
 
 for key in environ:
     if not MOTION and key.startswith("MOTION_WEBHOOKS"):
-        print(f"[!] WARNING: {key} will not trigger because MOTION_API is not set")
+        logger.warning(f"{key} will not trigger because MOTION_API is not set")
 
 for key, value in environ.items():
     if key.startswith("WEB_"):
         new_key = key.replace("WEB", "WB")
-        print(f"\n[!] WARNING: In {BUILD_STR}, {key} is deprecated! Please use {new_key} instead\n")
+        logger.warning(f"In {BUILD_STR}, {key} is deprecated! Please use {new_key} instead")
         environ.pop(key, None)
         environ[new_key] = value

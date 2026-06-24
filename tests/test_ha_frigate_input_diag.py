@@ -4,7 +4,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 DIAG = ROOT / "scripts" / "ha_frigate_input_diag.sh"
 
@@ -113,8 +112,8 @@ class TestHAFrigateInputDiag(unittest.TestCase):
         self.assertIn("/api/stats", script)
         self.assertIn("/api/config", script)
         self.assertIn("/api/ffprobe?paths=$encoded", script)
-        self.assertIn("ha apps logs \"$FRIGATE_SLUG\"", script)
-        self.assertIn("ha apps logs \"$SCRYPTED_SLUG\"", script)
+        self.assertIn('ha apps logs "$FRIGATE_SLUG"', script)
+        self.assertIn('ha apps logs "$SCRYPTED_SLUG"', script)
         self.assertNotIn("options:.data.options", script)
         library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
         self.assertIn("ha_bridge_probe.sh", script)

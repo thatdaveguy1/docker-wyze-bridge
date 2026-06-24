@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -98,14 +98,14 @@ class WyzeCredential(BaseModel):
     :var phone_id: The phone id passed to [login()][wyzecam.api.login]
     """
 
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    user_id: Optional[str] = None
-    mfa_options: Optional[list] = None
-    mfa_details: Optional[dict[str, Any]] = None
-    sms_session_id: Optional[str] = None
-    email_session_id: Optional[str] = None
-    phone_id: Optional[str] = str(uuid.uuid4())
+    access_token: str | None = None
+    refresh_token: str | None = None
+    user_id: str | None = None
+    mfa_options: list | None = None
+    mfa_details: dict[str, Any] | None = None
+    sms_session_id: str | None = None
+    email_session_id: str | None = None
+    phone_id: str | None = str(uuid.uuid4())
 
 
 class WyzeAccount(BaseModel):
@@ -143,21 +143,21 @@ class WyzeCamera(BaseModel):
 
     """
 
-    p2p_id: Optional[str]
-    p2p_type: Optional[int]
-    ip: Optional[str]
-    enr: Optional[str]
+    p2p_id: str | None
+    p2p_type: int | None
+    ip: str | None
+    enr: str | None
     mac: str
     product_model: str
-    camera_info: Optional[dict[str, Any]] = None
-    nickname: Optional[str]
-    timezone_name: Optional[str]
-    firmware_ver: Optional[str]
-    dtls: Optional[int]
-    parent_dtls: Optional[int]
-    parent_enr: Optional[str]
-    parent_mac: Optional[str]
-    thumbnail: Optional[str]
+    camera_info: dict[str, Any] | None = None
+    nickname: str | None
+    timezone_name: str | None
+    firmware_ver: str | None
+    dtls: int | None
+    parent_dtls: int | None
+    parent_enr: str | None
+    parent_mac: str | None
+    thumbnail: str | None
 
     def set_camera_info(self, info: dict[str, Any]) -> None:
         # Called internally as part of WyzeIOTC.connect_and_auth()
@@ -232,11 +232,9 @@ class WyzeCamera(BaseModel):
         return bool(self.firmware_ver and self.firmware_ver[:5] in RTSP_FW)
 
 
-def is_min_version(version: Optional[str], min_version: Optional[str]) -> bool:
+def is_min_version(version: str | None, min_version: str | None) -> bool:
     if not version or not min_version:
         return False
     version_parts = list(map(int, version.split(".")))
     min_version_parts = list(map(int, min_version.split(".")))
-    return (version_parts >= min_version_parts) or (
-        version_parts == min_version_parts and version >= min_version
-    )
+    return (version_parts >= min_version_parts) or (version_parts == min_version_parts and version >= min_version)

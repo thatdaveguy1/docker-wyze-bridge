@@ -5,6 +5,7 @@ self-contained and has no overlap with alias readiness/status caching or
 snapshot writing. This module owns the talkback lifecycle (codec probing,
 temp-file staging, go2rtc stream requests) behind a narrow seam.
 """
+
 import base64
 import os
 import re
@@ -19,7 +20,6 @@ import requests
 
 from wyzebridge.go2rtc import go2rtc_api_base
 from wyzebridge.native_alias import _go2rtc_stream_details, preload_native_stream
-
 
 _MEDIA_CODEC_RE = re.compile(r"^audio,\s+(sendonly|recvonly),\s+([^,]+)$", re.IGNORECASE)
 
@@ -98,9 +98,7 @@ def _cleanup_stale_talkback_files(max_age_seconds: float = 600.0) -> None:
                 path.unlink()
 
 
-def _go2rtc_stream_request(
-    alias: str, src: str, mode: str, timeout: float = 20.0
-) -> dict[str, Any]:
+def _go2rtc_stream_request(alias: str, src: str, mode: str, timeout: float = 20.0) -> dict[str, Any]:
     result = {
         "status": "error",
         "source": "go2rtc",

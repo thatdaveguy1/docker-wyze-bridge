@@ -1,16 +1,15 @@
 import hmac
 import json
-import os
 import time
 import urllib.parse
 import uuid
 from datetime import datetime
 from hashlib import md5
 from os import getenv
-from typing import Any, Optional
+from typing import Any
 
-from requests import PreparedRequest, Response
 import requests as _requests
+from requests import PreparedRequest, Response
 
 
 def get(url, **kwargs):
@@ -22,10 +21,11 @@ def post(url, **kwargs):
     kwargs.setdefault("verify", SSL_VERIFY)
     return _requests.post(url, **kwargs)
 
+
 from wyzebridge.build_config import APP_VERSION, IOS_VERSION, VERSION
 from wyzebridge.logging import logger
-from wyzecam.kinesis.wpk_stream_info_model import Stream
 from wyzecam.api_models import KVS_CAMS, WyzeAccount, WyzeCamera, WyzeCredential
+from wyzecam.kinesis.wpk_stream_info_model import Stream
 
 SCALE_USER_AGENT = f"Wyze/{APP_VERSION} (iPhone; iOS {IOS_VERSION}; Scale/3.00)"
 AUTH_API = "https://auth-prod.api.wyze.com"
@@ -88,7 +88,7 @@ class RateLimitError(Exception):
     def parse_remaining(resp: Response) -> int:
         try:
             return int(resp.headers.get("X-RateLimit-Remaining", 0))
-        except Exception:
+        except (ValueError, TypeError):  # header missing or non-numeric
             return 0
 
     @staticmethod
@@ -96,7 +96,7 @@ class RateLimitError(Exception):
         ts_format = "%a %b %d %H:%M:%S %Z %Y"
         try:
             return int(datetime.strptime(reset_by, ts_format).timestamp())
-        except Exception:
+        except (ValueError, TypeError):  # malformed or missing reset-by header
             return 0
 
 
@@ -156,9 +156,7 @@ def log_kvs_trace(camera: WyzeCamera, stage: str, payload: Any) -> None:
     logger.info(f"[KVS_TRACE] {json.dumps(trace, sort_keys=True)}")
 
 
-def login(
-    email: str, password: str, api_key: str, key_id: str, phone_id: Optional[str] = None
-) -> WyzeCredential:
+def login(email: str, password: str, api_key: str, key_id: str, phone_id: str | None = None) -> WyzeCredential:
     """Authenticate with Wyze.
 
     This method calls out to the `/user/login` endpoint of
@@ -319,22 +317,20 @@ def get_camera_list(auth_info: WyzeCredential) -> list[WyzeCamera]:
             continue
 
         device_params = device.get("device_params", {})
-        p2p_id: Optional[str] = device_params.get("p2p_id")
-        p2p_type: Optional[int] = device_params.get("p2p_type")
-        ip: Optional[str] = device_params.get("ip")
-        enr: Optional[str] = device.get("enr")
-        mac: Optional[str] = device.get("mac")
-        product_model: Optional[str] = device.get("product_model")
-        nickname: Optional[str] = device.get("nickname")
-        timezone_name: Optional[str] = device.get("timezone_name")
-        firmware_ver: Optional[str] = device.get("firmware_ver")
-        dtls: Optional[int] = device_params.get("dtls")
-        parent_dtls: Optional[int] = device_params.get("main_device_dtls")
-        parent_enr: Optional[str] = device.get("parent_device_enr")
-        parent_mac: Optional[str] = device.get("parent_device_mac")
-        thumbnail: Optional[str] = device_params.get("camera_thumbnails").get(
-            "thumbnails_url"
-        )
+        p2p_id: str | None = device_params.get("p2p_id")
+        p2p_type: int | None = device_params.get("p2p_type")
+        ip: str | None = device_params.get("ip")
+        enr: str | None = device.get("enr")
+        mac: str | None = device.get("mac")
+        product_model: str | None = device.get("product_model")
+        nickname: str | None = device.get("nickname")
+        timezone_name: str | None = device.get("timezone_name")
+        firmware_ver: str | None = device.get("firmware_ver")
+        dtls: int | None = device_params.get("dtls")
+        parent_dtls: int | None = device_params.get("main_device_dtls")
+        parent_enr: str | None = device.get("parent_device_enr")
+        parent_mac: str | None = device.get("parent_device_mac")
+        thumbnail: str | None = device_params.get("camera_thumbnails").get("thumbnails_url")
 
         is_kvs = bool(product_model and product_model in KVS_CAMS)
 
@@ -434,9 +430,7 @@ def get_camera_stream(auth_info: WyzeCredential, camera: WyzeCamera) -> Stream:
     return Stream(**stream_info)
 
 
-def post_device(
-    auth_info: WyzeCredential, endpoint: str, params: dict, api_version: int = 1
-) -> dict:
+def post_device(auth_info: WyzeCredential, endpoint: str, params: dict, api_version: int = 1) -> dict:
     """Post data to the Wyze device API."""
     api_endpoints = {1: WYZE_API, 2: f"{WYZE_API}/v2", 4: f"{CLOUD_API}/v4"}
     device_url = f"{api_endpoints.get(api_version)}/device/{endpoint}"
@@ -513,9 +507,9 @@ def _payload(auth_info: WyzeCredential, endpoint: str = "default") -> dict:
 
 
 def _headers(
-    phone_id: Optional[str] = None,
-    key_id: Optional[str] = None,
-    api_key: Optional[str] = None,
+    phone_id: str | None = None,
+    key_id: str | None = None,
+    api_key: str | None = None,
 ) -> dict[str, str]:
     """Format headers for api requests.
 

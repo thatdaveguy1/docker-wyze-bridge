@@ -1,7 +1,7 @@
 import json
 import os
+from collections.abc import Callable, Generator
 from time import sleep
-from typing import Callable, Generator, Optional
 from urllib.parse import urlparse, urlunparse
 
 from flask import request
@@ -9,9 +9,12 @@ from flask import url_for as _url_for
 from flask_httpauth import HTTPBasicAuth
 from werkzeug.security import check_password_hash
 
+from wyzebridge.auth import WbAuth
+from wyzebridge.bridge_utils import env_bool
 from wyzebridge.config import (
     BRIDGE_IP,
     HASS_TOKEN,
+    HLS_URL,
     IMG_PATH,
     IMG_TYPE,
     LLHLS,
@@ -20,14 +23,11 @@ from wyzebridge.config import (
     SNAPSHOT_TYPE,
     TOKEN_PATH,
     WEBRTC_URL,
-    HLS_URL,
 )
-from wyzebridge.auth import WbAuth
-from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 from wyzebridge.preview_validation import preview_file_is_image
-from wyzebridge.stream import Stream
 from wyzebridge.stream_manager import StreamManager
+from wyzebridge.wyze_stream import WyzeStream
 
 auth = HTTPBasicAuth()
 
@@ -51,11 +51,7 @@ def unauthorized():
 
 
 def url_for(endpoint, **values):
-    proxy = (
-        request.headers.get("X-Ingress-Path")
-        or request.headers.get("X-Forwarded-Prefix")
-        or ""
-    ).rstrip("/")
+    proxy = (request.headers.get("X-Ingress-Path") or request.headers.get("X-Forwarded-Prefix") or "").rstrip("/")
     return proxy + _url_for(endpoint, **values)
 
 
@@ -87,7 +83,9 @@ def set_mfa(mfa_code: str) -> bool:
         while os.path.getsize(mfa_file) != 0:
             sleep(1)
         return True
-    except Exception as ex:
+    except (
+        Exception
+    ) as ex:  # MFA file write/poll can fail with OSError or ValueError; web UI must report False, not crash
         logger.error(ex)
         return False
 
@@ -96,7 +94,7 @@ def get_webrtc_signal(cam_name: str, api_key: str) -> dict:
     """Generate signaling for MediaMTX webrtc."""
     hostname = env_bool("DOMAIN", urlparse(request.root_url).hostname or "localhost")
     ssl = "s" if env_bool("MTX_WEBRTCENCRYPTION") else ""
-    webrtc = WEBRTC_URL.lstrip("http") or f"{ssl}://{hostname}:8889"
+    webrtc = WEBRTC_URL.removeprefix("http") or f"{ssl}://{hostname}:8889"
     wep = {"result": "ok", "cam": cam_name, "whep": f"http{webrtc}/{cam_name}/whep"}
 
     if ice_server := validate_ice(env_bool("MTX_WEBRTCICESERVERS")):
@@ -115,7 +113,7 @@ def get_webrtc_signal(cam_name: str, api_key: str) -> dict:
     return wep | {"servers": [ice_server]}
 
 
-def validate_ice(data: str) -> Optional[list[dict]]:
+def validate_ice(data: str) -> list[dict] | None:
     if not data:
         return
     try:
@@ -130,7 +128,7 @@ def preview_refresh_route(snapshot_type: str) -> str:
     return "thumb" if snapshot_type == "api" else "snapshot"
 
 
-def _with_scheme(url: Optional[str], scheme: str) -> Optional[str]:
+def _with_scheme(url: str | None, scheme: str) -> str | None:
     if not url:
         return url
     parsed = urlparse(url)
@@ -139,12 +137,8 @@ def _with_scheme(url: Optional[str], scheme: str) -> Optional[str]:
     return urlunparse(parsed._replace(scheme=scheme))
 
 
-def _normalized_hls(url: Optional[str]) -> Optional[str]:
-    return (
-        _with_scheme(url, "https" if LLHLS else urlparse(url).scheme or "http")
-        if url
-        else url
-    )
+def _normalized_hls(url: str | None) -> str | None:
+    return _with_scheme(url, "https" if LLHLS else urlparse(url).scheme or "http") if url else url
 
 
 def _mtx_port(env_name: str, default: str) -> str:
@@ -154,7 +148,7 @@ def _mtx_port(env_name: str, default: str) -> str:
     return address or default.strip(":")
 
 
-def _replace_url_host(url: Optional[str], hostname: str) -> Optional[str]:
+def _replace_url_host(url: str | None, hostname: str) -> str | None:
     if not url:
         return url
     parsed = urlparse(url)
@@ -174,8 +168,8 @@ def _lan_base_from_request(default_scheme: str) -> str:
 def _stream_entry(
     stream_id: str,
     label: str,
-    external_url: Optional[str],
-    lan_url: Optional[str],
+    external_url: str | None,
+    lan_url: str | None,
     available: bool,
     reason: str,
 ) -> dict:
@@ -201,17 +195,13 @@ def _evaluate_stream(requirements: list[tuple[bool, str]]) -> tuple[bool, str]:
     return True, ""
 
 
-def _prefer_stream_urls(
-    external_url: Optional[str], lan_url: Optional[str]
-) -> tuple[Optional[str], Optional[str]]:
+def _prefer_stream_urls(external_url: str | None, lan_url: str | None) -> tuple[str | None, str | None]:
     if external_url:
         return external_url, lan_url if lan_url and lan_url != external_url else None
     return lan_url, None
 
 
-def _evaluate_on_demand_stream(
-    enabled: bool, primary_url: Optional[str], offline_reason: str = ""
-) -> tuple[bool, str]:
+def _evaluate_on_demand_stream(enabled: bool, primary_url: str | None, offline_reason: str = "") -> tuple[bool, str]:
     if not enabled:
         return False, "disabled"
     if not primary_url:
@@ -233,27 +223,17 @@ def build_stream_entries(camera: dict, data: dict) -> list[dict]:
     external_rtsp = camera.get("rtsp_url") if "rtsp_url" in camera else data.get("rtsp_url")
     if camera.get("native_selected") and camera.get("native_rtsp_url"):
         external_rtsp = _replace_url_host(camera.get("native_rtsp_url"), lan_base)
-    external_fw_rtsp = (
-        f"{external_rtsp}fw"
-        if camera.get("rtsp_fw_enabled") and external_rtsp
-        else None
-    )
+    external_fw_rtsp = f"{external_rtsp}fw" if camera.get("rtsp_fw_enabled") and external_rtsp else None
 
-    lan_webrtc = (
-        f"http://{lan_base}:{_mtx_port('MTX_WEBRTCADDRESS', ':8889')}/{camera['uri']}/whep"
-    )
-    lan_hls = (
-        f"https://{lan_base}:{_mtx_port('MTX_HLSADDRESS', ':8888')}/{camera['uri']}/stream.m3u8"
-    )
+    lan_webrtc = f"http://{lan_base}:{_mtx_port('MTX_WEBRTCADDRESS', ':8889')}/{camera['uri']}/whep"
+    lan_hls = f"https://{lan_base}:{_mtx_port('MTX_HLSADDRESS', ':8888')}/{camera['uri']}/stream.m3u8"
     lan_rtmp = f"rtmp://{lan_base}:51935/{camera['uri']}"
     lan_rtsp = f"rtsp://{lan_base}:58554/{camera['uri']}"
     if camera.get("native_selected") and camera.get("native_rtsp_url"):
         lan_rtsp = _replace_url_host(camera.get("native_rtsp_url"), lan_base)
     lan_fw_rtsp = f"{lan_rtsp}fw" if camera.get("rtsp_fw_enabled") else None
 
-    external_webrtc_url, lan_webrtc_url = _prefer_stream_urls(
-        external_webrtc, lan_webrtc
-    )
+    external_webrtc_url, lan_webrtc_url = _prefer_stream_urls(external_webrtc, lan_webrtc)
     webrtc_available, webrtc_reason = _evaluate_stream(
         [
             (bool(camera.get("webrtc")), "not supported"),
@@ -266,9 +246,7 @@ def build_stream_entries(camera: dict, data: dict) -> list[dict]:
     rtmp_available, rtmp_reason = _evaluate_on_demand_stream(enabled, external_rtmp_url)
     external_rtsp_url, lan_rtsp_url = _prefer_stream_urls(external_rtsp, lan_rtsp)
     rtsp_available, rtsp_reason = _evaluate_on_demand_stream(enabled, external_rtsp_url)
-    external_fw_rtsp_url, lan_fw_rtsp_url = _prefer_stream_urls(
-        external_fw_rtsp, lan_fw_rtsp
-    )
+    external_fw_rtsp_url, lan_fw_rtsp_url = _prefer_stream_urls(external_fw_rtsp, lan_fw_rtsp)
     fw_rtsp_available, fw_rtsp_reason = _evaluate_stream(
         [
             (bool(camera.get("rtsp_fw_enabled")), "not supported"),
@@ -431,7 +409,7 @@ def format_streams(cams: dict) -> dict[str, dict]:
     return formatted
 
 
-def all_cams(streams: StreamManager, total: int, cameras: Optional[dict] = None) -> dict:
+def all_cams(streams: StreamManager, total: int, cameras: dict | None = None) -> dict:
     formatted = format_streams(cameras if cameras is not None else streams.get_all_cam_info())
     return {
         "total": total,
@@ -441,7 +419,7 @@ def all_cams(streams: StreamManager, total: int, cameras: Optional[dict] = None)
     }
 
 
-def boa_snapshot(stream: Stream) -> Optional[dict]:
+def boa_snapshot(stream: WyzeStream) -> dict | None:
     """Take photo."""
     stream.send_cmd("take_photo")
     if boa_info := stream.get_info("boa_info"):

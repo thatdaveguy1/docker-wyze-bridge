@@ -6,13 +6,11 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
-from wyzecam.api_models import WyzeCamera
 import wyzebridge.wyze_api as wyze_api_module
 from wyzebridge.wyze_api import WHEP_PROXY_PORT, WyzeApi
+from wyzecam.api_models import WyzeCamera
 
 
 def make_camera(model: str = "HL_CAM4", nickname: str = "North Yard") -> WyzeCamera:
@@ -38,9 +36,7 @@ class FakeParams:
     def __init__(self):
         self.signaling_url = "wss://signal.example/ws%3Fcamera%3Dnorth-yard"
         self.auth_token = "token-abc"
-        self.ice_servers = [
-            {"url": "stun:stun.example:3478", "username": "user", "credential": "pass"}
-        ]
+        self.ice_servers = [{"url": "stun:stun.example:3478", "username": "user", "credential": "pass"}]
 
     def model_dump(self):
         return {
@@ -122,7 +118,7 @@ class TestKVSSubstreamProxyConfig(unittest.TestCase):
         with (
             patch.object(WyzeApi, "get_kvs_proxy_config", return_value=kvs_config) as get_kvs_proxy_config,
             patch.object(wyze_api_module.requests, "post", return_value=FakeResponse()) as post,
-            patch("wyzebridge.wyze_api.requests.get", return_value=FakeResponse()),
+            patch.object(wyze_api_module.requests, "get", return_value=FakeResponse()),
         ):
             result = self.api.setup_mtx_proxy("north-yard-sub")
 

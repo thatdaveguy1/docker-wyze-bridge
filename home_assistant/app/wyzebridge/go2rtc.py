@@ -4,6 +4,7 @@ Architecture review candidate #9: native alias readiness, selection,
 snapshot, and talkback logic moved to native_alias.py. This module
 keeps the core go2rtc API helpers (ports, probe, stream request).
 """
+
 import os
 import socket
 from typing import Any
@@ -58,9 +59,7 @@ def go2rtc_probe(timeout: float = 1.0, include_streams: bool = False) -> dict[st
         response.raise_for_status()
         result["api"]["reachable"] = True
         if include_streams:
-            streams_response = requests.get(
-                f"{go2rtc_api_base()}/api/streams", timeout=timeout
-            )
+            streams_response = requests.get(f"{go2rtc_api_base()}/api/streams", timeout=timeout)
             streams_response.raise_for_status()
             data = streams_response.json()
             result["aliases"] = sorted(data.keys()) if isinstance(data, dict) else []

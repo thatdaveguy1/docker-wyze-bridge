@@ -4,7 +4,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 STATUS = ROOT / "scripts" / "master_goal_status.py"
 
@@ -44,10 +43,7 @@ class TestMasterGoalStatus(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (
-            proof_dir
-            / "phase2_prod_startup_soak_pre_recovery_20260518_184506.txt"
-        ).write_text(
+        (proof_dir / "phase2_prod_startup_soak_pre_recovery_20260518_184506.txt").write_text(
             "\n".join(
                 [
                     "sample=1 ready_marker=camera_lookup_fallback",
@@ -92,10 +88,7 @@ class TestMasterGoalStatus(unittest.TestCase):
             "FAIL: production bridge is not ready for the remaining live Phase 4/5 gates.",
             encoding="utf-8",
         )
-        (
-            proof_dir
-            / "phase5_prod_overlay_api_verify_pre_recovery_20260518_194314.txt"
-        ).write_text(
+        (proof_dir / "phase5_prod_overlay_api_verify_pre_recovery_20260518_194314.txt").write_text(
             "\n".join(
                 [
                     "ready_marker=camera_lookup_fallback ready_body_keys=error",
@@ -195,10 +188,7 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertEqual(phases["Phase 3 SD_ONLY model"], "green-dev")
         self.assertEqual(phases["Phase 4 WHEP proxy"], "blocked")
         self.assertEqual(phases["Phase 5 three-tree consolidation"], "blocked")
-        phase_evidence = {
-            phase["phase"]: "\n".join(phase["evidence"])
-            for phase in data["phases"]
-        }
+        phase_evidence = {phase["phase"]: "\n".join(phase["evidence"]) for phase in data["phases"]}
         self.assertIn(
             "production startup/API soak failed",
             phase_evidence["Phase 2 startup readiness"],
@@ -291,9 +281,7 @@ class TestMasterGoalStatus(unittest.TestCase):
             "MediaMTX logs show :58888 bind conflict",
             data["blocker_evidence"],
         )
-        self.assertTrue(
-            any(item.startswith("latest doctor output:") for item in data["blocker_evidence"])
-        )
+        self.assertTrue(any(item.startswith("latest doctor output:") for item in data["blocker_evidence"]))
 
     def test_latest_healthy_doctor_overrides_stale_blocker_file(self):
         root = self.make_root()
@@ -370,9 +358,7 @@ class TestMasterGoalStatus(unittest.TestCase):
             "production health reports mtx_alive=false",
             data["blocker_evidence"],
         )
-        self.assertTrue(
-            any(item.startswith("latest recovery verifier output:") for item in data["blocker_evidence"])
-        )
+        self.assertTrue(any(item.startswith("latest recovery verifier output:") for item in data["blocker_evidence"]))
 
     def test_single_blocker_symptom_is_not_enough_for_overall_blocked(self):
         root = self.make_root()
@@ -481,11 +467,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase1 = next(
-            phase
-            for phase in data["phases"]
-            if phase["phase"] == "Phase 1 snapshot pipeline"
-        )
+        phase1 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 1 snapshot pipeline")
         evidence = "\n".join(phase1["evidence"])
         self.assertEqual(phase1["status"], "blocked")
         self.assertIn("north-yard forced snapshot timed out", evidence)
@@ -504,15 +486,15 @@ class TestMasterGoalStatus(unittest.TestCase):
         (proof_dir / "north_yard_current_reprobe_20260519_121836.txt").write_text(
             "\n".join(
                 [
-                    'route=/api/north-yard code=200 bytes=2154 mime=unknown sha256=aaa',
+                    "route=/api/north-yard code=200 bytes=2154 mime=unknown sha256=aaa",
                     '{"snapshot_source":"go2rtc"}',
-                    'route=/api/snapshot-hashes code=200 bytes=1240 mime=unknown sha256=bbb',
+                    "route=/api/snapshot-hashes code=200 bytes=1240 mime=unknown sha256=bbb",
                     '{"registry":{"north-yard":{"source":"wyze-api"}}}',
-                    'route=/snapshot/north-yard.jpg code=000 bytes=0 mime=<none> sha256=<none>',
-                    'route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc',
-                    'route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc',
-                    '192.168.1.183\tunreachable',
-                    '192.168.1.185\tunreachable',
+                    "route=/snapshot/north-yard.jpg code=000 bytes=0 mime=<none> sha256=<none>",
+                    "route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc",
+                    "route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc",
+                    "192.168.1.183\tunreachable",
+                    "192.168.1.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -529,11 +511,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase1 = next(
-            phase
-            for phase in data["phases"]
-            if phase["phase"] == "Phase 1 snapshot pipeline"
-        )
+        phase1 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 1 snapshot pipeline")
         evidence = "\n".join(phase1["evidence"])
         self.assertEqual(phase1["status"], "blocked")
         self.assertIn("north-yard forced snapshot timed out", evidence)
@@ -552,18 +530,18 @@ class TestMasterGoalStatus(unittest.TestCase):
         (proof_dir / "north_yard_current_reprobe_20260519_175229.txt").write_text(
             "\n".join(
                 [
-                    'route=/api/north-yard code=200 bytes=2154 mime=unknown sha256=aaa',
+                    "route=/api/north-yard code=200 bytes=2154 mime=unknown sha256=aaa",
                     '{"snapshot_source":"go2rtc"}',
-                    'route=/api/snapshot-hashes code=200 bytes=1240 mime=unknown sha256=bbb',
+                    "route=/api/snapshot-hashes code=200 bytes=1240 mime=unknown sha256=bbb",
                     '{"registry":{"north-yard":{"source":"wyze-api"}}}',
                     "## Frame Samples",
-                    'route=/snapshot/north-yard.jpg code=000000 bytes=0 mime=<none> sha256=<none>',
-                    'route=/img/north-yard.jpg code=200 bytes=126953 mime=unknown sha256=abc',
-                    'url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard code=000000 bytes=0 mime=<none> sha256=<none>',
-                    'url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard-sd code=000000 bytes=0 mime=<none> sha256=<none>',
+                    "route=/snapshot/north-yard.jpg code=000000 bytes=0 mime=<none> sha256=<none>",
+                    "route=/img/north-yard.jpg code=200 bytes=126953 mime=unknown sha256=abc",
+                    "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard code=000000 bytes=0 mime=<none> sha256=<none>",
+                    "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard-sd code=000000 bytes=0 mime=<none> sha256=<none>",
                     "## LAN Reachability",
-                    '192.168.1.183\treachable',
-                    '192.168.1.185\tunreachable',
+                    "192.168.1.183\treachable",
+                    "192.168.1.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -589,11 +567,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase1 = next(
-            phase
-            for phase in data["phases"]
-            if phase["phase"] == "Phase 1 snapshot pipeline"
-        )
+        phase1 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 1 snapshot pipeline")
         evidence = "\n".join(phase1["evidence"])
         self.assertEqual(phase1["status"], "blocked")
         self.assertIn("north-yard forced snapshot timed out", evidence)
@@ -633,15 +607,15 @@ class TestMasterGoalStatus(unittest.TestCase):
                     '{"snapshot_source":"go2rtc","native_alias":"north-yard-sd"}',
                     '{"bytes":36691,"source":"go2rtc:north-yard-sd"}',
                     "## Frame Samples",
-                    'route=/snapshot/north-yard.jpg code=200 bytes=36763 mime=unknown sha256=aaa',
-                    'route=/img/north-yard.jpg code=200 bytes=36763 mime=unknown sha256=aaa',
-                    'url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard code=000000 bytes=0 mime=<none> sha256=<none>',
-                    'url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard-sd code=000000 bytes=0 mime=<none> sha256=<none>',
-                    'route=/snapshot/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb',
-                    'route=/img/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb',
+                    "route=/snapshot/north-yard.jpg code=200 bytes=36763 mime=unknown sha256=aaa",
+                    "route=/img/north-yard.jpg code=200 bytes=36763 mime=unknown sha256=aaa",
+                    "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard code=000000 bytes=0 mime=<none> sha256=<none>",
+                    "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard-sd code=000000 bytes=0 mime=<none> sha256=<none>",
+                    "route=/snapshot/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb",
+                    "route=/img/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb",
                     "## LAN Reachability",
-                    '192.168.1.183\treachable',
-                    '192.168.1.185\tunreachable',
+                    "192.168.1.183\treachable",
+                    "192.168.1.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -658,11 +632,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase1 = next(
-            phase
-            for phase in data["phases"]
-            if phase["phase"] == "Phase 1 snapshot pipeline"
-        )
+        phase1 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 1 snapshot pipeline")
         evidence = "\n".join(phase1["evidence"])
         self.assertEqual(phase1["status"], "blocked")
         self.assertNotIn("north-yard forced snapshot timed out", evidence)
@@ -699,9 +669,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("Frigate strict FPS monitor failed", "\n".join(phase4["evidence"]))
 
@@ -732,15 +700,12 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         self.assertEqual(phase4["status"], "blocked")
         evidence = "\n".join(phase4["evidence"])
         self.assertIn("live WHEP soak failed", evidence)
         self.assertIn(
-            "Frigate strict FPS failed for south_driveway "
-            "(camera_fps=10.1, process_fps=10.0, skipped_fps=0.1)",
+            "Frigate strict FPS failed for south_driveway (camera_fps=10.1, process_fps=10.0, skipped_fps=0.1)",
             evidence,
         )
 
@@ -774,9 +739,9 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "north_driveway\t10.1\t10.1\t0.0\t1202\t898",
                     "",
                     "## Camera north_driveway FFprobe",
-                    'path=rtsp://192.168.1.244:44095/a3ea1612e8a0a713',
+                    "path=rtsp://192.168.1.244:44095/a3ea1612e8a0a713",
                     '[{"return_code":0,"stderr":[],"stdout":{"streams":[]}}]',
-                    'path=rtsp://192.168.1.244:44095/ac3d9badc30004af',
+                    "path=rtsp://192.168.1.244:44095/ac3d9badc30004af",
                     '[{"return_code":0,"stderr":[],"stdout":{"streams":[]}}]',
                     "",
                     "## Recent Scrypted RTSP Logs",
@@ -798,15 +763,12 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         evidence = "\n".join(phase4["evidence"])
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)
         self.assertIn(
-            "Frigate strict FPS failed for north_driveway "
-            "(camera_fps=10.1, process_fps=9.6, skipped_fps=0.2)",
+            "Frigate strict FPS failed for north_driveway (camera_fps=10.1, process_fps=9.6, skipped_fps=0.2)",
             evidence,
         )
         self.assertIn(
@@ -855,9 +817,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         evidence = "\n".join(phase4["evidence"])
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)
@@ -903,9 +863,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         evidence = "\n".join(phase4["evidence"])
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)
@@ -941,9 +899,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase3 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 3 SD_ONLY model"
-        )
+        phase3 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 3 SD_ONLY model")
         evidence = "\n".join(phase3["evidence"])
         self.assertEqual(phase3["status"], "blocked")
         self.assertIn("production Supervisor option SD_ONLY is not true", evidence)
@@ -1012,9 +968,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("WHEP wedge injection proof passed", "\n".join(phase4["evidence"]))
         self.assertIn("1-hour WHEP live soak is still failing", phase4["remaining"])
@@ -1046,9 +1000,7 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
         self.assertEqual(data["overall"], "incomplete")
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         self.assertEqual(phase4["status"], "partial")
         self.assertIn("live WHEP soak pass is too short (120s < 3600s)", "\n".join(phase4["evidence"]))
         self.assertIn("1-hour WHEP live soak proof is still missing", phase4["remaining"])
@@ -1089,9 +1041,7 @@ class TestMasterGoalStatus(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
         data = json.loads(result.stdout)
-        phase4 = next(
-            phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy"
-        )
+        phase4 = next(phase for phase in data["phases"] if phase["phase"] == "Phase 4 WHEP proxy")
         evidence = "\n".join(phase4["evidence"])
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)

@@ -35,15 +35,14 @@ fake_wyzecam_iotc.WyzeIOTC = object
 fake_wyzecam_iotc.WyzeIOTCSession = object
 sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
 if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
     for module_name in list(sys.modules):
         if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
             del sys.modules[module_name]
 
+import wyzebridge.native_alias as native_alias_module
 from wyzebridge.wyze_stream import StreamStatus, WyzeStream
 
 if not hasattr(sys.modules["wyzebridge.wyze_stream"], "publish_discovery"):
@@ -81,6 +80,10 @@ def make_camera():
 
 
 class TestKVSStreamGetInfo(unittest.TestCase):
+    def setUp(self):
+        # Clear the go2rtc API reachable cache so each test gets a fresh probe
+        native_alias_module._GO2RTC_API_REACHABLE_CACHE.clear()
+
     def test_connected_kvs_stream_skips_tutk_caminfo_when_control_queue_missing(self):
         user = SimpleNamespace()
         camera = make_camera()
@@ -111,14 +114,12 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertFalse(info["native_supported"])
         self.assertFalse(info["native_selected"])
 
-    @patch("wyzebridge.native_alias.requests.get")
-    def test_hl_cam4_reports_native_selection_when_go2rtc_api_is_reachable(self, mock_get):
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_hl_cam4_reports_native_selection_when_go2rtc_api_is_reachable(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_CAM4"
         camera.model_name = "Wyze Cam v4"
-        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        mock_get.return_value = response
 
         with patch("wyzebridge.wyze_stream.publish_discovery", create=True):
             stream = WyzeStream(
@@ -147,14 +148,12 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["talkback_alias"], "garage")
         self.assertEqual(info["talkback_source"], "go2rtc")
 
-    @patch("wyzebridge.native_alias.requests.get")
-    def test_sd_only_bridge_feed_does_not_report_native_snapshot_source(self, mock_get):
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_sd_only_bridge_feed_does_not_report_native_snapshot_source(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_CAM4"
         camera.model_name = "Wyze Cam v4"
-        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        mock_get.return_value = response
 
         with (
             patch("wyzebridge.wyze_stream.publish_discovery", create=True),
@@ -181,14 +180,12 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["snapshot_source"], "rtsp")
         self.assertFalse(info["talkback_supported"])
 
-    @patch("wyzebridge.native_alias.requests.get")
-    def test_hl_bc_reports_talkback_as_unavailable_when_bridge_first(self, mock_get):
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_hl_bc_reports_talkback_as_unavailable_when_bridge_first(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_BC"
         camera.model_name = "Wyze Bulb Cam"
-        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        mock_get.return_value = response
 
         with patch("wyzebridge.wyze_stream.publish_discovery", create=True):
             stream = WyzeStream(
@@ -215,14 +212,12 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["talkback_alias"], "garage")
         self.assertIn("native-selected cameras", info["talkback_reason"])
 
-    @patch("wyzebridge.native_alias.requests.get")
-    def test_hl_cam3p_selects_only_native_sd_feed(self, mock_get):
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_hl_cam3p_selects_only_native_sd_feed(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_CAM3P"
         camera.model_name = "Wyze Cam V3 Pro"
-        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        mock_get.return_value = response
 
         with patch("wyzebridge.wyze_stream.publish_discovery", create=True):
             main_stream = WyzeStream(
@@ -269,14 +264,12 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(sub_info["snapshot_source"], "go2rtc")
         self.assertFalse(sub_info["talkback_supported"])
 
-    @patch("wyzebridge.native_alias.requests.get")
-    def test_hl_bc_reports_sd_resolution_for_main_feed(self, mock_get):
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_hl_bc_reports_sd_resolution_for_main_feed(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_BC"
         camera.model_name = "Wyze Bulb Cam"
-        response = SimpleNamespace(status_code=200, raise_for_status=lambda: None)
-        mock_get.return_value = response
 
         with patch("wyzebridge.wyze_stream.publish_discovery", create=True):
             stream = WyzeStream(

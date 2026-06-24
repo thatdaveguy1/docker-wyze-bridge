@@ -25,6 +25,4 @@ MTX_TAG: str = env_bool("MTX_TAG", style="original")
 BUILD_STR = ARCH
 
 if BUILD != VERSION:
-    BUILD_STR += (
-        f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"
-    )
+    BUILD_STR += f" {BUILD.upper()} BUILD [{BUILD_DATE}] {GITHUB_SHA:.7} USING MTX {MTX_TAG}"

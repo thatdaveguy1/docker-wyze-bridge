@@ -1,6 +1,4 @@
-from typing import Dict, List, Optional
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IceServer(BaseModel):
@@ -12,11 +10,11 @@ class IceServer(BaseModel):
 class ParamsBean(BaseModel):
     signaling_url: str = ""
     auth_token: str = ""
-    ice_servers: List[IceServer] = Field(default_factory=list)
+    ice_servers: list[IceServer] = Field(default_factory=list)
 
 
 class PropertyBean(BaseModel):
-    property_data: Dict[str, int] = Field(default_factory=dict, alias="property")
+    property_data: dict[str, int] = Field(default_factory=dict, alias="property")
 
 
 class Stream(BaseModel):
@@ -30,8 +28,7 @@ class WpkStreamInfo(BaseModel):
     code: str
     ts: int
     msg: str
-    data: List[Stream]
-    traceId: Optional[str] = None
+    data: list[Stream]
+    traceId: str | None = None
 
-    class Config:
-        allow_population_by_field_name = True
+    model_config = ConfigDict(populate_by_name=True)

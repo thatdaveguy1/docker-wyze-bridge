@@ -2,7 +2,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 LIBRARY = ROOT / "scripts" / "ha_bridge_probe.sh"
 
@@ -181,6 +180,7 @@ class TestHaBridgeProbeLibrary(unittest.TestCase):
 
     def test_no_forbidden_commands(self):
         import re
+
         text = LIBRARY.read_text()
         forbidden = [
             r"\bha apps stop\b",

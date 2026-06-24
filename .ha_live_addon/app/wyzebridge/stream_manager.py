@@ -1,16 +1,15 @@
-import contextlib
 import json
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
-from wyzebridge.wyze_api import WyzeApi
-from wyzebridge.stream import Stream
-from wyzebridge.config import IMG_PATH, IMG_TYPE, MOTION, MQTT_DISCOVERY, SNAPSHOT_TYPE
+from wyzebridge.config import MOTION, MQTT_DISCOVERY
 from wyzebridge.logging import logger
-from wyzebridge.mqtt import bridge_status, cam_control, publish_topic, update_preview
+from wyzebridge.mqtt import bridge_status, cam_control, publish_topic
 from wyzebridge.mtx_event import RtspEvent
-from wyzebridge.wyze_events import WyzeEvents
 from wyzebridge.snapshot import SnapshotManager
+from wyzebridge.wyze_api import WyzeApi
+from wyzebridge.wyze_events import WyzeEvents
+from wyzebridge.wyze_stream import WyzeStream
 
 
 class StreamManager:
@@ -24,7 +23,7 @@ class StreamManager:
     def __init__(self, api: WyzeApi):
         self.api: WyzeApi = api
         self.stop_flag: bool = False
-        self.streams: dict[str, Stream] = {}
+        self.streams: dict[str, WyzeStream] = {}
         self._snapshots: SnapshotManager = SnapshotManager(
             streams=self.streams,
             api=self.api,
@@ -48,7 +47,7 @@ class StreamManager:
         return self._snapshots.last_snap
 
     @property
-    def monitor_snapshots_thread(self) -> Optional[object]:
+    def monitor_snapshots_thread(self) -> object | None:
         return self._snapshots.monitor_snapshots_thread
 
     # --- Stream lifecycle ---
@@ -61,12 +60,12 @@ class StreamManager:
     def active(self):
         return len([s for s in self.streams.values() if s.enabled])
 
-    def add(self, stream: Stream) -> str:
+    def add(self, stream: WyzeStream) -> str:
         uri = stream.uri
         self.streams[uri] = stream
         return uri
 
-    def get(self, uri: str) -> Optional[Stream]:
+    def get(self, uri: str) -> WyzeStream | None:
         return self.streams.get(uri)
 
     def get_info(self, uri: str) -> dict:
@@ -133,14 +132,9 @@ class StreamManager:
         return [cam for cam, s in list(self.streams.items()) if getattr(s, "enabled", False)]
 
     def get_sse_status(self) -> dict:
-        return {
-            uri: {"status": cam.status(), "motion": cam.motion}
-            for uri, cam in list(self.streams.items())
-        }
+        return {uri: {"status": cam.status(), "motion": cam.motion} for uri, cam in list(self.streams.items())}
 
-    def send_cmd(
-        self, cam_name: str, cmd: str, payload: str | list | dict = ""
-    ) -> dict:
+    def send_cmd(self, cam_name: str, cmd: str, payload: str | list | dict = "") -> dict:
         """
         Send a command directly to the camera and wait for a response.
 
@@ -196,7 +190,7 @@ class StreamManager:
     # Internal callers in send_cmd use self.X so test patches on StreamManager
     # still intercept. Do not remove without updating all external callers.
 
-    def snap_all(self, cams: Optional[list[str]] = None, force: bool = False):
+    def snap_all(self, cams: list[str] | None = None, force: bool = False):
         return self._snapshots.snap_all(cams, force)
 
     def get_snapshot(self, cam_name: str) -> dict:

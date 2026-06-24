@@ -16,9 +16,7 @@ from wyzebridge.bridge_diagnostics import (
 
 
 class TestBridgeDiagnostics(unittest.TestCase):
-    @patch.dict(
-        "os.environ", {"MTX_API": "true", "MTX_APIADDRESS": ":59997"}, clear=False
-    )
+    @patch.dict("os.environ", {"MTX_API": "true", "MTX_APIADDRESS": ":59997"}, clear=False)
     @patch.object(bridge_diagnostics_module.requests, "get")
     def test_mediamtx_probe_uses_local_api_address(self, mock_get):
         response = Mock()
@@ -29,9 +27,7 @@ class TestBridgeDiagnostics(unittest.TestCase):
 
         result = mediamtx_probe("dog-run")
 
-        mock_get.assert_called_once_with(
-            "http://127.0.0.1:59997/v3/paths/get/dog-run", timeout=1.5
-        )
+        mock_get.assert_called_once_with("http://127.0.0.1:59997/v3/paths/get/dog-run", timeout=1.5)
         self.assertTrue(result["reachable"])
         self.assertTrue(result["enabled"])
         self.assertEqual(result["listener"], "http://127.0.0.1:59997")
@@ -58,9 +54,7 @@ class TestBridgeDiagnostics(unittest.TestCase):
 
         result = mediamtx_probe(None)
 
-        mock_get.assert_called_once_with(
-            "http://127.0.0.1:9997/v3/paths/list", timeout=1.5
-        )
+        mock_get.assert_called_once_with("http://127.0.0.1:9997/v3/paths/list", timeout=1.5)
         self.assertTrue(result["enabled"])
         self.assertTrue(result["reachable"])
 
@@ -74,9 +68,7 @@ class TestBridgeDiagnostics(unittest.TestCase):
 
         result = whep_proxy_probe("dog-run")
 
-        mock_get.assert_called_once_with(
-            f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}/status/dog-run", timeout=1.5
-        )
+        mock_get.assert_called_once_with(f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}/status/dog-run", timeout=1.5)
         self.assertTrue(result["reachable"])
         self.assertEqual(result["listener"], f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}")
         self.assertEqual(result["data"], {"upstream_alive": True})

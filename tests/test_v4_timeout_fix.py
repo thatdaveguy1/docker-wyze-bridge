@@ -8,11 +8,10 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
-from wyzebridge.config import CONNECT_TIMEOUT
 from wyzebridge import mtx_server
+from wyzebridge.config import CONNECT_TIMEOUT
 from wyzecam.api_models import WyzeAccount, WyzeCamera
 from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
-from wyzecam.tutk import tutk
 
 
 class DummyOptions:
@@ -125,12 +124,8 @@ class TestV4TimeoutFix(unittest.TestCase):
 
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
-            ) as connect_parallel,
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
-            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0) as connect_parallel,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0) as connect_ex,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -143,18 +138,12 @@ class TestV4TimeoutFix(unittest.TestCase):
         connect_ex.assert_not_called()
 
     def test_hl_cam4_substream_uses_parallel_connect_without_env_flag(self):
-        session = WyzeIOTCSession(
-            FakeTutkLib(), make_account(), make_camera("HL_CAM4"), substream=True
-        )
+        session = WyzeIOTCSession(FakeTutkLib(), make_account(), make_camera("HL_CAM4"), substream=True)
 
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
-            ) as connect_parallel,
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
-            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0) as connect_parallel,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0) as connect_ex,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -183,7 +172,7 @@ class TestV4TimeoutFix(unittest.TestCase):
                 return None
 
         with (
-            patch("wyzebridge.mtx_server.MtxInterface", FakeMtxInterface),
+            patch.object(mtx_server, "MtxInterface", FakeMtxInterface),
             patch.dict(
                 "os.environ",
                 {"CONNECT_RETRIES": "3", "CONNECT_RETRY_DELAY": "2.0"},

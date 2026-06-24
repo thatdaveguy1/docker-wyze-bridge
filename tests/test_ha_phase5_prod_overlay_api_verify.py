@@ -3,7 +3,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts" / "ha_phase5_prod_overlay_api_verify.sh"
 
@@ -103,7 +102,7 @@ class TestHaPhase5ProdOverlayApiVerify(unittest.TestCase):
             "camera_lookup_fallback",
             "production /api/ready is falling through to camera lookup",
             "listen tcp :58888: bind: address already in use",
-            "1 track \\(G711\\)|audio-only|video_ready=false|upstream_state=\"new\"",
+            '1 track \\(G711\\)|audio-only|video_ready=false|upstream_state="new"',
             "PASS: production Phase 5 overlay/API proof passed.",
             "FAIL: production Phase 5 overlay/API proof failed.",
         ]

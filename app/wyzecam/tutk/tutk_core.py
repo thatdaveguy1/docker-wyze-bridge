@@ -5,10 +5,10 @@ This module holds the non-FFI parts of the TUTK interface: numeric constants
 with its full name-mapping table, and :func:`load_library` which loads the
 shared ``libIOTCAPIs_ALL`` library.
 """
+
 import logging
 import pathlib
 from ctypes import CDLL, cdll
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -306,7 +306,7 @@ class TutkError(RuntimeError):
         return self.name or ""
 
 
-def load_library(shared_lib_path: Optional[str] = None) -> CDLL:
+def load_library(shared_lib_path: str | None = None) -> CDLL:
     """Load the underlying iotc library
 
     :param shared_lib_path: the path to the shared library libIOTCAPIs_ALL

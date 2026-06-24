@@ -1,4 +1,5 @@
 """TUTK FFI function bindings -- ctypes calls into ``libIOTCAPIs_ALL.so``."""
+
 import logging
 from ctypes import (
     CDLL,
@@ -9,14 +10,12 @@ from ctypes import (
     c_int32,
     c_ubyte,
     c_uint,
-    c_uint8,
     c_uint16,
     c_uint32,
     cast,
     create_string_buffer,
     sizeof,
 )
-from typing import Optional, Union
 
 from .tutk_structures import (
     AVClientStartInConfig,
@@ -34,11 +33,13 @@ from .tutk_structures import (
 logger = logging.getLogger(__name__)
 
 
-def av_recv_frame_data(tutk_platform_lib: CDLL, av_chan_id: c_int) -> tuple[
+def av_recv_frame_data(
+    tutk_platform_lib: CDLL, av_chan_id: c_int
+) -> tuple[
     int,
-    Optional[bytes],
-    Optional[Union[FrameInfoStruct, FrameInfo3Struct]],
-    Optional[int],
+    bytes | None,
+    FrameInfoStruct | FrameInfo3Struct | None,
+    int | None,
 ]:
     """A new version AV client receives frame data from an AV server.
 
@@ -71,7 +72,9 @@ def av_recv_frame_data(tutk_platform_lib: CDLL, av_chan_id: c_int) -> tuple[
         byref(frame_info_actual_len),
         byref(frame_index),
     )
-    logger.debug(f"[TUTK] avRecvFrameData2 returned {errno=}, {frame_data_actual_len=}, {frame_data_expected_len=} {frame_info_actual_len=}, {frame_index=}")
+    logger.debug(
+        f"[TUTK] avRecvFrameData2 returned {errno=}, {frame_data_actual_len=}, {frame_data_expected_len=} {frame_info_actual_len=}, {frame_index=}"
+    )
 
     if errno < 0:
         return errno, None, None, None
@@ -81,6 +84,7 @@ def av_recv_frame_data(tutk_platform_lib: CDLL, av_chan_id: c_int) -> tuple[
 
     logger.debug(f"[TUTK] Received video frame {frame_info=}")
     return 0, video_data, frame_info, frame_index.value
+
 
 def av_recv_audio_data(tutk_platform_lib: CDLL, av_chan_id: c_int):
     """An AV client receives audio data from an AV server.
@@ -117,6 +121,7 @@ def av_recv_audio_data(tutk_platform_lib: CDLL, av_chan_id: c_int):
     logger.debug(f"[TUTK] Received audio frame {frame_info=}")
     return 0, audio_data, frame_info
 
+
 def av_check_audio_buf(tutk_platform_lib: CDLL, av_chan_id: c_int) -> int:
     """Get the frame count of audio buffer remaining in the queue."""
     logger.debug(f"[TUTK] Calling avCheckAudioBuf {av_chan_id=}")
@@ -124,9 +129,8 @@ def av_check_audio_buf(tutk_platform_lib: CDLL, av_chan_id: c_int) -> int:
     logger.debug(f"[TUTK] avCheckAudioBuf returned {result=}")
     return result
 
-def av_recv_io_ctrl(
-    tutk_platform_lib: CDLL, av_chan_id: c_int, timeout_ms: int
-) -> tuple[int, int, Optional[bytes]]:
+
+def av_recv_io_ctrl(tutk_platform_lib: CDLL, av_chan_id: c_int, timeout_ms: int) -> tuple[int, int, bytes | None]:
     """Receive AV IO control.
 
     This function is used by AV servers or AV clients to receive a AV IO control.
@@ -153,6 +157,7 @@ def av_recv_io_ctrl(
 
     return frame_len, pn_io_ctrl_type.value, data
 
+
 def av_client_set_max_buf_size(tutk_platform_lib: CDLL, size: c_int) -> None:
     """Set the maximum video frame buffer used in AV client.
 
@@ -165,9 +170,8 @@ def av_client_set_max_buf_size(tutk_platform_lib: CDLL, size: c_int) -> None:
     logger.debug(f"[TUTK] Calling avClientSetMaxBufSize size: {size}")
     tutk_platform_lib.avClientSetMaxBufSize(size)
 
-def av_client_set_recv_buf_size(
-    tutk_platform_lib: CDLL, channel_id: c_int, size: c_uint
-) -> None:
+
+def av_client_set_recv_buf_size(tutk_platform_lib: CDLL, channel_id: c_int, size: c_uint) -> None:
     """Set the maximum frame buffer size used in AV client with specific AV channel ID.
 
     AV client sets the maximum video frame buffer by this function. The size of
@@ -181,6 +185,7 @@ def av_client_set_recv_buf_size(
     logger.debug(f"[TUTK] Calling avClientSetRecvBufMaxSize {channel_id=}, {size=}")
     tutk_platform_lib.avClientSetRecvBufMaxSize(channel_id, size)
 
+
 def av_client_clean_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> None:
     """Clean the video buffer both in client and device, and clean the audio buffer of the client.
 
@@ -193,6 +198,7 @@ def av_client_clean_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> None:
     logger.debug(f"[TUTK] Calling avClientCleanBuf {channel_id=}")
     tutk_platform_lib.avClientCleanBuf(channel_id)
 
+
 def av_client_clean_local_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> None:
     """Clean the local video and audio buffer of the client.
 
@@ -203,6 +209,7 @@ def av_client_clean_local_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> Non
     """
     logger.debug(f"[TUTK] Calling avClientCleanLocalBuf {channel_id=}")
     tutk_platform_lib.avClientCleanLocalBuf(channel_id)
+
 
 def av_client_clean_local_video_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> None:
     """Clean the local video buffer of the client.
@@ -215,6 +222,7 @@ def av_client_clean_local_video_buf(tutk_platform_lib: CDLL, channel_id: c_int) 
     logger.debug(f"[TUTK] Calling avClientCleanLocalVideoBuf {channel_id=}")
     tutk_platform_lib.avClientCleanLocalVideoBuf(channel_id)
 
+
 def av_client_clean_local_audio_buf(tutk_platform_lib: CDLL, channel_id: c_int) -> None:
     """Clean the local audio buffer of the client.
 
@@ -225,6 +233,7 @@ def av_client_clean_local_audio_buf(tutk_platform_lib: CDLL, channel_id: c_int) 
     """
     logger.debug(f"[TUTK] Calling avClientCleanAudioBuf {channel_id=}")
     tutk_platform_lib.avClientCleanAudioBuf(channel_id)
+
 
 def av_client_stop(tutk_platform_lib: CDLL, av_chan_id: c_int) -> None:
     """Stop an AV client.
@@ -238,13 +247,13 @@ def av_client_stop(tutk_platform_lib: CDLL, av_chan_id: c_int) -> None:
     logger.debug(f"[TUTK] Calling avClientStop {av_chan_id=}")
     tutk_platform_lib.avClientStop(av_chan_id)
 
+
 def av_send_io_ctrl_exit(tutk_platform_lib: CDLL, av_chan_id: c_int) -> None:
     logger.debug(f"[TUTK] Calling avSendIOCtrlExit {av_chan_id=}")
     tutk_platform_lib.avSendIOCtrlExit(av_chan_id)
 
-def av_send_io_ctrl(
-    tutk_platform_lib: CDLL, av_chan_id: c_int, ctrl_type: c_uint, data: Optional[bytes]
-) -> int:
+
+def av_send_io_ctrl(tutk_platform_lib: CDLL, av_chan_id: c_int, ctrl_type: c_uint, data: bytes | None) -> int:
     length = len(data) if data else 0
     cdata = c_char_p(data) if data else None
 
@@ -252,6 +261,7 @@ def av_send_io_ctrl(
     result = tutk_platform_lib.avSendIOCtrl(av_chan_id, ctrl_type, cdata, length)
     logger.debug(f"[TUTK] avSendIOCtrl returnd {result=}")
     return result
+
 
 def iotc_session_close(tutk_platform_lib: CDLL, session_id: c_int) -> None:
     """Used by a device or a client to close a IOTC session.
@@ -266,6 +276,7 @@ def iotc_session_close(tutk_platform_lib: CDLL, session_id: c_int) -> None:
     result = tutk_platform_lib.IOTC_Session_Close(session_id)
     logger.debug(f"[TUTK] IOTC_Session_Close returned: {result=}")
 
+
 def av_client_start(
     tutk_platform_lib: CDLL,
     session_id: c_int,
@@ -274,7 +285,7 @@ def av_client_start(
     timeout_secs: c_uint32,
     channel_id: c_ubyte,
     resend: c_int,
-) -> c_int: # tuple[c_int, c_uint]:
+) -> c_int:  # tuple[c_int, c_uint]:
     """Start an AV client.
 
     Start an AV client by providing view account and password. It shall pass
@@ -313,6 +324,7 @@ def av_client_start(
     logger.debug(f"[TUTK] avClientStartEx returned {result=} {avc_out=}")
     return result
 
+
 def av_initialize(tutk_platform_lib: CDLL, max_num_channels: c_int = c_int(1)) -> c_int:
     """Initialize AV module.
 
@@ -330,6 +342,7 @@ def av_initialize(tutk_platform_lib: CDLL, max_num_channels: c_int = c_int(1)) -
     logger.debug(f"[TUTK] avInitialize returned {max_chans=}")
     return max_chans
 
+
 def av_deinitialize(tutk_platform_lib: CDLL) -> int:
     """Deinitialize AV module.
 
@@ -343,9 +356,8 @@ def av_deinitialize(tutk_platform_lib: CDLL) -> int:
     logger.debug(f"[TUTK] avDeInitialize returned {errno=}")
     return errno
 
-def iotc_session_check(
-    tutk_platform_lib: CDLL, session_id: c_int
-) -> tuple[int, SInfoStructEx]:
+
+def iotc_session_check(tutk_platform_lib: CDLL, session_id: c_int) -> tuple[int, SInfoStructEx]:
     """Used by a device or a client to check the IOTC session info.
 
     A device or a client may use this function to check if the IOTC session is
@@ -362,6 +374,7 @@ def iotc_session_check(
     logger.debug(f"[TUTK] IOTC_Session_Check_Ex returned {err_code=}, {sess_info=}")
     return err_code, sess_info
 
+
 def iotc_connect_by_uid(tutk_platform_lib: CDLL, p2p_id: str) -> c_int:
     """Used by a client to connect a device.
 
@@ -376,10 +389,13 @@ def iotc_connect_by_uid(tutk_platform_lib: CDLL, p2p_id: str) -> c_int:
     """
     logger.debug(f"[TUTK] Calling IOTC_Connect_ByUID {p2p_id=}")
     session_id: c_int = tutk_platform_lib.IOTC_Connect_ByUID(
-        c_char_p(p2p_id.encode("ascii")) # , p2p-id https://github.com/kroo/wyzecam/compare/main...mrlt8:wyzecam:dev#diff-4c514493ec78af5de7272e675354bb93bb97ebc59874a9ab6c3da641351dce38R786
+        c_char_p(
+            p2p_id.encode("ascii")
+        )  # , p2p-id https://github.com/kroo/wyzecam/compare/main...mrlt8:wyzecam:dev#diff-4c514493ec78af5de7272e675354bb93bb97ebc59874a9ab6c3da641351dce38R786
     )
     logger.debug(f"[TUTK] IOTC_Connect_ByUID returned {session_id=}")
     return session_id
+
 
 def iotc_get_session_id(tutk_platform_lib: CDLL) -> c_int:
     """Used by a client to get a tutk_platform_free session ID.
@@ -391,6 +407,7 @@ def iotc_get_session_id(tutk_platform_lib: CDLL) -> c_int:
     session_id: c_int = tutk_platform_lib.IOTC_Get_SessionID()
     logger.debug(f"[TUTK] IOTC_Get_SessionID returned {session_id=}")
     return session_id
+
 
 def iotc_check_device_online(
     tutk_platform_lib: CDLL,
@@ -416,9 +433,8 @@ def iotc_check_device_online(
     logger.debug(f"[TUTK] IOTC_Check_Device_OnlineEx returned {status=}, {device_out=}")
     return status, device_out
 
-def iotc_connect_by_uid_parallel(
-    tutk_platform_lib: CDLL, p2p_id: str, session_id: c_int
-) -> c_int:
+
+def iotc_connect_by_uid_parallel(tutk_platform_lib: CDLL, p2p_id: str, session_id: c_int) -> c_int:
     """Used by a client to connect a device and bind to a specified session ID.
 
     This function is for a client to connect a device by specifying the UID of that device,
@@ -468,15 +484,12 @@ def iotc_connect_by_uid_ex(
     connect_input.timeout = timeout
 
     logger.debug(f"[TUTK] Calling IOTC_Connect_ByUIDEx {p2p_id=}, {session_id=}, {connect_input=}")
-    result = tutk_platform_lib.IOTC_Connect_ByUIDEx(
-        c_char_p(p2p_id.encode("ascii")), session_id, byref(connect_input)
-    )
+    result = tutk_platform_lib.IOTC_Connect_ByUIDEx(c_char_p(p2p_id.encode("ascii")), session_id, byref(connect_input))
     logger.debug(f"[TUTK] IOTC_Connect_ByUIDEx returned {result=}, {connect_input=}")
     return result
 
-def iotc_connect_stop_by_session_id(
-    tutk_platform_lib: CDLL, session_id: c_int
-) -> c_int:
+
+def iotc_connect_stop_by_session_id(tutk_platform_lib: CDLL, session_id: c_int) -> c_int:
     """
     Used by a client to stop a specific session connecting a device.
 
@@ -493,6 +506,7 @@ def iotc_connect_stop_by_session_id(
     errno: c_int = tutk_platform_lib.IOTC_Connect_Stop_BySID(session_id)
     logger.debug(f"[TUTK] IOTC_Connect_Stop_BySID returned {errno=}")
     return errno
+
 
 def iotc_set_log_attr(
     tutk_platform_lib: CDLL,
@@ -520,6 +534,7 @@ def iotc_set_log_attr(
     logger.debug(f"[TUTK] IOTC_Set_Log_Attr returned {errno=}")
     return errno
 
+
 def iotc_get_version(tutk_platform_lib: CDLL) -> int:
     """Get the version of IOTC module.
 
@@ -529,6 +544,7 @@ def iotc_get_version(tutk_platform_lib: CDLL) -> int:
     result = tutk_platform_lib.IOTC_Get_Version_String()
     logger.debug(f"[TUTK] IOTC_Get_Version_String returned {result=}")
     return result
+
 
 def iotc_initialize(tutk_platform_lib: CDLL, udp_port: c_uint16 = c_uint16(0)) -> int:
     """Initialize IOTC module.
@@ -552,13 +568,13 @@ def iotc_initialize(tutk_platform_lib: CDLL, udp_port: c_uint16 = c_uint16(0)) -
     logger.debug(f"[TUTK] IOTC_Initialize2 returned {errno=}")
     return errno
 
+
 def TUTK_SDK_Set_License_Key(tutk_platform_lib: CDLL, key: str) -> int:
     logger.debug(f"[TUTK] Calling TUTK_SDK_Set_License_Key {key=}")
-    errno: int = tutk_platform_lib.TUTK_SDK_Set_License_Key(
-        c_char_p(key.encode("ascii"))
-    )
+    errno: int = tutk_platform_lib.TUTK_SDK_Set_License_Key(c_char_p(key.encode("ascii")))
     logger.debug(f"[TUTK] TUTK_SDK_Set_License_Key returned {errno=}")
     return errno
+
 
 def iotc_deinitialize(tutk_platform_lib: CDLL) -> c_int:
     """Deinitialize IOTC module.
@@ -575,15 +591,33 @@ def iotc_deinitialize(tutk_platform_lib: CDLL) -> c_int:
 
 
 __all__ = [
-    "av_recv_frame_data", "av_recv_audio_data", "av_check_audio_buf",
-    "av_recv_io_ctrl", "av_client_set_max_buf_size", "av_client_set_recv_buf_size",
-    "av_client_clean_buf", "av_client_clean_local_buf",
-    "av_client_clean_local_video_buf", "av_client_clean_local_audio_buf",
-    "av_client_stop", "av_send_io_ctrl_exit", "av_send_io_ctrl",
-    "iotc_session_close", "av_client_start", "av_initialize", "av_deinitialize",
-    "iotc_session_check", "iotc_connect_by_uid", "iotc_get_session_id",
-    "iotc_check_device_online", "iotc_connect_by_uid_parallel",
-    "iotc_connect_by_uid_ex", "iotc_connect_stop_by_session_id",
-    "iotc_set_log_attr", "iotc_get_version", "iotc_initialize",
-    "TUTK_SDK_Set_License_Key", "iotc_deinitialize",
+    "av_recv_frame_data",
+    "av_recv_audio_data",
+    "av_check_audio_buf",
+    "av_recv_io_ctrl",
+    "av_client_set_max_buf_size",
+    "av_client_set_recv_buf_size",
+    "av_client_clean_buf",
+    "av_client_clean_local_buf",
+    "av_client_clean_local_video_buf",
+    "av_client_clean_local_audio_buf",
+    "av_client_stop",
+    "av_send_io_ctrl_exit",
+    "av_send_io_ctrl",
+    "iotc_session_close",
+    "av_client_start",
+    "av_initialize",
+    "av_deinitialize",
+    "iotc_session_check",
+    "iotc_connect_by_uid",
+    "iotc_get_session_id",
+    "iotc_check_device_online",
+    "iotc_connect_by_uid_parallel",
+    "iotc_connect_by_uid_ex",
+    "iotc_connect_stop_by_session_id",
+    "iotc_set_log_attr",
+    "iotc_get_version",
+    "iotc_initialize",
+    "TUTK_SDK_Set_License_Key",
+    "iotc_deinitialize",
 ]

@@ -1,12 +1,11 @@
-from typing import Optional
-
 import requests
 
-from wyzebridge.build_config import VERSION
 from wyzebridge.bridge_utils import env_cam
+from wyzebridge.build_config import VERSION
 from wyzebridge.logging import logger
 
-def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -> None:
+
+def send_webhook(event: str, camera: str, msg: str, img: str | None = None) -> None:
     if not (url := env_cam(f"{event}_webhooks", camera, style="original")):
         return
 
@@ -25,5 +24,5 @@ def send_webhook(event: str, camera: str, msg: str, img: Optional[str] = None) -
     try:
         resp = requests.post(url, headers=header, data=msg, verify=False)
         resp.raise_for_status()
-    except Exception as ex:
-        print(f"[WEBHOOKS] [{type(ex).__name__}] {ex}")
+    except Exception as ex:  # webhook HTTP post can fail with various requests/SSL/connection errors; log and continue
+        logger.error(f"[{type(ex).__name__}] {ex}")

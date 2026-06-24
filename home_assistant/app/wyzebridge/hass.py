@@ -2,14 +2,14 @@ import json
 import logging
 from os import environ, makedirs
 from sys import stdout
-from typing import Optional
 
 import requests
 
 from wyzebridge.camera_settings import apply_ha_cam_options
 from wyzebridge.logging import format_logging, logger
 
-def setup_hass(hass_token: Optional[str]) -> None:
+
+def setup_hass(hass_token: str | None) -> None:
     """Home Assistant related config."""
     if not hass_token:
         return
@@ -26,13 +26,15 @@ def setup_hass(hass_token: Optional[str]) -> None:
         for i in net_info["data"]["interfaces"]:
             if i["primary"]:
                 environ["WB_IP"] = i["ipv4"]["address"][0].split("/")[0]
-    except Exception as ex:
+    except (
+        Exception
+    ) as ex:  # supervisor network info can fail with HTTP/AssertionError/KeyError; WebRTC IP setup is best-effort
         logger.error(f"[HASS] WebRTC setup: [{type(ex).__name__}] {ex}")
 
     mqtt_conf = requests.get("http://supervisor/services/mqtt", headers=auth).json()
     if "ok" in mqtt_conf.get("result") and (data := mqtt_conf.get("data")):
-        environ["MQTT_HOST"] = f'{data["host"]}:{data["port"]}'
-        environ["MQTT_AUTH"] = f'{data["username"]}:{data["password"]}'
+        environ["MQTT_HOST"] = f"{data['host']}:{data['port']}"
+        environ["MQTT_AUTH"] = f"{data['username']}:{data['password']}"
 
     if cam_options := conf.pop("CAM_OPTIONS", None):
         apply_ha_cam_options(cam_options)
@@ -54,9 +56,9 @@ def setup_hass(hass_token: Optional[str]) -> None:
 
     log_level = conf.get("LOG_LEVEL", "")
     log_time = "%X" if conf.get("LOG_TIME") else ""
-    
+
     if log_level or log_time:
-        log_level = getattr(logging, log_level.upper(), 20) #INFO
+        log_level = getattr(logging, log_level.upper(), 20)  # INFO
         format_logging(logging.StreamHandler(stdout), log_level, log_time)
 
     if conf.get("LOG_FILE"):

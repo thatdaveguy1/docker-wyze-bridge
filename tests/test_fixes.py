@@ -4,12 +4,11 @@ Test the multiprocessing fixes without Docker.
 This simulates the child process signal handling issue.
 """
 
+import multiprocessing as mp
 import os
 import signal
 import sys
 import time
-import multiprocessing as mp
-from ctypes import c_int
 
 
 # Simulate the WyzeBridge scenario

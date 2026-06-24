@@ -1,7 +1,18 @@
+import logging
 import os
 import re
 import shutil
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+TRUTHY = {"1", "true", "yes", "on"}
+
+
+def truthy(value: str | None) -> bool:
+    """Return True if value is a truthy string ('1', 'true', 'yes', 'on')."""
+    return str(value or "").strip().lower() in TRUTHY
+
 
 LIVESTREAM_PLATFORMS = {
     "YouTube": "rtmp://a.rtmp.youtube.com/live2/",
@@ -10,12 +21,14 @@ LIVESTREAM_PLATFORMS = {
     "Livestream": "",
 }
 
+
 def env_cam(env: str, uri: str, default="", style="") -> str:
     return env_bool(
         f"{env}_{uri}",
         env_bool(env, env_bool(f"{env}_all", default, style=style), style=style),
         style=style,
     )
+
 
 def env_bool(env: str, false="", true="", style="") -> Any:
     """Return env variable or empty string if the variable contains 'false' or is empty."""
@@ -37,37 +50,35 @@ def env_bool(env: str, false="", true="", style="") -> Any:
         return value
     return true if true and value else value.lower() or false
 
+
 def env_list(env: str) -> list:
     """Return env values as a list."""
-    return [
-        x.strip("'\"\n ").upper().replace(":", "")
-        for x in os.getenv(env.upper(), "").split(",")
-    ]
+    return [x.strip("'\"\n ").upper().replace(":", "") for x in os.getenv(env.upper(), "").split(",")]
+
 
 def clean_cam_name(name: str, uri_sep: str = "_") -> str:
     """Return a URI friendly name by removing special characters and spaces."""
-    return (
-        re.sub(r"[^\-\w+]", "", name.strip().replace(" ", uri_sep))
-        .encode("ascii", "ignore")
-        .decode()
-    ).upper()
+    return (re.sub(r"[^\-\w+]", "", name.strip().replace(" ", uri_sep)).encode("ascii", "ignore").decode()).upper()
+
 
 def split_int_str(env_value: str, min: int = 0, default: int = 0) -> tuple[str, int]:
     string_value = "".join(filter(str.isalpha, env_value))
     int_value = int("".join(filter(str.isnumeric, env_value)) or default)
     return string_value, max(int_value, min)
 
+
 def is_livestream(uri: str) -> bool:
     return any(env_bool(f"{service}_{uri}") for service in LIVESTREAM_PLATFORMS)
+
 
 def migrate_path(old: str, new: str):
     if not os.path.exists(old):
         return
 
-    print(f"CLEANUP: MIGRATING {old=} to {new=}")
+    logger.info(f"CLEANUP: MIGRATING {old=} to {new=}")
 
     if not os.path.exists(new):
-        os.makedirs(new, exist_ok = True)
+        os.makedirs(new, exist_ok=True)
     for item in os.listdir(old):
         new_file = os.path.join(new, os.path.relpath(os.path.join(old, item), old))
         if os.path.exists(new_file):

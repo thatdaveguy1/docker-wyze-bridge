@@ -4,7 +4,7 @@ from ctypes import LittleEndianStructure, c_char, c_uint16, c_uint32
 from os import getenv
 from pathlib import Path
 from struct import pack
-from typing import Any, Optional
+from typing import Any
 
 import xxtea
 
@@ -52,13 +52,7 @@ class TutkWyzeProtocolHeader(LittleEndianStructure):
 
     def __repr__(self):
         classname = self.__class__.__name__
-        return (
-            f"<{classname} "
-            f"prefix={self.prefix} "
-            f"protocol={self.protocol} "
-            f"code={self.code} "
-            f"txt_len={self.txt_len}>"
-        )
+        return f"<{classname} prefix={self.prefix} protocol={self.protocol} code={self.code} txt_len={self.txt_len}>"
 
 
 class TutkWyzeProtocolMessage:
@@ -105,7 +99,7 @@ class TutkWyzeProtocolMessage:
         return f"<{self.__class__.__name__} code={self.code} resp_code={self.expected_response_code}>"
 
 
-def encode(code: int, data: Optional[bytes]) -> bytes:
+def encode(code: int, data: bytes | None) -> bytes:
     """
     Encode message
 
@@ -129,8 +123,7 @@ def decode(buf):
     expected_size = header.txt_len + 16
     if len(buf) != expected_size:
         raise TutkWyzeProtocolError(
-            f"Encoded length doesn't match message size "
-            f"(header says {expected_size}, got message of len {len(buf)}"
+            f"Encoded length doesn't match message size (header says {expected_size}, got message of len {len(buf)}"
         )
 
     return header, buf[16:expected_size] if header.txt_len > 0 else None

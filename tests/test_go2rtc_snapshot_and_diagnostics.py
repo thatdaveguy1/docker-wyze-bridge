@@ -18,9 +18,7 @@ except ImportError:
 original_requests_module = sys.modules.get("requests")
 original_requests_exceptions_module = sys.modules.get("requests.exceptions")
 original_wyzebridge_modules = {
-    name: module
-    for name, module in sys.modules.items()
-    if name == "wyzebridge" or name.startswith("wyzebridge.")
+    name: module for name, module in sys.modules.items() if name == "wyzebridge" or name.startswith("wyzebridge.")
 }
 
 requests_stub = types.ModuleType("requests")
@@ -111,8 +109,7 @@ else:
 
 for module_name in list(sys.modules):
     if (
-        module_name == "wyzebridge"
-        or module_name.startswith("wyzebridge.")
+        module_name == "wyzebridge" or module_name.startswith("wyzebridge.")
     ) and module_name not in original_wyzebridge_modules:
         del sys.modules[module_name]
 
@@ -195,37 +192,47 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             timeout=0.75,
         )
 
-    @patch.object(native_alias_module, "_native_alias_is_ready")
+    @patch.object(native_alias_module, "_native_alias_status")
     @patch.object(native_alias_module, "_go2rtc_api_reachable")
     def test_native_stream_info_selected_when_api_reachable_even_if_alias_not_ready(
-        self, mock_api_reachable, mock_alias_ready
+        self, mock_api_reachable, mock_alias_status
     ):
         # alias_ready is diagnostic-only; it must NOT block selection when the sidecar is up.
         # Previously this gated native_selected=False, causing Scrypted to cache a bad URL
         # and HomeKit to lose the camera on every bridge restart (4.2.8 regression).
         mock_api_reachable.return_value = True
-        mock_alias_ready.return_value = False
+        mock_alias_status.return_value = {
+            "ready": False,
+            "producer_count": 0,
+            "keyframe_consumers": 0,
+            "receiver_children": 0,
+            "wedged": False,
+        }
         camera = SimpleNamespace(name_uri="hamster", product_model="HL_CAM3P", is_gwell=False)
 
         info = native_alias_module.native_stream_info(camera, substream=True)
 
         self.assertTrue(info["native_supported"])
-        self.assertTrue(info["native_selected"])        # selected because api_reachable=True
-        self.assertFalse(info["native_alias_ready"])    # diagnostic: alias not hot yet
+        self.assertTrue(info["native_selected"])  # selected because api_reachable=True
+        self.assertFalse(info["native_alias_ready"])  # diagnostic: alias not hot yet
         self.assertEqual(info["snapshot_source"], "go2rtc")
         self.assertNotIn("failed readiness check", info["native_reason"])
-        self.assertFalse(info["talkback_supported"])    # substream — talkback always off
-        mock_alias_ready.assert_called_once_with("hamster-sd")
+        self.assertFalse(info["talkback_supported"])  # substream — talkback always off
+        mock_alias_status.assert_called_once_with("hamster-sd")
 
-    @patch.object(native_alias_module, "_native_alias_is_ready")
+    @patch.object(native_alias_module, "_native_alias_status")
     @patch.object(native_alias_module, "_go2rtc_api_reachable")
-    def test_native_stream_info_not_selected_when_go2rtc_unreachable(
-        self, mock_api_reachable, mock_alias_ready
-    ):
+    def test_native_stream_info_not_selected_when_go2rtc_unreachable(self, mock_api_reachable, mock_alias_status):
         # When the go2rtc sidecar is completely down the camera should be reported as
         # not-selected so Scrypted can surface it as offline rather than serve a dead URL.
         mock_api_reachable.return_value = False
-        mock_alias_ready.return_value = False
+        mock_alias_status.return_value = {
+            "ready": False,
+            "producer_count": 0,
+            "keyframe_consumers": 0,
+            "receiver_children": 0,
+            "wedged": False,
+        }
         camera = SimpleNamespace(name_uri="north-yard", product_model="HL_CAM4", is_gwell=False)
 
         info = native_alias_module.native_stream_info(camera, substream=False)
@@ -237,15 +244,19 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertIn("not reachable", info["native_reason"])
         self.assertFalse(info["talkback_supported"])
         # alias readiness should NOT be checked when the API is down (avoids a wasted call)
-        mock_alias_ready.assert_not_called()
+        mock_alias_status.assert_not_called()
 
-    @patch.object(native_alias_module, "_native_alias_is_ready")
+    @patch.object(native_alias_module, "_native_alias_status")
     @patch.object(native_alias_module, "_go2rtc_api_reachable")
-    def test_hl_cam4_substream_native_selected_when_api_reachable(
-        self, mock_api_reachable, mock_alias_ready
-    ):
+    def test_hl_cam4_substream_native_selected_when_api_reachable(self, mock_api_reachable, mock_alias_status):
         mock_api_reachable.return_value = True
-        mock_alias_ready.return_value = False
+        mock_alias_status.return_value = {
+            "ready": False,
+            "producer_count": 0,
+            "keyframe_consumers": 0,
+            "receiver_children": 0,
+            "wedged": False,
+        }
         camera = SimpleNamespace(name_uri="north-yard", product_model="HL_CAM4", is_gwell=False)
 
         info = native_alias_module.native_stream_info(camera, substream=True)
@@ -393,9 +404,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     @patch.object(native_alias_module, "_native_alias_status")
     @patch.object(native_alias_module, "_go2rtc_api_reachable")
-    def test_native_stream_info_surfaces_alias_diagnostics(
-        self, mock_api_reachable, mock_alias_status
-    ):
+    def test_native_stream_info_surfaces_alias_diagnostics(self, mock_api_reachable, mock_alias_status):
         mock_api_reachable.return_value = True
         mock_alias_status.return_value = {
             "producer_count": 1,
@@ -418,9 +427,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     @patch.object(native_talkback_module.time, "sleep")
     @patch.object(native_talkback_module, "preload_native_stream")
     @patch.object(native_talkback_module, "_talkback_ffmpeg_codec")
-    def test_talkback_codec_resolution_preloads_and_retries(
-        self, mock_codec, mock_preload, _mock_sleep
-    ):
+    def test_talkback_codec_resolution_preloads_and_retries(self, mock_codec, mock_preload, _mock_sleep):
         mock_codec.side_effect = [None, "aac/16000"]
 
         codec = native_talkback_module._resolve_talkback_ffmpeg_codec("north-yard")
@@ -431,9 +438,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     @patch.object(native_talkback_module, "_resolve_talkback_ffmpeg_codec")
     @patch.object(native_talkback_module, "_go2rtc_stream_request")
-    def test_send_native_talkback_uses_resolved_codec_for_audio_url(
-        self, mock_stream_request, mock_resolve_codec
-    ):
+    def test_send_native_talkback_uses_resolved_codec_for_audio_url(self, mock_stream_request, mock_resolve_codec):
         mock_resolve_codec.return_value = "aac/16000"
         mock_stream_request.return_value = {"status": "success"}
 
@@ -452,9 +457,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     @patch.object(snapshot_module, "preload_native_stream")
     @patch.object(snapshot_module, "write_native_snapshot")
-    def test_stream_manager_prefers_native_snapshot_for_selected_camera(
-        self, mock_write_native_snapshot, mock_preload
-    ):
+    def test_stream_manager_prefers_native_snapshot_for_selected_camera(self, mock_write_native_snapshot, mock_preload):
         manager = StreamManager(DummyApi())
         manager.streams["north-yard"] = SimpleNamespace(
             get_info=lambda: {
@@ -470,9 +473,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True, "source": "go2rtc"})
         mock_preload.assert_called_once_with("north-yard")
-        mock_write_native_snapshot.assert_called_once_with(
-            "north-yard", "north-yard", warn_on_failure=True
-        )
+        mock_write_native_snapshot.assert_called_once_with("north-yard", "north-yard", warn_on_failure=True)
 
     @patch.object(snapshot_module, "preload_native_stream")
     @patch.object(snapshot_module, "write_native_snapshot")
@@ -494,15 +495,11 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True, "source": "go2rtc"})
         mock_preload.assert_called_once_with("back-yard-sd")
-        mock_write_native_snapshot.assert_called_once_with(
-            "back-yard-sd", "back-yard-sub", warn_on_failure=False
-        )
+        mock_write_native_snapshot.assert_called_once_with("back-yard-sd", "back-yard-sub", warn_on_failure=False)
 
     @patch.object(snapshot_module, "preload_native_stream")
     @patch.object(snapshot_module, "write_native_snapshot")
-    def test_stream_manager_tries_sd_alias_for_registered_parent_stream(
-        self, mock_write_native_snapshot, mock_preload
-    ):
+    def test_stream_manager_tries_sd_alias_for_registered_parent_stream(self, mock_write_native_snapshot, mock_preload):
         manager = StreamManager(DummyApi())
         manager.streams["north-yard"] = SimpleNamespace(
             get_info=lambda: {
@@ -584,7 +581,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             ],
         )
 
-    @patch.object(StreamManager, "get_snapshot")
+    @patch.object(snapshot_module.SnapshotManager, "get_snapshot")
     def test_refresh_preview_falls_back_to_cloud_thumbnail(self, mock_get_snapshot):
         api = DummyApi()
         api.save_thumbnail = Mock(return_value=True)
@@ -598,9 +595,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     @patch.object(stream_manager_module, "publish_topic")
     @patch.object(StreamManager, "refresh_preview", return_value={"ok": True, "source": "go2rtc"})
-    def test_send_cmd_update_snapshot_refreshes_native_only_camera(
-        self, mock_refresh_preview, mock_publish_topic
-    ):
+    def test_send_cmd_update_snapshot_refreshes_native_only_camera(self, mock_refresh_preview, mock_publish_topic):
         api = DummyApi()
         api.get_camera = Mock(return_value=SimpleNamespace(name_uri="north-yard"))
         manager = StreamManager(api)
@@ -628,8 +623,9 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 stderr_output=b"[h264 @ 0x1] error while decoding MB 47 19, bytestream -15\n",
             )
 
-            with patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                snapshot_module, "Popen", return_value=fake_popen
+            with (
+                patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
                 result = manager.get_rtsp_snap("garage-sub")
 
@@ -654,8 +650,9 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 image_bytes=fresh_preview,
             )
 
-            with patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                snapshot_module, "Popen", return_value=fake_popen
+            with (
+                patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
                 result = manager.get_rtsp_snap("deck-sub")
 
@@ -663,7 +660,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             with open(final_path, "rb") as handle:
                 self.assertEqual(handle.read(), fresh_preview)
             registry_path = os.path.join(temp_dir, ".snapshot_hashes.json")
-            with open(registry_path, "r", encoding="utf-8") as handle:
+            with open(registry_path, encoding="utf-8") as handle:
                 self.assertIn("deck-sub", handle.read())
 
     @patch.object(snapshot_module, "rtsp_snap_cmd", return_value=["ffmpeg", "-y", "unused.jpg"])
@@ -684,8 +681,9 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 image_bytes=stale_preview,
             )
 
-            with patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                snapshot_module, "Popen", return_value=fake_popen
+            with (
+                patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
                 result = manager.get_rtsp_snap("deck-sub")
 
@@ -720,9 +718,11 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             final_path = os.path.join(temp_dir, "garage-sub.jpg")
-            with patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                snapshot_module, "rtsp_snap_cmd", side_effect=snap_cmd
-            ) as mock_cmd, patch.object(snapshot_module, "Popen", side_effect=fake_popen):
+            with (
+                patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(snapshot_module, "rtsp_snap_cmd", side_effect=snap_cmd) as mock_cmd,
+                patch.object(snapshot_module, "Popen", side_effect=fake_popen),
+            ):
                 result = manager.get_rtsp_snap("garage-sub")
 
             self.assertTrue(result)
@@ -748,9 +748,11 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             final_path = pathlib.Path(temp_dir) / "deck-sub.jpg"
             final_path.write_bytes(stale_preview)
 
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
-            ), patch.object(native_alias_module.time, "sleep"):
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response),
+                patch.object(native_alias_module.time, "sleep"),
+            ):
                 result = native_alias_module.write_native_snapshot("deck-sd", "deck-sub", timeout=0.01)
 
             self.assertFalse(result)
@@ -768,9 +770,11 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             final_path = pathlib.Path(temp_dir) / "north-yard.jpg"
             final_path.write_bytes(stale_preview)
 
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", side_effect=[stale_response, fresh_response]
-            ), patch.object(native_alias_module.time, "sleep"):
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", side_effect=[stale_response, fresh_response]),
+                patch.object(native_alias_module.time, "sleep"),
+            ):
                 result = native_alias_module.write_native_snapshot("north-yard", "north-yard", timeout=1.0)
 
             self.assertTrue(result)
@@ -782,11 +786,12 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
-            ), patch.object(
-                native_alias_module, "_native_alias_status", return_value={"producer_count": 0}
-            ), patch.object(native_alias_module.time, "sleep"):
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response),
+                patch.object(native_alias_module, "_native_alias_status", return_value={"producer_count": 0}),
+                patch.object(native_alias_module.time, "sleep"),
+            ):
                 result = native_alias_module.write_native_snapshot("garage-sd", "garage", timeout=0.01)
 
             self.assertFalse(result)
@@ -797,19 +802,22 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
-            ) as get, patch.object(
-                native_alias_module,
-                "_native_alias_status",
-                return_value={
-                    "producer_count": 1,
-                    "keyframe_consumers": 5,
-                    "receiver_children": 22,
-                    "wedged": True,
-                    "ready": False,
-                },
-            ) as alias_status, patch.object(native_alias_module.time, "sleep") as sleep:
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response) as get,
+                patch.object(
+                    native_alias_module,
+                    "_native_alias_status",
+                    return_value={
+                        "producer_count": 1,
+                        "keyframe_consumers": 5,
+                        "receiver_children": 22,
+                        "wedged": True,
+                        "ready": False,
+                    },
+                ) as alias_status,
+                patch.object(native_alias_module.time, "sleep") as sleep,
+            ):
                 result = native_alias_module.write_native_snapshot("north-yard-sd", "north-yard", timeout=1.0)
 
             self.assertFalse(result)
@@ -820,11 +828,13 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     def test_write_native_snapshot_timeout_fallback_is_not_warning(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", side_effect=Exception("native read timed out")
-            ), patch.object(native_alias_module.time, "sleep"), patch.object(
-                native_alias_module.logger, "warning"
-            ) as warning, patch.object(native_alias_module.logger, "debug") as debug:
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", side_effect=Exception("native read timed out")),
+                patch.object(native_alias_module.time, "sleep"),
+                patch.object(native_alias_module.logger, "warning") as warning,
+                patch.object(native_alias_module.logger, "debug") as debug,
+            ):
                 result = native_alias_module.write_native_snapshot("back-yard-sd", "back-yard-sub", timeout=0.01)
 
             self.assertFalse(result)
@@ -837,9 +847,11 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
-            ) as get, patch.object(native_alias_module.time, "sleep") as sleep:
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response) as get,
+                patch.object(native_alias_module.time, "sleep") as sleep,
+            ):
                 result = native_alias_module.write_native_snapshot("garage-sd", "garage")
 
             self.assertFalse(result)
@@ -852,14 +864,13 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
-            ), patch.object(native_alias_module.logger, "warning") as warning, patch.object(
-                native_alias_module.logger, "debug"
-            ) as debug:
-                result = native_alias_module.write_native_snapshot(
-                    "south-yard", "south-yard", warn_on_failure=False
-                )
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response),
+                patch.object(native_alias_module.logger, "warning") as warning,
+                patch.object(native_alias_module.logger, "debug") as debug,
+            ):
+                result = native_alias_module.write_native_snapshot("south-yard", "south-yard", warn_on_failure=False)
 
             self.assertFalse(result)
             warning.assert_not_called()
@@ -871,8 +882,9 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep), patch.object(
-                native_alias_module.requests, "get", return_value=response
+            with (
+                patch.object(native_alias_module, "IMG_PATH", temp_dir + os.sep),
+                patch.object(native_alias_module.requests, "get", return_value=response),
             ):
                 result = native_alias_module.write_native_snapshot("garage-sd", "garage")
 
@@ -886,9 +898,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         result = manager.get_snapshot("north-yard")
 
         self.assertEqual(result, {"ok": True, "source": "go2rtc"})
-        mock_write_native_snapshot.assert_called_once_with(
-            "north-yard", "north-yard", warn_on_failure=False
-        )
+        mock_write_native_snapshot.assert_called_once_with("north-yard", "north-yard", warn_on_failure=False)
 
     @patch.object(snapshot_module, "write_native_snapshot")
     def test_get_snapshot_tries_sd_alias_without_registered_parent_stream(self, mock_write_native_snapshot):
@@ -987,9 +997,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertTrue(details["go2rtc"]["selection"]["selected"])
         self.assertTrue(details["go2rtc"]["selection"]["talkback_supported"])
         self.assertEqual(details["go2rtc"]["alias"], {"name": "north-yard", "exists": True})
-        self.assertEqual(
-            details["go2rtc"]["talkback_alias"], {"name": "north-yard", "exists": True}
-        )
+        self.assertEqual(details["go2rtc"]["talkback_alias"], {"name": "north-yard", "exists": True})
 
 
 if __name__ == "__main__":

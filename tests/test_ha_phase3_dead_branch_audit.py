@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 AUDIT = ROOT / "scripts" / "ha_phase3_dead_branch_audit.sh"
 
@@ -108,9 +107,7 @@ class TestHAPhase3DeadBranchAudit(unittest.TestCase):
             (root / "app").mkdir()
             (root / "runtime_overlays" / "home_assistant").mkdir(parents=True)
             (root / "app" / "feed.py").write_text("stream = 'sd'\n")
-            (root / "runtime_overlays" / "home_assistant" / "config.yml").write_text(
-                "schema:\n  QUALITY: str?\n"
-            )
+            (root / "runtime_overlays" / "home_assistant" / "config.yml").write_text("schema:\n  QUALITY: str?\n")
             (root / "tmp" / "phase3_prod_sd_only_20260519_235959.txt").write_text(
                 "PASS: production Phase 3 SD_ONLY proof passed.\n"
             )

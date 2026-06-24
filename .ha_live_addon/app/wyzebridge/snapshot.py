@@ -1,36 +1,38 @@
 import contextlib
 import os
 import time
+from collections.abc import Callable
 from subprocess import DEVNULL, PIPE, Popen, TimeoutExpired
 from threading import Thread
-from typing import Callable, Optional
+from typing import TYPE_CHECKING
+
+from wyzebridge.snapshot_schedule import should_skip_snapshot, should_take_snapshot
+
+if TYPE_CHECKING:
+    from wyzebridge.wyze_api import WyzeApi
 
 from wyzebridge.config import IMG_PATH, IMG_TYPE, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd, wait_for_purges
+from wyzebridge.logging import logger
+from wyzebridge.mqtt import update_preview
 from wyzebridge.native_alias import (
     RECOVERY_ALIASES,
     native_alias,
     preload_native_stream,
     write_native_snapshot,
 )
-from wyzebridge.logging import logger
-from wyzebridge.mqtt import publish_topic, update_preview
 from wyzebridge.preview_validation import (
     preview_file_is_image,
     preview_payload_matches_existing,
     record_preview_hash,
 )
-from wyzebridge.bridge_utils_sunset import should_take_snapshot, should_skip_snapshot
 
 
 def _snapshot_decode_failed(stderr_output: bytes | None) -> bool:
     if not stderr_output:
         return False
     stderr_text = stderr_output.decode("utf-8", errors="ignore").lower()
-    return any(
-        marker in stderr_text
-        for marker in ("error while decoding", "corrupt decoded frame", "bytestream")
-    )
+    return any(marker in stderr_text for marker in ("error while decoding", "corrupt decoded frame", "bytestream"))
 
 
 def _snapshot_matches_existing(temp_path: str, final_path: str) -> bool:
@@ -106,7 +108,7 @@ class SnapshotManager:
         self.rtsp_snapshots: dict[str, Popen] = {}
         self.native_preloads: set[str] = set()
         self.last_snap: float = 0
-        self.monitor_snapshots_thread: Optional[Thread] = None
+        self.monitor_snapshots_thread: Thread | None = None
 
     # --- Snapshot monitoring ---
 
@@ -132,14 +134,18 @@ class SnapshotManager:
                                     _, stderr_output = ffmpeg.communicate(timeout=0.1)
                                 temp_path = getattr(ffmpeg, "_wyze_snapshot_temp_path", "")
                                 final_path = getattr(ffmpeg, "_wyze_snapshot_final_path", "")
-                                if temp_path and final_path and _finalize_snapshot_output(
-                                    cam, temp_path, final_path, stderr_output
+                                if (
+                                    temp_path
+                                    and final_path
+                                    and _finalize_snapshot_output(cam, temp_path, final_path, stderr_output)
                                 ):
                                     update_preview(cam)
                             # we have some response, remove from queue
                             self.remove_from_rtsp_snapshots(cam)
                     time.sleep(1)
-            except Exception as e:
+            except (
+                Exception
+            ) as e:  # monitor thread must survive any subprocess/dict error to keep snapshot polling alive
                 logger.error(f"[STREAM] Unexpected error in monitor_snapshots: {e}")
 
         if self.monitor_snapshots_thread is not None:
@@ -165,12 +171,12 @@ class SnapshotManager:
             del self.rtsp_snapshots[cam]
         except KeyError:
             logger.warning(f"[STREAM] {cam} not found in rtsp snapshots.")
-        except Exception as ex:
+        except Exception as ex:  # dict state may be replaced mid-operation; log and continue rather than crash
             logger.error(f"[STREAM] [{type(ex).__name__}] removing {cam=} {ex}.")
 
     # --- Snapshot taking ---
 
-    def snap_all(self, cams: Optional[list[str]] = None, force: bool = False):
+    def snap_all(self, cams: list[str] | None = None, force: bool = False):
         """
         Take an rtsp snapshot of the streams in the list.
 
@@ -180,11 +186,7 @@ class SnapshotManager:
         """
         if force or should_take_snapshot(SNAPSHOT_TYPE, self.last_snap):
             self.last_snap = time.time()
-            snapshot_targets = cams or (
-                self._enabled_streams()
-                if SNAPSHOT_TYPE == "api"
-                else self._active_streams()
-            )
+            snapshot_targets = cams or (self._enabled_streams() if SNAPSHOT_TYPE == "api" else self._active_streams())
             for cam_name in snapshot_targets:
                 if should_skip_snapshot(cam_name):
                     continue
@@ -194,7 +196,7 @@ class SnapshotManager:
                 elif SNAPSHOT_TYPE == "api":
                     self.refresh_preview(cam_name)
 
-    def rtsp_snap_popen(self, cam_name: str, interval: bool = False) -> Optional[Popen]:
+    def rtsp_snap_popen(self, cam_name: str, interval: bool = False) -> Popen | None:
         if not (stream := self.streams.get(cam_name)):
             return
         stream.start()
@@ -207,8 +209,8 @@ class SnapshotManager:
                 os.remove(temp_path)
             cmd[-1] = temp_path
             ffmpeg = Popen(cmd, stderr=PIPE)
-            setattr(ffmpeg, "_wyze_snapshot_temp_path", temp_path)
-            setattr(ffmpeg, "_wyze_snapshot_final_path", final_path)
+            ffmpeg._wyze_snapshot_temp_path = temp_path
+            ffmpeg._wyze_snapshot_final_path = final_path
             self.rtsp_snapshots[cam_name] = ffmpeg
         return ffmpeg
 
@@ -233,16 +235,16 @@ class SnapshotManager:
             try:
                 _, stderr_output = ffmpeg.communicate(timeout=snapshot_timeout)
                 if ffmpeg.returncode == 0 and os.path.getsize(temp_path) > 0:
-                    if _finalize_snapshot_output(
-                        cam_name, temp_path, final_path, stderr_output
-                    ):
+                    if _finalize_snapshot_output(cam_name, temp_path, final_path, stderr_output):
                         return True
                     return False
             except TimeoutExpired:
                 timed_out = True
                 suffix = " without frame skip" if not skip_early_frames else ""
                 logger.info(f"❗ [{cam_name}] Snapshot timed out{suffix}")
-            except Exception as ex:
+            except (
+                Exception
+            ) as ex:  # ffmpeg subprocess + file IO can raise various errors; snapshot failure must not crash the stream
                 logger.error(f"❗ [{cam_name}] [{type(ex).__name__}] {ex}")
             finally:
                 if ffmpeg.poll() is None:
@@ -268,10 +270,7 @@ class SnapshotManager:
             if alternate_alias not in aliases:
                 aliases.append(alternate_alias)
             aliases.extend(a for a in RECOVERY_ALIASES.get(cam_name, []) if a not in aliases)
-            return any(
-                write_native_snapshot(alias, cam_name, warn_on_failure=False)
-                for alias in aliases
-            )
+            return any(write_native_snapshot(alias, cam_name, warn_on_failure=False) for alias in aliases)
         info = stream.get_info()
         if require_selected and not info.get("native_selected"):
             return False
@@ -294,9 +293,7 @@ class SnapshotManager:
                 else:
                     should_preload = True
                     self.native_preloads.discard(candidate_alias)
-                    logger.info(
-                        f"♻️ [{cam_name}] Re-preloading stale native alias {candidate_alias}"
-                    )
+                    logger.info(f"♻️ [{cam_name}] Re-preloading stale native alias {candidate_alias}")
 
                 if should_preload:
                     preload = preload_native_stream(candidate_alias)

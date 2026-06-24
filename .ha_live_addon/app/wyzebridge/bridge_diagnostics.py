@@ -52,9 +52,7 @@ def whep_proxy_probe(stream_name: str | None, timeout: float = 1.5) -> dict:
             "reachable": None,
             "error": "stream parameter required",
         }
-    probe = _probe_json(
-        f"{listener}/status/{quote(stream_name, safe='')}", timeout=timeout
-    )
+    probe = _probe_json(f"{listener}/status/{quote(stream_name, safe='')}", timeout=timeout)
     probe["listener"] = listener
     return probe
 
@@ -70,9 +68,7 @@ def mediamtx_probe(stream_name: str | None, timeout: float = 1.5) -> dict:
         }
 
     if stream_name:
-        probe = _probe_json(
-            f"{listener}/v3/paths/get/{quote(stream_name, safe='')}", timeout=timeout
-        )
+        probe = _probe_json(f"{listener}/v3/paths/get/{quote(stream_name, safe='')}", timeout=timeout)
     else:
         probe = _probe_json(f"{listener}/v3/paths/list", timeout=timeout)
     probe["listener"] = listener
@@ -93,9 +89,7 @@ def _tail_file(path: str, max_lines: int = 160) -> dict:
     return result
 
 
-def collect_bridge_diagnostics(
-    stream_name: str | None = None, stream_info: dict | None = None
-) -> dict:
+def collect_bridge_diagnostics(stream_name: str | None = None, stream_info: dict | None = None) -> dict:
     diagnostics = {
         "stream": stream_name,
         "whep_proxy": whep_proxy_probe(stream_name),

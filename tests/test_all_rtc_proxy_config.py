@@ -5,13 +5,11 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
-from wyzecam.api_models import WyzeCamera
 import wyzebridge.wyze_api as wyze_api_module
 from wyzebridge.wyze_api import WyzeApi
+from wyzecam.api_models import WyzeCamera
 
 
 def make_camera(model: str, nickname: str) -> WyzeCamera:
@@ -44,9 +42,7 @@ class TestAllRTCProxyConfig(unittest.TestCase):
             "signalingUrl": "wss://signal.example/ws",
             "ClientId": "phone-123",
             "signalToken": "token-abc",
-            "servers": [
-                {"urls": ["stun:stun.example:3478"], "username": "u", "credential": "c"}
-            ],
+            "servers": [{"urls": ["stun:stun.example:3478"], "username": "u", "credential": "c"}],
         }
 
         with (

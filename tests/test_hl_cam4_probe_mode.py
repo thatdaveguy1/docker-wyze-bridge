@@ -10,12 +10,10 @@ import unittest
 from ctypes import c_uint32
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
-from wyzecam.api_models import WyzeAccount, WyzeCamera
 from wyzecam import iotc as iotc_module
+from wyzecam.api_models import WyzeAccount, WyzeCamera
 from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
 
 
@@ -113,12 +111,8 @@ class TestHlCam4ProbeMode(unittest.TestCase):
 
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
-            ) as connect_parallel,
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
-            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0) as connect_parallel,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0) as connect_ex,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -135,12 +129,8 @@ class TestHlCam4ProbeMode(unittest.TestCase):
 
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
-            ) as connect_parallel,
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
-            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0) as connect_parallel,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0) as connect_ex,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -153,18 +143,12 @@ class TestHlCam4ProbeMode(unittest.TestCase):
         connect_ex.assert_not_called()
 
     def test_hl_cam3p_substream_uses_parallel_connect(self):
-        session = WyzeIOTCSession(
-            FakeTutkLib(), make_account(), make_camera("HL_CAM3P"), substream=True
-        )
+        session = WyzeIOTCSession(FakeTutkLib(), make_account(), make_camera("HL_CAM3P"), substream=True)
 
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0
-            ) as connect_parallel,
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0
-            ) as connect_ex,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_parallel", return_value=0) as connect_parallel,
+            patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0) as connect_ex,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -260,9 +244,7 @@ class TestHlCam4ProbeMode(unittest.TestCase):
                 release_connect.set()
                 thread.join(timeout=1)
 
-        self.assertFalse(
-            thread.is_alive(), "watchdog should release wedged parallel connect"
-        )
+        self.assertFalse(thread.is_alive(), "watchdog should release wedged parallel connect")
         self.assertEqual(stop_by_sid.call_count, 1)
         self.assertEqual(len(errors), 1)
         self.assertIsInstance(errors[0], iotc_module.tutk.TutkError)
@@ -274,9 +256,7 @@ class TestHlCam4ProbeMode(unittest.TestCase):
         with (
             patch("wyzecam.iotc.tutk.iotc_get_session_id", return_value=0),
             patch("wyzecam.iotc.tutk.iotc_connect_by_uid_ex", return_value=0),
-            patch(
-                "wyzecam.iotc.tutk.iotc_connect_stop_by_session_id", return_value=0
-            ) as stop_by_sid,
+            patch("wyzecam.iotc.tutk.iotc_connect_stop_by_session_id", return_value=0) as stop_by_sid,
             patch("wyzecam.iotc.tutk.av_client_start", return_value=0),
             patch("wyzecam.iotc.tutk.av_client_set_recv_buf_size", return_value=None),
             patch.object(session, "session_check") as session_check,
@@ -298,11 +278,7 @@ class TestHlCam4ProbeMode(unittest.TestCase):
             time.sleep(0.1)
 
         stop_by_sid.assert_not_called()
-        result_events = [
-            event
-            for event in self.tutk_trace_events(log_info)
-            if event["event"] == "connect_result"
-        ]
+        result_events = [event for event in self.tutk_trace_events(log_info) if event["event"] == "connect_result"]
         self.assertEqual(len(result_events), 1)
         self.assertEqual(result_events[0]["attempt_no"], 1)
         self.assertEqual(result_events[0]["connect_mode"], "dtls_ex")
@@ -359,17 +335,11 @@ class TestHlCam4ProbeMode(unittest.TestCase):
 
         self.assertEqual(attempts["count"], 3)
         self.assertGreaterEqual(stop_by_sid.call_count, 2)
-        result_events = [
-            event
-            for event in self.tutk_trace_events(log_info)
-            if event["event"] == "connect_result"
-        ]
+        result_events = [event for event in self.tutk_trace_events(log_info) if event["event"] == "connect_result"]
         self.assertEqual([event["attempt_no"] for event in result_events], [1, 2, 3])
         self.assertEqual([event["max_retries"] for event in result_events], [3, 3, 3])
         self.assertEqual([event["session_id"] for event in result_events], [-27, -27, 0])
-        self.assertEqual(
-            [event["watchdog_fired"] for event in result_events], [True, True, False]
-        )
+        self.assertEqual([event["watchdog_fired"] for event in result_events], [True, True, False])
 
     def test_tutk_trace_is_gated_by_stream_name(self):
         camera = make_camera("HL_CAM4")
@@ -377,17 +347,18 @@ class TestHlCam4ProbeMode(unittest.TestCase):
         with (
             patch.dict(os.environ, {"TUTK_TRACE_STREAM": ""}, clear=False),
             patch.object(iotc_module.logger, "info") as log_info,
-            patch("builtins.print") as print_mock,
+            patch.object(iotc_module.logger, "debug") as log_debug,
         ):
             iotc_module._log_tutk_trace(camera, "connect_start", substream=False)
 
         log_info.assert_not_called()
-        print_mock.assert_called_once()
+        log_debug.assert_called_once()
+        self.assertIn("TUTK_TRACE_GATE", log_debug.call_args[0][0])
 
         with (
             patch.dict(os.environ, {"TUTK_TRACE_STREAM": "north-yard"}, clear=False),
             patch.object(iotc_module.logger, "info") as log_info,
-            patch("builtins.print") as print_mock,
+            patch.object(iotc_module.logger, "debug") as log_debug,
         ):
             iotc_module._log_tutk_trace(
                 camera,
@@ -401,9 +372,8 @@ class TestHlCam4ProbeMode(unittest.TestCase):
         self.assertIn("[TUTK_TRACE]", trace)
         self.assertIn('"camera": "north-yard"', trace)
         self.assertIn('"event": "connect_start"', trace)
-        self.assertEqual(print_mock.call_count, 2)
-        self.assertIn("[TUTK_TRACE_GATE]", print_mock.call_args_list[0].args[0])
-        self.assertEqual(print_mock.call_args_list[1].args[0], trace)
+        self.assertEqual(log_debug.call_count, 1)
+        self.assertIn("TUTK_TRACE_GATE", log_debug.call_args_list[0].args[0])
 
 
 if __name__ == "__main__":

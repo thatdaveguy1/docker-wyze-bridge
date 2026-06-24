@@ -4,7 +4,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 PROBE = ROOT / "scripts" / "ha_north_yard_live_probe.sh"
 

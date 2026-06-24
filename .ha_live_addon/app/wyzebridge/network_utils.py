@@ -5,12 +5,15 @@ route parsing, TUTK library host scanning, outbound IP detection) separated
 from Flask route handlers. frontend.py imports these for the /health/details
 route.
 """
+
 import os
 import re
 import socket
 import time
 from functools import lru_cache
 from urllib.parse import urlsplit
+
+from wyzebridge.bridge_utils import truthy
 
 WYZE_DNS_URLS = (
     "https://auth-prod.api.wyze.com",
@@ -30,7 +33,7 @@ HOSTNAME_PATTERN = re.compile(rb"(?<![A-Za-z0-9-])([A-Za-z0-9-]+(?:\.[A-Za-z0-9-
 
 
 def _truthy_query_value(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+    return truthy(value)
 
 
 def _parse_resolv_conf(path: str = "/etc/resolv.conf") -> dict:
@@ -118,9 +121,7 @@ def _tutk_library_hosts() -> tuple[str, ...]:
             continue
         for match in HOSTNAME_PATTERN.finditer(data):
             host = match.group(1).decode("ascii", "ignore").lower().strip(".")
-            if _is_plausible_hostname(host) and any(
-                keyword in host for keyword in TUTK_HOST_KEYWORDS
-            ):
+            if _is_plausible_hostname(host) and any(keyword in host for keyword in TUTK_HOST_KEYWORDS):
                 hosts.add(host)
     return tuple(sorted(hosts))
 

@@ -1,7 +1,6 @@
 import json
 import time
 from struct import pack, unpack
-from typing import Optional
 
 from . import tutk
 from .protocol_core import TutkWyzeProtocolMessage, encode
@@ -16,7 +15,7 @@ class K10000ConnectRequest(TutkWyzeProtocolMessage):
     bytes for the client to sign with the 'enr' of the camera.
     """
 
-    def __init__(self, mac: Optional[str]):
+    def __init__(self, mac: str | None):
         """Construct a new K10000ConnectRequest"""
         super().__init__(10000)
         self.mac = mac
@@ -66,9 +65,7 @@ class K10002ConnectAuth(TutkWyzeProtocolMessage):
         """
         super().__init__(10002)
 
-        assert len(challenge_response) == 16, (
-            "expected challenge response to be 16 bytes long"
-        )
+        assert len(challenge_response) == 16, "expected challenge response to be 16 bytes long"
 
         if len(mac) < 4:
             mac += "1234"
@@ -106,9 +103,7 @@ class K10006ConnectUserAuth(TutkWyzeProtocolMessage):
     ) -> None:
         super().__init__(10006)
 
-        assert len(challenge_response) == 16, (
-            "expected challenge response to be 16 bytes long"
-        )
+        assert len(challenge_response) == 16, "expected challenge response to be 16 bytes long"
 
         if len(phone_id) < 4:
             phone_id += "1234"
@@ -169,9 +164,7 @@ class K10008ConnectUserAuth(TutkWyzeProtocolMessage):
         """
         super().__init__(10008)
 
-        assert len(challenge_response) == 16, (
-            "expected challenge response to be 16 bytes long"
-        )
+        assert len(challenge_response) == 16, "expected challenge response to be 16 bytes long"
 
         if len(phone_id) < 4:
             phone_id += "1234"
@@ -382,9 +375,7 @@ class K10056SetResolvingBit(TutkWyzeProtocolMessage):
     This is sent automatically after the authentication handshake completes successfully.
     """
 
-    def __init__(
-        self, frame_size=tutk.FRAME_SIZE_1080P, bitrate=tutk.BITRATE_HD, fps: int = 0
-    ):
+    def __init__(self, frame_size=tutk.FRAME_SIZE_1080P, bitrate=tutk.BITRATE_HD, fps: int = 0):
         """
         Construct a K10056SetResolvingBit message, with a given frame size and bitrate.
 
@@ -423,9 +414,7 @@ class K10052DBSetResolvingBit(TutkWyzeProtocolMessage):
     This is sent automatically after the authentication handshake completes successfully.
     """
 
-    def __init__(
-        self, frame_size=tutk.FRAME_SIZE_1080P, bitrate=tutk.BITRATE_HD, fps: int = 0
-    ):
+    def __init__(self, frame_size=tutk.FRAME_SIZE_1080P, bitrate=tutk.BITRATE_HD, fps: int = 0):
         """
         Construct a K10052DBSetResolvingBit message, with a given frame size and bitrate.
 

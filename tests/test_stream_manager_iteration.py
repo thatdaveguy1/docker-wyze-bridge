@@ -5,9 +5,7 @@ import sys
 import unittest
 from types import SimpleNamespace
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
 from wyzebridge.stream_manager import StreamManager
 

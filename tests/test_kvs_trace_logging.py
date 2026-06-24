@@ -7,14 +7,12 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
-import wyzecam.api as wyzecam_api_module
-from wyzecam.api_models import WyzeCamera
 import wyzebridge.wyze_api as wyze_api_module
+import wyzecam.api as wyzecam_api_module
 from wyzebridge.wyze_api import WyzeApi
+from wyzecam.api_models import WyzeCamera
 
 
 def make_camera(model: str = "HL_CAM4", nickname: str = "North Yard") -> WyzeCamera:
@@ -131,9 +129,7 @@ class TestKVSTraceLogging(unittest.TestCase):
         self.assertTrue(config["substream"])
         messages = [call.args[0] for call in log_info.call_args_list]
         raw_trace = next(message for message in messages if '"stage": "raw_proxy_params"' in message)
-        derived_trace = next(
-            message for message in messages if '"stage": "derived_kvs_config"' in message
-        )
+        derived_trace = next(message for message in messages if '"stage": "derived_kvs_config"' in message)
         self.assertIn('"requested_quality": "sd30"', raw_trace)
         self.assertIn('"camera_name": "north-yard"', derived_trace)
         self.assertIn('"stream_id": "north-yard-sub"', derived_trace)

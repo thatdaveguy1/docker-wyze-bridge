@@ -10,6 +10,7 @@ import select
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_mqtt_state
 
+
 class RtspEvent:
     """
     Reads from the `/tmp/mtx_event` named pipe and logs events.
@@ -28,7 +29,7 @@ class RtspEvent:
         if self.pipe:
             return
         with contextlib.suppress(FileExistsError):
-            os.mkfifo(self.FIFO) # type: ignore (this is defined in Linux)
+            os.mkfifo(self.FIFO)  # type: ignore (this is defined in Linux)
         self.pipe = os.open(self.FIFO, os.O_RDWR)
         os.set_blocking(self.pipe, False)
 
@@ -42,7 +43,9 @@ class RtspEvent:
             self.pipe = 0
             if ex.errno != errno.EBADF:
                 logger.error(ex)
-        except Exception as ex:
+        except (
+            Exception
+        ) as ex:  # pipe read/decode can raise UnicodeDecodeError or other unexpected errors; log and continue
             logger.error(f"‼️ Error reading from pipe: {ex}")
 
     def process_data(self, data: str):

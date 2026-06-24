@@ -129,6 +129,23 @@ def load_wyze_api_module(token_path: str):
     logging_module = types.ModuleType("wyzebridge.logging")
     logging_module.logger = DummyLogger()
 
+    preview_validation_module = types.ModuleType("wyzebridge.preview_validation")
+    preview_validation_module.preview_bytes_are_valid_image = lambda *a, **k: True
+    preview_validation_module.preview_file_is_image = lambda *a, **k: True
+    preview_validation_module.preview_payload_matches_existing = lambda *a, **k: False
+    preview_validation_module.record_preview_hash = lambda *a, **k: None
+
+    wyze_api_helpers_module = types.ModuleType("wyzebridge.wyze_api_helpers")
+    wyze_api_helpers_module.cached = lambda func: func
+    wyze_api_helpers_module.authenticated = lambda func: func
+    wyze_api_helpers_module.sanitize_url = lambda *a, **k: ""
+    wyze_api_helpers_module.log_kvs_trace = lambda *a, **k: None
+    wyze_api_helpers_module.url_timestamp = lambda *a, **k: ""
+    wyze_api_helpers_module.valid_s3_url = lambda *a, **k: False
+    wyze_api_helpers_module.filter_cams = lambda *a, **k: []
+    wyze_api_helpers_module.pickle_dump = lambda *a, **k: None
+    wyze_api_helpers_module.parse_token = lambda *a, **k: None
+
     module_name = "test_wyzebridge_wyze_api"
     module_path = pathlib.Path(__file__).resolve().parent.parent / "app" / "wyzebridge" / "wyze_api.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -144,6 +161,8 @@ def load_wyze_api_module(token_path: str):
         "wyzebridge.bridge_utils": bridge_utils,
         "wyzebridge.config": config_module,
         "wyzebridge.logging": logging_module,
+        "wyzebridge.preview_validation": preview_validation_module,
+        "wyzebridge.wyze_api_helpers": wyze_api_helpers_module,
     }
     with patch.dict(sys.modules, fake_modules):
         sys.modules.pop(module_name, None)

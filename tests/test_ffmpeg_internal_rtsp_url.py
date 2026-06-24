@@ -5,9 +5,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
 from wyzebridge.ffmpeg import get_ffmpeg_cmd, internal_rtsp_url
 

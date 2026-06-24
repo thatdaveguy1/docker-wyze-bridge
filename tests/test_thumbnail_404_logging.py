@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-import requests
 from requests.exceptions import HTTPError
 
 try:

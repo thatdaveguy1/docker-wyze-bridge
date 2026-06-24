@@ -5,7 +5,7 @@ import sys
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 requests_stub = types.ModuleType("requests")
 requests_exceptions = types.ModuleType("requests.exceptions")
@@ -14,7 +14,7 @@ requests_stub.ConnectionError = Exception
 requests_stub.HTTPError = Exception
 requests_stub.PreparedRequest = object
 requests_stub.Response = object
-requests_stub.Session = Mock
+requests_stub.Session = MagicMock
 requests_stub.get = Mock()
 requests_stub.post = Mock()
 requests_stub.put = Mock()
@@ -22,8 +22,8 @@ requests_exceptions.ConnectionError = Exception
 requests_exceptions.HTTPError = Exception
 requests_exceptions.RequestException = Exception
 requests_stub.exceptions = requests_exceptions
-sys.modules.setdefault("requests", requests_stub)
-sys.modules.setdefault("requests.exceptions", requests_exceptions)
+sys.modules["requests"] = requests_stub
+sys.modules["requests.exceptions"] = requests_exceptions
 
 sys.modules.setdefault(
     "dotenv",
@@ -38,6 +38,11 @@ fake_paho_mqtt_publish = types.ModuleType("paho.mqtt.publish")
 fake_paho.mqtt = fake_paho_mqtt
 fake_paho_mqtt.client = fake_paho_mqtt_client
 fake_paho_mqtt.publish = fake_paho_mqtt_publish
+fake_paho_mqtt_client.Client = Mock
+fake_paho_mqtt_client.CallbackAPIVersion = Mock
+fake_paho_mqtt_client.MQTTv311 = 3
+fake_paho_mqtt_client.MQTTv5 = 5
+fake_paho_mqtt_publish.single = Mock()
 sys.modules.setdefault("paho", fake_paho)
 sys.modules.setdefault("paho.mqtt", fake_paho_mqtt)
 sys.modules.setdefault("paho.mqtt.client", fake_paho_mqtt_client)
@@ -48,12 +53,8 @@ fake_wyzecam_iotc.WyzeIOTC = object
 fake_wyzecam_iotc.WyzeIOTCSession = object
 sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
-fake_wyzecam_tutk = sys.modules.setdefault(
-    "wyzecam.tutk", types.ModuleType("wyzecam.tutk")
-)
-fake_wyzecam_tutk_tutk = sys.modules.setdefault(
-    "wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk")
-)
+fake_wyzecam_tutk = sys.modules.setdefault("wyzecam.tutk", types.ModuleType("wyzecam.tutk"))
+fake_wyzecam_tutk_tutk = sys.modules.setdefault("wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk"))
 fake_wyzecam_tutk_protocol = sys.modules.setdefault(
     "wyzecam.tutk.tutk_protocol", types.ModuleType("wyzecam.tutk.tutk_protocol")
 )
@@ -104,6 +105,9 @@ for module_name in list(sys.modules):
     if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
         del sys.modules[module_name]
 
+import wyzebridge.stream_manager as stream_manager_module
+import wyzebridge.wyze_control as wyze_control_module
+import wyzebridge.wyze_stream as wyze_stream_module
 from wyzebridge.stream_manager import StreamManager
 from wyzebridge.wyze_control import motion_alarm
 from wyzebridge.wyze_events import WyzeEvents
@@ -170,8 +174,8 @@ class TestMotionMQTT(unittest.TestCase):
         }
 
         with (
-            patch("wyzebridge.wyze_control.pull_last_image"),
-            patch("wyzebridge.wyze_control.publish_topic") as mock_publish_topic,
+            patch.object(wyze_control_module, "pull_last_image"),
+            patch.object(wyze_control_module, "publish_topic") as mock_publish_topic,
         ):
             motion_alarm(cam)
 
@@ -188,8 +192,8 @@ class TestMotionMQTT(unittest.TestCase):
         }
 
         with (
-            patch("wyzebridge.wyze_control.pull_last_image"),
-            patch("wyzebridge.wyze_control.publish_topic") as mock_publish_topic,
+            patch.object(wyze_control_module, "pull_last_image"),
+            patch.object(wyze_control_module, "publish_topic") as mock_publish_topic,
         ):
             motion_alarm(cam)
 
@@ -233,11 +237,11 @@ class TestMotionMQTT(unittest.TestCase):
                 manager.stop_flag = True
 
         with (
-            patch("wyzebridge.stream_manager.cam_control", return_value=None),
-            patch("wyzebridge.stream_manager.RtspEvent", return_value=StopAfterFirstRead()),
-            patch("wyzebridge.stream_manager.WyzeEvents", return_value=None),
-            patch("wyzebridge.stream_manager.StreamManager.snap_all"),
-            patch("wyzebridge.stream_manager.StreamManager.active_streams", return_value=[]),
+            patch.object(stream_manager_module, "cam_control", return_value=None),
+            patch.object(stream_manager_module, "RtspEvent", return_value=StopAfterFirstRead()),
+            patch.object(stream_manager_module, "WyzeEvents", return_value=None),
+            patch.object(stream_manager_module.StreamManager, "snap_all"),
+            patch.object(stream_manager_module.StreamManager, "active_streams", return_value=[]),
         ):
             manager.monitor_streams(Mock())
 
@@ -251,11 +255,15 @@ class TestMotionMQTT(unittest.TestCase):
                 manager.stop_flag = True
 
         with (
-            patch("wyzebridge.stream_manager.cam_control", return_value=None),
-            patch("wyzebridge.stream_manager.RtspEvent", return_value=StopImmediately()),
-            patch("wyzebridge.stream_manager.WyzeEvents", side_effect=AssertionError("WyzeEvents should not be constructed without bridge streams")),
-            patch("wyzebridge.stream_manager.StreamManager.snap_all"),
-            patch("wyzebridge.stream_manager.StreamManager.active_streams", return_value=[]),
+            patch.object(stream_manager_module, "cam_control", return_value=None),
+            patch.object(stream_manager_module, "RtspEvent", return_value=StopImmediately()),
+            patch.object(
+                stream_manager_module,
+                "WyzeEvents",
+                side_effect=AssertionError("WyzeEvents should not be constructed without bridge streams"),
+            ),
+            patch.object(stream_manager_module.StreamManager, "snap_all"),
+            patch.object(stream_manager_module.StreamManager, "active_streams", return_value=[]),
         ):
             manager.monitor_streams(Mock())
 
@@ -263,7 +271,7 @@ class TestMotionMQTT(unittest.TestCase):
         user = SimpleNamespace()
         camera = make_camera(name_uri="deck", mac="aa1122334455")
 
-        with patch("wyzebridge.wyze_stream.publish_discovery"):
+        with patch.object(wyze_stream_module, "publish_discovery"):
             stream = WyzeStream(user, DummyApi(), camera, make_options())
 
         stream.state = StreamStatus.CONNECTED
@@ -271,14 +279,12 @@ class TestMotionMQTT(unittest.TestCase):
         stream.motion_ts = 10
 
         with (
-            patch("wyzebridge.wyze_stream.publish_messages") as mock_publish_messages,
-            patch("wyzebridge.wyze_stream.time", return_value=31),
+            patch.object(wyze_stream_module, "publish_messages") as mock_publish_messages,
+            patch.object(wyze_stream_module, "time", return_value=31),
         ):
             self.assertFalse(stream.motion)
 
-        mock_publish_messages.assert_called_once_with(
-            [("wyzebridge/deck/motion", 2, 0, True)]
-        )
+        mock_publish_messages.assert_called_once_with([("wyzebridge/deck/motion", 2, 0, True)])
 
 
 if __name__ == "__main__":

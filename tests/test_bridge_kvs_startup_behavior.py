@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 
+import importlib
 import pathlib
 import sys
-import unittest
-import importlib
 import types
+import unittest
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
-sys.modules.setdefault("yaml", types.ModuleType("yaml"))
+_yaml_stub = types.ModuleType("yaml")
+_yaml_stub.safe_load = lambda *a, **k: {}
+_yaml_stub.safe_dump = lambda *a, **k: None
+_yaml_stub.dump = lambda *a, **k: None
+sys.modules.setdefault("yaml", _yaml_stub)
 sys.modules.setdefault("xxtea", types.ModuleType("xxtea"))
 
 fake_wyzecam_iotc = types.ModuleType("wyzecam.iotc")
@@ -72,6 +74,7 @@ def reset_wyzecam_modules():
         if module_name == "wyzecam" or module_name.startswith("wyzecam."):
             if module_name not in STUBBED_WYZECAM_MODULES:
                 del sys.modules[module_name]
+
 
 def make_camera(model: str = "HL_CAM4", nickname: str = "North Yard"):
     return SimpleNamespace(
@@ -199,9 +202,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.camera_hd_supported = lambda camera: True
         bridge.camera_sd_supported = lambda camera: True
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch("wyze_bridge.get_camera_setting", side_effect=lambda _cam, _key, default="": default),
@@ -232,9 +233,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
             WyzeBridge = importlib.import_module("wyze_bridge").WyzeBridge
 
         bridge = WyzeBridge.__new__(WyzeBridge)
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         def saved_setting(_cam, key, default=""):
             return {"hd": True, "sd": False}.get(key, default)
@@ -261,9 +260,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
             WyzeBridge = importlib.import_module("wyze_bridge").WyzeBridge
 
         bridge = WyzeBridge.__new__(WyzeBridge)
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch("wyze_bridge.get_camera_setting", side_effect=lambda _cam, _key, default="": default),
@@ -284,9 +281,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
             WyzeBridge = importlib.import_module("wyze_bridge").WyzeBridge
 
         bridge = WyzeBridge.__new__(WyzeBridge)
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch("wyze_bridge.get_camera_setting", side_effect=lambda _cam, _key, default="": default),
@@ -316,9 +311,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
             WyzeBridge = importlib.import_module("wyze_bridge").WyzeBridge
 
         bridge = WyzeBridge.__new__(WyzeBridge)
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch("wyze_bridge.get_camera_setting", side_effect=lambda _cam, _key, default="": default),
@@ -352,9 +345,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.camera_hd_supported = lambda camera: True
         bridge.camera_sd_supported = lambda camera: True
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch(
@@ -392,9 +383,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.camera_hd_supported = lambda camera: True
         bridge.camera_sd_supported = lambda camera: True
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         with (
             patch(
@@ -435,16 +424,16 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.camera_hd_supported = lambda camera: True
         bridge.camera_sd_supported = lambda camera: True
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         def fake_broken_native_stream_info(camera, substream=False):
             info = fake_native_stream_info(camera, substream=substream)
             if substream:
                 info["native_selected"] = False
                 info["native_alias_ready"] = False
-                info["native_reason"] = "HL_CAM3P validated on native go2rtc for the SD feed; go2rtc sidecar is not reachable"
+                info["native_reason"] = (
+                    "HL_CAM3P validated on native go2rtc for the SD feed; go2rtc sidecar is not reachable"
+                )
                 info["snapshot_source"] = "rtsp"
             return info
 
@@ -476,9 +465,7 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.camera_hd_supported = lambda camera: True
         bridge.camera_sd_supported = lambda camera: True
-        bridge.camera_feed_resolution = (
-            lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
-        )
+        bridge.camera_feed_resolution = lambda camera, feed: "2560x1440" if feed == "hd" else "640x360"
 
         def fake_dual_native_stream_info(camera, substream=False):
             info = fake_native_stream_info(camera, substream=substream)
@@ -509,7 +496,9 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
         bridge.api = SimpleNamespace(
             get_user=lambda: SimpleNamespace(email="test@example.com"),
             filtered_cams=lambda: [make_camera()],
-            setup_mtx_proxy=lambda uri: (_ for _ in ()).throw(AssertionError("setup_mtx_proxy should not run during setup_streams")),
+            setup_mtx_proxy=lambda uri: (_ for _ in ()).throw(
+                AssertionError("setup_mtx_proxy should not run during setup_streams")
+            ),
         )
         bridge.streams = FakeStreams()
         bridge.mtx = FakeMtx()

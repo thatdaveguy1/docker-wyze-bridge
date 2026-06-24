@@ -100,9 +100,7 @@ class TestFrontendHealthDetails(unittest.TestCase):
                     "addresses": [{"family": "AF_INET", "address": "1.2.3.4"}],
                 },
             ):
-                with patch.object(
-                    network_utils_module, "_tutk_library_hosts", return_value=("m1.iotcplatform.com",)
-                ):
+                with patch.object(network_utils_module, "_tutk_library_hosts", return_value=("m1.iotcplatform.com",)):
                     snapshot = network_utils_module.network_snapshot()
 
         self.assertEqual(
@@ -147,14 +145,12 @@ class TestFrontendHealthDetails(unittest.TestCase):
                 "network_snapshot",
                 return_value={"hostname": "wyze-bridge-dev"},
             ):
-                with patch.object(frontend, "print") as mock_print:
+                with patch.object(frontend.logger, "info") as mock_info:
                     app = frontend.create_app()
                     app.testing = True
                     app.test_client()
 
-        mock_print.assert_any_call(
-            '[NETWORK_TRACE] {"hostname": "wyze-bridge-dev"}', flush=True
-        )
+        mock_info.assert_any_call('NETWORK_TRACE {"hostname": "wyze-bridge-dev"}')
 
 
 if __name__ == "__main__":

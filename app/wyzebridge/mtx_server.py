@@ -1,16 +1,14 @@
 import contextlib
-from datetime import datetime
-import math
 import os
+from datetime import datetime
 from pathlib import Path
-from signal import SIGTERM
 from subprocess import Popen
-from typing import Optional
 
 import yaml
+
+from wyzebridge.bridge_utils import env_bool
 from wyzebridge.build_config import MTX_TAG
 from wyzebridge.config import (
-    CONNECT_TIMEOUT,
     MTX_HLSVARIANT,
     MTX_READTIMEOUT,
     MTX_WRITEQUEUESIZE,
@@ -19,8 +17,8 @@ from wyzebridge.config import (
     RECORD_PATTERN,
     STUN_SERVER,
     SUBJECT_ALT_NAME,
+    connect_timeout_seconds,
 )
-from wyzebridge.bridge_utils import env_bool
 from wyzebridge.logging import logger
 
 MTX_CONFIG: str = "/app/mediamtx.yml" if Path("/app").exists() else ".runtime/mediamtx.yml"
@@ -45,10 +43,7 @@ MTX_ADDRESS_KEYS: dict[str, str] = {
 
 
 def run_on_demand_start_timeout() -> str:
-    retries = max(int(os.getenv("CONNECT_RETRIES", 3)), 1)
-    retry_delay = max(float(os.getenv("CONNECT_RETRY_DELAY", 2.0)), 0.0)
-    total_seconds = CONNECT_TIMEOUT * retries + retry_delay * max(retries - 1, 0) + 6
-    return f"{math.ceil(total_seconds)}s"
+    return f"{connect_timeout_seconds()}s"
 
 
 class MtxInterface:
@@ -70,7 +65,7 @@ class MtxInterface:
         Path(MTX_CONFIG).parent.mkdir(parents=True, exist_ok=True)
         if not Path(MTX_CONFIG).exists():
             Path(MTX_CONFIG).write_text("paths: {}\n", encoding="utf-8")
-        with open(MTX_CONFIG, "r") as f:
+        with open(MTX_CONFIG) as f:
             self.data = yaml.safe_load(f) or {}
 
     def save_config(self):
@@ -116,7 +111,7 @@ class MtxServer:
     __slots__ = "sub_process"
 
     def __init__(self) -> None:
-        self.sub_process: Optional[Popen] = None
+        self.sub_process: Popen | None = None
         self.setup_path_defaults()
 
     def setup_path_defaults(self):
@@ -128,9 +123,7 @@ class MtxServer:
             for event in {"Read", "Unread", "Ready", "NotReady", "Init"}:
                 bash_cmd = f"echo $MTX_PATH,{event}! > /tmp/mtx_event;"
                 mtx.set(f"pathDefaults.runOn{event}", f"bash -c '{bash_cmd}'")
-            mtx.set(
-                "pathDefaults.runOnDemandStartTimeout", run_on_demand_start_timeout()
-            )
+            mtx.set("pathDefaults.runOnDemandStartTimeout", run_on_demand_start_timeout())
             mtx.set("pathDefaults.runOnDemandCloseAfter", "60s")
             mtx.set("pathDefaults.recordPath", record_path)
             mtx.set("pathDefaults.recordSegmentDuration", RECORD_LENGTH)
@@ -150,7 +143,7 @@ class MtxServer:
 
             mtx.save_config()
 
-    def setup_auth(self, api: Optional[str], stream: Optional[str]):
+    def setup_auth(self, api: str | None, stream: str | None):
         administrator: dict = {
             "user": "any",
             "ips": ["127.0.0.1", "::1"],
@@ -181,9 +174,7 @@ class MtxServer:
                     client.update({"user": "wb", "pass": api})
                 else:
                     client.update({"user": "any"})
-                client.update(
-                    {"permissions": [{"action": "read"}, {"action": "playback"}]}
-                )
+                client.update({"permissions": [{"action": "read"}, {"action": "playback"}]})
                 mtx.add("authInternalUsers", client)
             if stream:
                 logger.info("[MTX] Custom stream auth enabled")
@@ -271,7 +262,7 @@ class MtxServer:
     def sub_process_alive(self) -> bool:
         return self.sub_process is not None and self.sub_process.poll() is None
 
-    def setup_webrtc(self, bridge_ip: Optional[str]):
+    def setup_webrtc(self, bridge_ip: str | None):
         if not bridge_ip:
             logger.warning("SET WB_IP to allow WEBRTC connections.")
             return
@@ -293,9 +284,7 @@ class MtxServer:
             key = "/ssl/privkey.pem"
             cert = "/ssl/fullchain.pem"
             if hass and Path(key).is_file() and Path(cert).is_file():
-                logger.info(
-                    f"[MTX] 🔐 Using existing SSL certificate from Home Assistant {key=} {cert=}"
-                )
+                logger.info(f"[MTX] 🔐 Using existing SSL certificate from Home Assistant {key=} {cert=}")
                 mtx.set("hlsServerKey", key)
                 mtx.set("hlsServerCert", cert)
                 return
@@ -310,9 +299,7 @@ class MtxServer:
 def ensure_record_path() -> str:
     record_path = RECORD_PATTERN
 
-    if "%s" in record_path or all(
-        x in record_path for x in ["%Y", "%m", "%d", "%H", "%M", "%S"]
-    ):
+    if "%s" in record_path or all(x in record_path for x in ["%Y", "%m", "%d", "%H", "%M", "%S"]):
         logger.info(f"[MTX] The computed record_path: '{record_path}' IS VALID")
     else:
         logger.warning(
@@ -321,14 +308,6 @@ def ensure_record_path() -> str:
         record_path += "_%s"
 
     return record_path
-
-
-def mtx_version() -> str:
-    try:
-        with open("/MTX_TAG", "r") as tag:
-            return tag.read().strip()
-    except FileNotFoundError:
-        return ""
 
 
 def generate_certificates(cert_path):

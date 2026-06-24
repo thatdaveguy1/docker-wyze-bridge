@@ -14,12 +14,8 @@ fake_stream_manager = types.ModuleType("wyzebridge.stream_manager")
 fake_stream_manager.StreamManager = object
 sys.modules.setdefault("wyzebridge.stream_manager", fake_stream_manager)
 
-fake_wyzecam_tutk = sys.modules.setdefault(
-    "wyzecam.tutk", types.ModuleType("wyzecam.tutk")
-)
-fake_wyzecam_tutk_tutk = sys.modules.setdefault(
-    "wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk")
-)
+fake_wyzecam_tutk = sys.modules.setdefault("wyzecam.tutk", types.ModuleType("wyzecam.tutk"))
+fake_wyzecam_tutk_tutk = sys.modules.setdefault("wyzecam.tutk.tutk", types.ModuleType("wyzecam.tutk.tutk"))
 fake_wyzecam_tutk_ioctl_mux = sys.modules.setdefault(
     "wyzecam.tutk.tutk_ioctl_mux", types.ModuleType("wyzecam.tutk.tutk_ioctl_mux")
 )

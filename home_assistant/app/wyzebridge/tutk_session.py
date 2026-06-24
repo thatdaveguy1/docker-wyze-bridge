@@ -1,21 +1,19 @@
 import contextlib
 import json
+import logging
 import traceback
-from ctypes import c_int
 from subprocess import PIPE, Popen
 from threading import Thread
-from time import time
-
-from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
-from wyzecam.tutk.tutk import TutkError
 
 from wyzebridge.bridge_utils import env_bool, env_cam
 from wyzebridge.config import MQTT_TOPIC
 from wyzebridge.ffmpeg import get_ffmpeg_cmd
-from wyzebridge.logging import logger, isDebugEnabled
+from wyzebridge.logging import logger
 from wyzebridge.mqtt import publish_messages, update_mqtt_state
 from wyzebridge.webhooks import send_webhook
 from wyzebridge.wyze_control import camera_control
+from wyzecam.iotc import WyzeIOTC, WyzeIOTCSession
+from wyzecam.tutk.tutk import TutkError
 
 
 def start_tutk_stream(uri, stream, queue, state):
@@ -27,7 +25,7 @@ def start_tutk_stream(uri, stream, queue, state):
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     # Late import to avoid circular dependency
-    from wyzebridge.wyze_stream import NET_MODE, StreamStatus
+    from wyzebridge.wyze_stream import StreamStatus
 
     # Log camera details at start
     cam = stream.camera
@@ -35,11 +33,7 @@ def start_tutk_stream(uri, stream, queue, state):
     logger.debug(f"Camera model: {cam.product_model} ({cam.model_name})")
     logger.debug(f"Camera MAC: {cam.mac}")
     logger.debug(f"Camera IP: {cam.ip}")
-    logger.debug(
-        f"Camera P2P ID: {cam.p2p_id[:20]}..."
-        if cam.p2p_id
-        else "Camera P2P ID: None"
-    )
+    logger.debug(f"Camera P2P ID: {cam.p2p_id[:20]}..." if cam.p2p_id else "Camera P2P ID: None")
     logger.debug(f"DTLS: {cam.dtls}, Parent DTLS: {cam.parent_dtls}")
     logger.debug(f"ENR: {cam.enr[:20]}..." if cam.enr else "ENR: None")
     logger.debug(f"is_2k: {cam.is_2k}, is_floodlight: {cam.is_floodlight}")
@@ -58,14 +52,10 @@ def start_tutk_stream(uri, stream, queue, state):
                 logger.debug(f"{uri}: Getting camera params...")
                 v_codec, audio = get_cam_params(sess, uri)
                 logger.debug(f"{uri}: v_codec={v_codec}, audio={audio}")
-                control_thread = (
-                    setup_control(sess, queue) if not stream.options.substream else None
-                )
+                control_thread = setup_control(sess, queue) if not stream.options.substream else None
                 audio_thread = setup_audio(sess, uri) if sess.enable_audio else None
                 logger.debug(f"{uri}: Starting ffmpeg...")
-                ffmpeg_cmd = get_ffmpeg_cmd(
-                    uri, v_codec, audio, stream.camera.is_vertical
-                )
+                ffmpeg_cmd = get_ffmpeg_cmd(uri, v_codec, audio, stream.camera.is_vertical)
                 assert state.value >= StreamStatus.CONNECTING, "Stream Stopped"
                 state.value = StreamStatus.CONNECTED
                 with Popen(ffmpeg_cmd, stdin=PIPE, stderr=None) as ffmpeg:
@@ -74,7 +64,7 @@ def start_tutk_stream(uri, stream, queue, state):
                             ffmpeg.stdin.write(frame)
 
     except TutkError as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+        trace = traceback.format_exc() if logger.isEnabledFor(logging.DEBUG) else ""
         logger.warning(f"𓁈‼️ [TUTK] {[ex.code]} {ex} {trace}")
         set_cam_offline(uri, ex, was_offline)
         if (
@@ -82,15 +72,17 @@ def start_tutk_stream(uri, stream, queue, state):
         ):  # IOTC_ER_UNLICENSE, IOTC_ER_TIMEOUT, IOTC_ER_CAN_NOT_FIND_DEVICE, IOTC_ER_DEVICE_REJECT_BY_WRONG_AUTH_KEY, IOTC_ER_DEVICE_OFFLINE
             exit_code = ex.code
     except ValueError as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+        trace = traceback.format_exc() if logger.isEnabledFor(logging.DEBUG) else ""
         logger.warning(f"𓁈⚠️ [TUTK] Error: [{type(ex).__name__}] {ex} {trace}")
         if ex.args[0] == "ENR_AUTH_FAILED":
             logger.warning("⏰ Expired ENR?")
             exit_code = -19  # IOTC_ER_CAN_NOT_FIND_DEVICE
     except BrokenPipeError:
         logger.warning("𓁈✋ [TUTK] FFMPEG stopped")
-    except Exception as ex:
-        trace = traceback.format_exc() if isDebugEnabled(logger) else ""
+    except (
+        Exception
+    ) as ex:  # catch-all after specific Tutk/Value/BrokenPipe errors; stream loop must not crash the bridge
+        trace = traceback.format_exc() if logger.isEnabledFor(logging.DEBUG) else ""
         logger.error(f"𓁈‼️ [TUTK] Exception: [{type(ex).__name__}] {ex} {trace}")
     else:
         logger.warning("𓁈🛑 [TUTK] Stream stopped")
@@ -134,9 +126,7 @@ def get_cam_params(sess: WyzeIOTCSession, uri: str) -> tuple[str, dict]:
     net_mode = check_net_mode(session_info.mode, uri)
     v_codec, fps = get_video_params(sess)
     firmware, wifi = get_camera_info(sess)
-    stream = (
-        f"{sess.preferred_bitrate}kb/s {sess.resolution} stream ({v_codec}/{fps}fps)"
-    )
+    stream = f"{sess.preferred_bitrate}kb/s {sess.resolution} stream ({v_codec}/{fps}fps)"
 
     logger.info(f"📡 Getting {stream} via {net_mode} (WiFi: {wifi}%) FW: {firmware}")
 
@@ -236,7 +226,3 @@ def set_cam_offline(uri: str, error: TutkError, was_offline: bool) -> None:
         return
 
     send_webhook("offline", uri, f"{uri} is offline")
-
-
-def is_timedout(start_time: float, timeout: int = 20) -> bool:
-    return time() - start_time > timeout if start_time else False

@@ -98,9 +98,7 @@ class TestFrontendStaticAssets(unittest.TestCase):
     def test_ingress_page_uses_ingress_prefixed_static_asset_urls(self):
         client = self.create_client()
 
-        with patch.object(
-            frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn
-        ):
+        with patch.object(frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn):
             response = client.get(
                 "/?video=1&webrtc=1",
                 headers={"X-Ingress-Path": "/api/hassio_ingress/test-token"},
@@ -125,9 +123,7 @@ class TestFrontendStaticAssets(unittest.TestCase):
     def test_webrtc_page_uses_ingress_prefixed_script_url(self):
         client = self.create_client()
 
-        with patch.object(
-            frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn
-        ):
+        with patch.object(frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn):
             response = client.get(
                 "/webrtc/deck",
                 headers={"X-Ingress-Path": "/api/hassio_ingress/test-token"},
@@ -160,8 +156,12 @@ class TestFrontendStaticAssets(unittest.TestCase):
 
     def test_webrtc_script_refreshes_signal_from_root_path(self):
         script = (pathlib.Path(__file__).resolve().parent.parent / "app" / "static" / "webrtc.js").read_text()
-        self.assertIn("new URL(`/signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}`, window.location.href)", script)
-        self.assertNotIn("new URL(`signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}`, window.location.href)", script)
+        self.assertIn(
+            "new URL(`/signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}`, window.location.href)", script
+        )
+        self.assertNotIn(
+            "new URL(`signaling/${this.signalJson.cam}?${this.whep ? 'webrtc' : 'kvs'}`, window.location.href)", script
+        )
 
 
 if __name__ == "__main__":

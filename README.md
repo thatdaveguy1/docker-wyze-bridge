@@ -15,6 +15,19 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - WebRTC/KVS-backed bridge path for modern Wyze models.
 - Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 4.3 workflows.
 
+## 5.0.0 Highlights
+
+- **WHEP proxy upstream split**: `upstream.go` (933 lines) split into 3 themed files — `upstream.go`, `upstream_sdp.go`, `upstream_websocket.go` — all in `package main` for direct test access.
+- **Code quality remediation across 199 files**: bare `except Exception` clauses replaced with typed exceptions, debug `print()` replaced with `logging`, ruff formatting applied, mypy tightened. 5,643 lines of dead code removed.
+- **go2rtc sidecar helpers**: `print()` → `logging`, typed exceptions with inline rationale, simplified producer-alias filters.
+- **Snapshot schedule extraction**: sunrise/sunset scheduling moved to new `snapshot_schedule.py` using `astral`; old `bridge_utils_sunset.py` deleted.
+- **Stream module cleanup**: unused `stream.py` Protocol stub deleted; `wyze_stream.py` simplified (71 lines removed).
+- **TUTK FFI refactoring**: `tutk_structures.py`, `tutk_ffi.py`, `tutk_ioctl_mux.py` refactored for cleaner type safety and ioctl dispatch.
+- **Tooling**: `.pre-commit-config.yaml` (ruff + mypy), `.github/workflows/quality.yml` CI, `pyproject.toml` with full lint/type/test config.
+- **New probe scripts**: `wyze_cam_smoke_test.py`, `local_camera_smoke_test.py`, `ha_backyard_snapshot_repair.sh`, shared `ffmpeg_helpers.py` and `ha_bridge_probe.sh` libraries.
+- **New tests**: 4 new test files covering camera smoke tests, uptime tests, and Reolink stability probes.
+- **Documentation**: `docs/ARCHITECTURE.md`, `CONTEXT.md`, `CONTRIBUTING.md` added for contributor onboarding.
+
 ## 4.4.0 Highlights
 
 - **Architecture refactor**: 10 monolith candidates extracted into focused modules for testability and AI-navigability. No user-facing behavior changes; all tests pass with the same pre-existing failure set.

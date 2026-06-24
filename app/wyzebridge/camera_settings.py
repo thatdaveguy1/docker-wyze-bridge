@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from wyzebridge.bridge_utils import clean_cam_name
+from wyzebridge.bridge_utils import clean_cam_name, truthy
 from wyzebridge.logging import logger
 
 SETTINGS_PATH = Path("/config/wyze_camera_settings.json")
@@ -48,7 +48,7 @@ def _normalize_cam_name(cam_name: str) -> str:
 
 
 def _normalize_bool(value) -> str:
-    return "1" if str(value).strip().lower() in {"1", "true", "yes", "on"} else ""
+    return "1" if truthy(value) else ""
 
 
 def _normalize_kbps(value) -> str:

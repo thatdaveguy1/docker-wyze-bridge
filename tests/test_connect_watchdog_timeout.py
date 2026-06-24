@@ -15,13 +15,15 @@ if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
             del sys.modules[module_name]
 
 import wyzebridge.wyze_stream as wyze_stream_module
-import wyzebridge.tutk_session as tutk_session_module
 from wyzebridge.wyze_stream import StreamStatus, WyzeStream
 
 
 class TestConnectWatchdogTimeout(unittest.TestCase):
     def test_connecting_watchdog_respects_retry_window(self):
-        stream = WyzeStream.__new__(WyzeStream)
+        class TestStream(WyzeStream):
+            pass
+
+        stream = TestStream.__new__(TestStream)
         stream.camera = SimpleNamespace(
             nickname="North Yard",
             is_battery=False,
@@ -35,8 +37,7 @@ class TestConnectWatchdogTimeout(unittest.TestCase):
         stream.stopped = False
         stream._state = c_int(StreamStatus.CONNECTING)
 
-        with patch.object(wyze_stream_module, "time", return_value=126.0), \
-             patch.object(tutk_session_module, "time", return_value=126.0):
+        with patch.object(wyze_stream_module, "time", return_value=126.0):
             state = WyzeStream.health_check(stream, should_start=False)
 
         self.assertEqual(state, StreamStatus.CONNECTING)

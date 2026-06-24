@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -99,18 +97,6 @@ func closeUpstreamSession(session *UpstreamSession) {
 	}
 }
 
-func classifyWSReadError(err error) wsCloseInfo {
-	var closeErr *websocket.CloseError
-	if errors.As(err, &closeErr) {
-		reason := strings.TrimSpace(closeErr.Text)
-		return wsCloseInfo{code: closeErr.Code, reason: reason, normal: closeErr.Code == websocket.CloseNormalClosure || closeErr.Code == websocket.CloseGoingAway}
-	}
-	if errors.Is(err, io.EOF) {
-		return wsCloseInfo{reason: "EOF"}
-	}
-	return wsCloseInfo{}
-}
-
 func shouldLogTrackEnd(err error) bool {
 	return !errors.Is(err, io.EOF)
 }
@@ -163,20 +149,6 @@ func shouldReconnectOnNormalWSClosure(state webrtc.PeerConnectionState, videoRea
 	return !videoReady
 }
 
-func closeNormalRotationWebsocket(session *UpstreamSession) {
-	if session == nil {
-		return
-	}
-
-	session.wsMu.Lock()
-	defer session.wsMu.Unlock()
-	if session.wsConn == nil {
-		return
-	}
-	_ = session.wsConn.Close()
-	session.wsConn = nil
-}
-
 func sendSignalingMessage(
 	session *UpstreamSession,
 	action string,
@@ -226,17 +198,6 @@ func generateCorrelationID(phoneID string) string {
 	return correlationID[len(correlationID)-256:]
 }
 
-func rewriteSessionLine(sdp, correlationID string) string {
-	if correlationID == "" {
-		return sdp
-	}
-	rewritten := strings.Replace(sdp, "s=-\r\n", "s="+correlationID+"\r\n", 1)
-	if rewritten != sdp {
-		return rewritten
-	}
-	return strings.Replace(sdp, "s=-\n", "s="+correlationID+"\n", 1)
-}
-
 func decodeSignalingURL(rawURL string) (string, error) {
 	return rawURL, nil
 }
@@ -268,150 +229,6 @@ func createPeerConnection(config WebRTCConfig) (*webrtc.PeerConnection, error) {
 		webrtc.WithMediaEngine(mediaEngine),
 		webrtc.WithInterceptorRegistry(interceptorRegistry),
 	).NewPeerConnection(webrtc.Configuration{ICEServers: iceServers})
-}
-
-func handleRemoteAnswer(streamID string, session *UpstreamSession, msg map[string]interface{}) error {
-	decoded, err := decodeSignalingPayload(msg)
-	if err != nil {
-		return err
-	}
-
-	var answer webrtc.SessionDescription
-	if err := json.Unmarshal(decoded, &answer); err != nil {
-		return fmt.Errorf("unmarshal SDP_ANSWER: %w", err)
-	}
-
-	if whepDebugEnabled() {
-		fmt.Println("[WHEP_PROXY] Received SDP_ANSWER for", streamID)
-	}
-
-	answer.SDP = strings.ReplaceAll(answer.SDP, "\\r\\n", "\r\n")
-	if err := session.peerConnection.SetRemoteDescription(answer); err != nil {
-		return fmt.Errorf("set remote description: %w", err)
-	}
-	session.remoteDescription = &answer
-	markAnswerReceived(session)
-
-	for _, candidate := range session.pendingCandidates {
-		if err := session.peerConnection.AddICECandidate(candidate); err != nil {
-			fmt.Println("[WHEP_PROXY] Failed to add queued ICE candidate:", err)
-		}
-	}
-	session.pendingCandidates = nil
-	return nil
-}
-
-func markAnswerReceived(session *UpstreamSession) {
-	if session == nil || session.answerReceived == nil {
-		return
-	}
-	session.answerOnce.Do(func() { close(session.answerReceived) })
-}
-
-func watchUpstreamAnswer(stream *WebRTCStream, session *UpstreamSession, timeout time.Duration) {
-	if stream == nil || session == nil || session.answerReceived == nil || timeout <= 0 {
-		return
-	}
-	go func() {
-		select {
-		case <-session.answerReceived:
-			return
-		case <-time.After(timeout):
-		}
-
-		if stream.currentUpstream() != session || stream.destroyed.Load() {
-			return
-		}
-		if session.remoteDescription != nil {
-			return
-		}
-
-		reason := fmt.Sprintf("upstream SDP answer timeout after %s", timeout)
-		log.Printf("[WHEP_PROXY] %s for %s", reason, stream.streamID)
-		traceLogf(stream.streamID, "%s", reason)
-		stream.handleUpstreamDisconnect(session, reason)
-	}()
-}
-
-func handleRemoteCandidate(streamID string, session *UpstreamSession, msg map[string]interface{}) error {
-	decoded, err := decodeSignalingPayload(msg)
-	if err != nil {
-		return err
-	}
-
-	var candidateMap map[string]interface{}
-	if err := json.Unmarshal(decoded, &candidateMap); err != nil {
-		return fmt.Errorf("unmarshal ICE_CANDIDATE: %w", err)
-	}
-
-	candidateString, ok := candidateMap["candidate"].(string)
-	if !ok || candidateString == "" {
-		return fmt.Errorf("candidate string missing")
-	}
-
-	candidate := webrtc.ICECandidateInit{Candidate: candidateString}
-	if sdpMid, ok := candidateMap["sdpMid"].(string); ok && sdpMid != "" {
-		candidate.SDPMid = &sdpMid
-	}
-	if mLineIndex, ok := candidateMap["sdpMLineIndex"].(float64); ok {
-		uint16Val := uint16(mLineIndex)
-		candidate.SDPMLineIndex = &uint16Val
-	}
-
-	if session.remoteDescription == nil {
-		session.pendingCandidates = append(session.pendingCandidates, candidate)
-		fmt.Println("[WHEP_PROXY] Queued ICE_CANDIDATE for", streamID)
-		return nil
-	}
-
-	fmt.Println("[WHEP_PROXY] Received ICE_CANDIDATE for", streamID)
-	return session.peerConnection.AddICECandidate(candidate)
-}
-
-func createAndSendOffer(streamID string, session *UpstreamSession) error {
-	if session == nil || session.peerConnection == nil {
-		return fmt.Errorf("upstream peer connection unavailable")
-	}
-	offer, err := session.peerConnection.CreateOffer(nil)
-	if err != nil {
-		return fmt.Errorf("create offer: %w", err)
-	}
-	if err := session.peerConnection.SetLocalDescription(offer); err != nil {
-		return fmt.Errorf("set local description: %w", err)
-	}
-
-	// Wait for ICE gathering to complete so the offer SDP includes local candidates.
-	// Some KVS/camera implementations expect at least one candidate before responding.
-	gatherComplete := webrtc.GatheringCompletePromise(session.peerConnection)
-	select {
-	case <-gatherComplete:
-		// done
-	case <-time.After(10 * time.Second):
-		fmt.Println("[WHEP_PROXY] ICE gathering timeout for", streamID, "; sending offer anyway")
-	}
-
-	localDescription := session.peerConnection.LocalDescription()
-	if localDescription == nil {
-		return fmt.Errorf("local description unavailable after SetLocalDescription")
-	}
-
-	envelope := map[string]interface{}{
-		"type": "offer",
-		"sdp":  rewriteSessionLine(localDescription.SDP, session.correlationID),
-	}
-	if whepDebugEnabled() {
-		if decoded, err := json.Marshal(envelope); err == nil {
-			fmt.Println("[WHEP_PROXY] SDP_OFFER payload for", streamID, string(decoded))
-		}
-		if payload, err := json.Marshal(map[string]interface{}{
-			"action":         "SDP_OFFER",
-			"messagePayload": base64.StdEncoding.EncodeToString(mustJSON(envelope)),
-			"correlationId":  session.correlationID,
-		}); err == nil {
-			fmt.Println("[WHEP_PROXY] Sending envelope for", streamID, string(payload))
-		}
-	}
-	return sendSignalingMessage(session, "SDP_OFFER", envelope, session.correlationID)
 }
 
 func establishUpstream(stream *WebRTCStream) error {
@@ -577,134 +394,7 @@ func establishUpstream(stream *WebRTCStream) error {
 		}
 	})
 
-	go func() {
-		for {
-			messageType, data, err := conn.ReadMessage()
-			if err != nil {
-				closeInfo := classifyWSReadError(err)
-				state := webrtc.PeerConnectionStateClosed
-				iceState := webrtc.ICEConnectionStateClosed
-				if session.peerConnection != nil {
-					state = session.peerConnection.ConnectionState()
-					iceState = session.peerConnection.ICEConnectionState()
-				}
-				videoReady := stream.mediaState().videoReady.Load()
-				audioReady := stream.mediaState().audioReady.Load()
-				upstreamAlive := stream.upstreamAlive.Load()
-				whepClients := stream.whepClients.Load()
-				if closeInfo.normal {
-					logNormalClose(session, stream.streamID, closeInfo, state, iceState, videoReady, audioReady, upstreamAlive, whepClients)
-					if !shouldReconnectOnNormalWSClosure(state, videoReady, audioReady) {
-						log.Printf(
-							"[WHEP_PROXY] Keeping upstream peer alive for %s after normal websocket close: peer=%s video_ready=%t audio_ready=%t",
-							stream.streamID,
-							state.String(),
-							videoReady,
-							audioReady,
-						)
-						closeNormalRotationWebsocket(session)
-						return
-					}
-				} else if closeInfo.code != 0 {
-					log.Printf("[WHEP_PROXY] Websocket closed by peer for %s: code=%d reason=%q", stream.streamID, closeInfo.code, closeInfo.reason)
-				} else if !errors.Is(err, io.EOF) {
-					log.Printf("[WHEP_PROXY] Error reading websocket message for %s: %v", stream.streamID, err)
-				} else if whepDebugEnabled() {
-					log.Printf("[WHEP_PROXY] Websocket read EOF for %s", stream.streamID)
-				}
-				stream.handleUpstreamDisconnect(session, fmt.Sprintf("websocket closed: %v", err))
-				return
-			}
-
-			if len(data) == 0 {
-				if whepDebugEnabled() {
-					log.Println("[WHEP_PROXY] Skipping empty keepalive frame")
-				}
-				continue
-			}
-
-			if whepDebugEnabled() {
-				const rawLogLen = 200
-				msgTypeStr := "other"
-				switch messageType {
-				case websocket.TextMessage:
-					msgTypeStr = "text"
-				case websocket.BinaryMessage:
-					msgTypeStr = "binary"
-				}
-				sampleLen := len(data)
-				if sampleLen > rawLogLen {
-					sampleLen = rawLogLen
-				}
-				if messageType == websocket.BinaryMessage && sampleLen > 0 {
-					fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d_hex=%s\n", msgTypeStr, len(data), sampleLen, hex.EncodeToString(data[:sampleLen]))
-				} else if sampleLen > 0 {
-					payload := string(data[:sampleLen])
-					if strings.ContainsAny(payload, "\r\n") {
-						payload = strings.ReplaceAll(strings.ReplaceAll(payload, "\r", "\\r"), "\n", "\\n")
-					}
-					fmt.Printf("[WHEP_PROXY] raw message type=%s len=%d first%d=%s\n", msgTypeStr, len(data), sampleLen, payload)
-				} else {
-					fmt.Printf("[WHEP_PROXY] raw message type=%s len=0\n", msgTypeStr)
-				}
-			}
-
-			var jsonData []byte
-			switch messageType {
-			case websocket.TextMessage:
-				jsonData = data
-			case websocket.BinaryMessage:
-				if jsonErr := json.Unmarshal(data, &(map[string]interface{}{})); jsonErr == nil {
-					jsonData = data
-				} else {
-					decoded, decErr := base64.StdEncoding.DecodeString(string(data))
-					if decErr != nil {
-						fmt.Printf("[WHEP_PROXY] Binary message: not valid JSON (%v) and base64 decode failed: %v\n", jsonErr, decErr)
-						continue
-					}
-					jsonData = decoded
-				}
-			default:
-				fmt.Printf("[WHEP_PROXY] Ignoring websocket message type %d\n", messageType)
-				continue
-			}
-
-			var msg map[string]interface{}
-			if err := json.Unmarshal(jsonData, &msg); err != nil {
-				fmt.Println("[WHEP_PROXY] Error unmarshaling signaling JSON:", err)
-				continue
-			}
-
-			msgType, _ := msg["messageType"].(string)
-			if msgType == "" {
-				msgType, _ = msg["action"].(string)
-			}
-			if msgType == "" {
-				fmt.Println("[WHEP_PROXY] Ignoring signaling message without type:", msg)
-				continue
-			}
-
-			if correlationID, _ := msg["correlationId"].(string); correlationID != "" && correlationID != session.correlationID {
-				fmt.Printf("[WHEP_PROXY] Ignoring %s for %s due to mismatched correlationId %q\n", msgType, stream.streamID, correlationID)
-				continue
-			}
-
-			switch msgType {
-			case "SDP_ANSWER":
-				if err := handleRemoteAnswer(stream.streamID, session, msg); err != nil {
-					fmt.Println("[WHEP_PROXY] Failed to handle SDP_ANSWER:", err)
-				}
-			case "ICE_CANDIDATE":
-				if err := handleRemoteCandidate(stream.streamID, session, msg); err != nil {
-					fmt.Println("[WHEP_PROXY] Failed to handle ICE_CANDIDATE:", err)
-				}
-			case "STATUS_RESPONSE":
-				fmt.Println("[WHEP_PROXY] Received STATUS_RESPONSE for", stream.streamID, msg)
-			default:
-				fmt.Println("[WHEP_PROXY] Ignoring signaling message type:", msgType)
-			}
-		}
-	}()
+	go runUpstreamMessageLoop(stream, session, conn)
 
 	if delayMs := os.Getenv("WHEP_SIGNALING_DELAY_MS"); delayMs != "" {
 		if ms, err := strconv.Atoi(delayMs); err == nil && ms > 0 {

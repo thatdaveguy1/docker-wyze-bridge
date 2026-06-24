@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 ACTIVE_PROD_SLUG = "local_docker_wyze_bridge_v4"
 

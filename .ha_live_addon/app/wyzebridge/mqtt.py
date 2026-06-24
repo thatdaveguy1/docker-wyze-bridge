@@ -3,19 +3,30 @@ import json
 from functools import wraps
 from socket import gaierror
 from time import sleep
-from typing import Optional
 
 import paho.mqtt.client
 import paho.mqtt.publish
 
-from wyzecam.api_models import WyzeCamera
-from wyzebridge.build_config import VERSION
 from wyzebridge.bridge_utils import env_bool
-from wyzebridge.config import IMG_PATH, MQTT_ENABLED, MQTT_DISCOVERY, MQTT_HOST, MQTT_PASS, MQTT_PORT, MQTT_RETRIES, MQTT_TOPIC, MQTT_USER, IMG_TYPE
+from wyzebridge.build_config import VERSION
+from wyzebridge.config import (
+    IMG_PATH,
+    IMG_TYPE,
+    MQTT_DISCOVERY,
+    MQTT_ENABLED,
+    MQTT_HOST,
+    MQTT_PASS,
+    MQTT_PORT,
+    MQTT_RETRIES,
+    MQTT_TOPIC,
+    MQTT_USER,
+)
 from wyzebridge.logging import logger
 from wyzebridge.wyze_commands import GET_CMDS, GET_PAYLOAD, PARAMS, SET_CMDS
+from wyzecam.api_models import WyzeCamera
 
 is_mqtt_active: bool = MQTT_ENABLED
+
 
 def mqtt_enabled(func):
     @wraps(func)
@@ -30,7 +41,9 @@ def mqtt_enabled(func):
                 return func(*args, **kwargs)
             except (ConnectionRefusedError, TimeoutError, gaierror) as ex:
                 logger.error(f"[MQTT] [{type(ex).__name__}] {ex}. Retrying {retry}/{MQTT_RETRIES}...")
-            except Exception as ex:
+            except (
+                Exception
+            ) as ex:  # paho-mqtt can raise various client/protocol errors; log and retry, then disable MQTT
                 logger.error(f"[MQTT] [{type(ex).__name__}] {ex}")
 
             sleep(1)
@@ -40,11 +53,12 @@ def mqtt_enabled(func):
 
     return wrapper
 
+
 @mqtt_enabled
 def publish_discovery(cam_uri: str, cam: WyzeCamera, stopped: bool = True) -> None:
     """Publish MQTT discovery message for camera."""
     base = f"{MQTT_TOPIC}/{cam_uri}/"
-    msgs = [{ "topic": f"{base}state", "payload": "stopped", "qos": 0, "retain": True}] if stopped else []
+    msgs = [{"topic": f"{base}state", "payload": "stopped", "qos": 0, "retain": True}] if stopped else []
 
     if MQTT_DISCOVERY:
         base_payload = {
@@ -72,12 +86,13 @@ def publish_discovery(cam_uri: str, cam: WyzeCamera, stopped: bool = True) -> No
                 uniq_id=f"WYZE{cam.mac}{entity.upper()}",
             )
 
-            msgs.append({ "topic": topic, "payload": json.dumps(payload), "qos": 0, "retain": True })
+            msgs.append({"topic": topic, "payload": json.dumps(payload), "qos": 0, "retain": True})
 
     publish_messages(msgs)
 
+
 @mqtt_enabled
-def mqtt_sub_topic(m_topics: list, callback) -> Optional[paho.mqtt.client.Client]:
+def mqtt_sub_topic(m_topics: list, callback) -> paho.mqtt.client.Client | None:
     """Connect to mqtt and return the client."""
 
     def on_connect(client, *_):
@@ -94,22 +109,26 @@ def mqtt_sub_topic(m_topics: list, callback) -> Optional[paho.mqtt.client.Client
     client.username_pw_set(MQTT_USER, MQTT_PASS or None)
     client.user_data_set(callback)
     client.on_connect = on_connect
-    client.will_set(f"{MQTT_TOPIC}/state", payload="offline", qos=1, retain=True) # always retain "last will" offline message 
+    client.will_set(
+        f"{MQTT_TOPIC}/state", payload="offline", qos=1, retain=True
+    )  # always retain "last will" offline message
 
     logger.info(f"[MQTT] Connecting to {MQTT_HOST}:{MQTT_PORT or 1883}")
     client.connect(MQTT_HOST, int(MQTT_PORT or 1883), 30)
-    
+
     logger.info("[MQTT] Starting")
     client.loop_start()
 
     return client
 
-def bridge_status(client: Optional[paho.mqtt.client.Client]):
+
+def bridge_status(client: paho.mqtt.client.Client | None):
     """Set bridge online if MQTT is enabled."""
     if not client:
         return
 
     client.publish(f"{MQTT_TOPIC}/state", "online", retain=False)
+
 
 @mqtt_enabled
 def publish_messages(messages: list) -> None:
@@ -120,8 +139,9 @@ def publish_messages(messages: list) -> None:
         messages,
         hostname=MQTT_HOST,
         port=int(MQTT_PORT or 1883),
-        auth=( {"username": MQTT_USER, "password": MQTT_PASS} if env_bool("MQTT_AUTH") else None),
+        auth=({"username": MQTT_USER, "password": MQTT_PASS} if env_bool("MQTT_AUTH") else None),
     )
+
 
 @mqtt_enabled
 def publish_topic(topic: str, message=None, retain=False):
@@ -132,9 +152,10 @@ def publish_topic(topic: str, message=None, retain=False):
         payload=message,
         hostname=MQTT_HOST,
         port=int(MQTT_PORT or 1883),
-        auth=( {"username": MQTT_USER, "password": MQTT_PASS} if env_bool("MQTT_AUTH") else None),
+        auth=({"username": MQTT_USER, "password": MQTT_PASS} if env_bool("MQTT_AUTH") else None),
         retain=retain,
     )
+
 
 @mqtt_enabled
 def update_mqtt_state(camera: str, state: str):
@@ -143,12 +164,14 @@ def update_mqtt_state(camera: str, state: str):
         msg.append((f"{MQTT_TOPIC}/{camera}/power", "on", 0, True))
     publish_messages(msg)
 
+
 @mqtt_enabled
 def update_preview(cam_name: str):
     with contextlib.suppress(FileNotFoundError):
         img_file = f"{IMG_PATH}{cam_name}.{IMG_TYPE}"
         with open(img_file, "rb") as img:
             publish_topic(f"{cam_name}/image", img.read(), True)
+
 
 @mqtt_enabled
 def cam_control(cams: dict, callback):
@@ -168,6 +191,7 @@ def cam_control(cams: dict, callback):
 
         return client
 
+
 def _mqtt_discovery(client, cams, msg):
     if msg.payload.decode().lower() != "online" or not cams:
         return
@@ -175,6 +199,7 @@ def _mqtt_discovery(client, cams, msg):
     bridge_status(client)
     for uri, cam in cams.items():
         publish_discovery(uri, cam, False)
+
 
 def _on_message(client, callback, msg):
     msg_topic = msg.topic.split("/")
@@ -187,6 +212,7 @@ def _on_message(client, callback, msg):
     resp = callback(cam, topic, parse_payload(msg) if include_payload else "")
     if resp.get("status") != "success":
         logger.info(f"[MQTT] {resp}")
+
 
 def parse_payload(msg):
     payload = msg.payload.decode()
@@ -201,6 +227,7 @@ def parse_payload(msg):
             payload = next(iter(json_msg.values()))
 
     return payload
+
 
 def get_entities(base_topic: str, pan_cam: bool = False, rtsp: bool = False) -> dict:
     entities = {

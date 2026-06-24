@@ -1,10 +1,10 @@
 import contextlib
 import logging
-from threading import Thread, Lock
 from collections import defaultdict
 from ctypes import CDLL, c_int, c_uint
 from queue import Empty, Queue
-from typing import Any, DefaultDict, Optional, Union
+from threading import Lock, Thread
+from typing import Any
 
 from . import tutk, tutk_protocol
 from .tutk_protocol import TutkWyzeProtocolMessage
@@ -13,6 +13,7 @@ STOP_SENTINEL = object()
 CONTROL_CHANNEL = "CONTROL"
 
 logger = logging.getLogger(__name__)
+
 
 class TutkIOCtrlFuture:
     """
@@ -30,18 +31,18 @@ class TutkIOCtrlFuture:
     def __init__(
         self,
         req: TutkWyzeProtocolMessage,
-        queue: Optional[Queue[Union[object, tuple[int, int, int, bytes]]]] = None,
-        errcode: Optional[c_int] = None,
+        queue: Queue[object | tuple[int, int, int, bytes]] | None = None,
+        errcode: c_int | None = None,
     ):
         self.req: TutkWyzeProtocolMessage = req
         self.queue = queue
         self.expected_response_code = req.expected_response_code
-        self.errcode: Optional[c_int] = errcode
-        self.io_ctl_type: Optional[int] = None
-        self.resp_protocol: Optional[int] = None
-        self.resp_data: Optional[bytes] = None
+        self.errcode: c_int | None = errcode
+        self.io_ctl_type: int | None = None
+        self.resp_protocol: int | None = None
+        self.resp_data: bytes | None = None
 
-    def result(self, block: bool = True, timeout: int = 10000) -> Optional[Any]:
+    def result(self, block: bool = True, timeout: int = 10000) -> Any | None:
         """
         Wait until the camera has responded to our message, and return the result.
 
@@ -78,6 +79,7 @@ class TutkIOCtrlFuture:
         data_str = f" resp_data={repr(self.resp_data)}" if self.resp_data else ""
         return f"<TutkIOCtlFuture req={self.req}{errcode_str}{data_str}>"
 
+
 class TutkIOCtrlMux:
     """
     An "IO Ctrl" interface for sending and receiving data over a control channel
@@ -98,9 +100,7 @@ class TutkIOCtrlMux:
     __slots__ = "tutk_platform_lib", "av_chan_id", "queues", "listener", "block"
     _context_lock = Lock()
 
-    def __init__(
-        self, tutk_platform_lib: CDLL, av_chan_id: c_int, block: bool = True
-    ) -> None:
+    def __init__(self, tutk_platform_lib: CDLL, av_chan_id: c_int, block: bool = True) -> None:
         """Initialize the mux channel.
 
         :param tutk_platform_lib: the underlying c library used to communicate with the wyze
@@ -109,12 +109,8 @@ class TutkIOCtrlMux:
         """
         self.tutk_platform_lib = tutk_platform_lib
         self.av_chan_id = av_chan_id
-        self.queues: DefaultDict[
-            Union[str, int], Queue[Union[object, tuple[int, int, int, bytes]]]
-        ] = defaultdict(Queue)
-        self.listener = TutkIOCtrlMuxListener(
-            tutk_platform_lib, av_chan_id, self.queues
-        )
+        self.queues: defaultdict[str | int, Queue[object | tuple[int, int, int, bytes]]] = defaultdict(Queue)
+        self.listener = TutkIOCtrlMuxListener(tutk_platform_lib, av_chan_id, self.queues)
         self.block = block
 
     def start_listening(self) -> None:
@@ -179,17 +175,14 @@ class TutkIOCtrlMux:
         :returns: a future promise of a response from the camera.  See [wyzecam.tutk.tutk_ioctl_mux.TutkIOCtrlFuture][]
         """
         encoded_msg = msg.encode()
-        encoded_msg_header = tutk_protocol.TutkWyzeProtocolHeader.from_buffer_copy(
-            encoded_msg[0:16]
-        )
+        encoded_msg_header = tutk_protocol.TutkWyzeProtocolHeader.from_buffer_copy(encoded_msg[0:16])
         logger.debug(f"[TUTKI] SEND {msg=}, {encoded_msg_header=}, encoded_msg={encoded_msg[16:]}")
-        errcode = tutk.av_send_io_ctrl(
-            self.tutk_platform_lib, self.av_chan_id, ctrl_type, encoded_msg
-        )
+        errcode = tutk.av_send_io_ctrl(self.tutk_platform_lib, self.av_chan_id, ctrl_type, encoded_msg)
         if errcode:
             return TutkIOCtrlFuture(msg, errcode=c_int(errcode))
 
         return TutkIOCtrlFuture(msg, self.queues[msg.expected_response_code])
+
 
 class TutkIOCtrlMuxListener(Thread):
     __slots__ = "tutk_platform_lib", "av_chan_id", "queues", "exception"
@@ -198,15 +191,13 @@ class TutkIOCtrlMuxListener(Thread):
         self,
         tutk_platform_lib: CDLL,
         av_chan_id: c_int,
-        queues: DefaultDict[
-            Union[int, str], Queue[Union[object, tuple[int, int, int, bytes]]]
-        ],
+        queues: defaultdict[int | str, Queue[object | tuple[int, int, int, bytes]]],
     ):
         super().__init__()
         self.tutk_platform_lib = tutk_platform_lib
         self.av_chan_id = av_chan_id
         self.queues = queues
-        self.exception: Optional[tutk.TutkError] = None
+        self.exception: tutk.TutkError | None = None
 
     def join(self, timeout=None):
         super().join(timeout)
@@ -223,9 +214,7 @@ class TutkIOCtrlMuxListener(Thread):
                 if control_channel_command == STOP_SENTINEL:
                     logger.debug(f"[TUTKI] No longer listening on {self.av_chan_id=}")
                     return
-            actual_len, io_ctl_type, data = tutk.av_recv_io_ctrl(
-                self.tutk_platform_lib, self.av_chan_id, timeout_ms
-            )
+            actual_len, io_ctl_type, data = tutk.av_recv_io_ctrl(self.tutk_platform_lib, self.av_chan_id, timeout_ms)
             if actual_len == tutk.AV_ER_TIMEOUT:
                 continue
             elif actual_len == tutk.AV_ER_SESSION_CLOSE_BY_REMOTE:
@@ -241,6 +230,4 @@ class TutkIOCtrlMuxListener(Thread):
             header, payload = tutk_protocol.decode(data)
             logger.debug(f"[TUTKI] RECV {header}: {repr(payload)}")
 
-            self.queues[header.code].put(
-                (actual_len, io_ctl_type, header.protocol, payload)
-            )
+            self.queues[header.code].put((actual_len, io_ctl_type, header.protocol, payload))

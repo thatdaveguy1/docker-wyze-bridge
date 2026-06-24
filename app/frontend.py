@@ -1,7 +1,9 @@
 import contextlib
 import json
+import logging
 import os
 import tempfile
+import time
 from functools import wraps
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -18,19 +20,15 @@ from flask import (
 )
 from werkzeug.exceptions import NotFound
 
-from wyzebridge.build_config import VERSION
 from wyze_bridge import WyzeBridge
 from wyzebridge import config, web_ui
 from wyzebridge.auth import WbAuth
+from wyzebridge.build_config import VERSION
+from wyzebridge.camera_settings import set_camera_stream_mode
 from wyzebridge.go2rtc import go2rtc_probe
 from wyzebridge.native_talkback import send_native_talkback
-from wyzebridge.camera_settings import set_camera_stream_mode
 from wyzebridge.network_utils import (
-    WYZE_DNS_URLS,
-    WEBRTC_SIGNAL_API,
-    TUTK_HOST_SCAN_PATHS,
     _truthy_query_value,
-    _tutk_library_hosts,
     network_snapshot,
 )
 from wyzebridge.preview_validation import (
@@ -39,6 +37,8 @@ from wyzebridge.preview_validation import (
     snapshot_hash_entry,
 )
 from wyzebridge.web_ui import url_for
+
+logger = logging.getLogger(__name__)
 
 
 def create_app():
@@ -55,14 +55,11 @@ def create_app():
     try:
         wb.start()
     except RuntimeError as ex:
-        print(ex)
-        print("Please ensure your host is up to date.")
+        logger.error(ex)
+        logger.error("Please ensure your host is up to date.")
         exit()
     if _truthy_query_value(os.getenv("NETWORK_TRACE")):
-        print(
-            f"[NETWORK_TRACE] {json.dumps(network_snapshot(), sort_keys=True)}",
-            flush=True,
-        )
+        logger.info(f"NETWORK_TRACE {json.dumps(network_snapshot(), sort_keys=True)}")
 
     def camera_catalog():
         if hasattr(wb, "camera_catalog"):
@@ -92,7 +89,7 @@ def create_app():
         }
         try:
             probe = go2rtc_probe(timeout=0.5, include_streams=bool(expected_aliases))
-        except Exception:
+        except Exception:  # go2rtc probe can fail with HTTP/timeout/JSON errors; treat as still loading
             return {"status": "loading"}, 503
         if not probe.get("api", {}).get("reachable"):
             return {"status": "loading"}, 503
@@ -186,9 +183,7 @@ def create_app():
         resp = make_response(
             render_template(
                 "index.html",
-                cam_data=web_ui.all_cams(
-                    wb.streams, wb.api.total_cams, cameras=camera_catalog()
-                ),
+                cam_data=web_ui.all_cams(wb.streams, wb.api.total_cams, cameras=camera_catalog()),
                 number_of_columns=number_of_columns,
                 refresh_period=refresh_period,
                 api=WbAuth.api,
@@ -207,9 +202,7 @@ def create_app():
         resp.set_cookie("refresh_period", str(refresh_period))
         resp.set_cookie("show_video", "1" if show_video else "")
         resp.set_cookie("video", video_format)
-        fullscreen = "fullscreen" in request.args or bool(
-            request.cookies.get("fullscreen")
-        )
+        fullscreen = "fullscreen" in request.args or bool(request.cookies.get("fullscreen"))
         resp.set_cookie("fullscreen", "1" if fullscreen else "")
         if order := request.args.get("order"):
             resp.set_cookie("camera_order", quote_plus(order))
@@ -246,7 +239,7 @@ def create_app():
     @app.route("/kvs-config/<string:cam_name>")
     @auth_required
     def kvs_config(cam_name: str):
-        if not (cam := wb.streams.get(cam_name)):
+        if not wb.streams.get(cam_name):
             return {"error": f"camera [{cam_name}] not found"}, 404
         config = wb.api.get_kvs_proxy_config(cam_name)
         if not config:
@@ -296,12 +289,14 @@ def create_app():
 
         payload = request.get_json(silent=True) or {}
         try:
-            if ({"hd_enabled", "sd_enabled", "hd_kbps", "sd_kbps"} & set(payload)):
+            if {"hd_enabled", "sd_enabled", "hd_kbps", "sd_kbps"} & set(payload):
                 config = wb.apply_camera_stream_config(camera, payload)
             elif "mode" in payload:
-                mode = str(
-                    payload.get("mode") or request.values.get("mode") or request.args.get("mode") or ""
-                ).strip().lower()
+                mode = (
+                    str(payload.get("mode") or request.values.get("mode") or request.args.get("mode") or "")
+                    .strip()
+                    .lower()
+                )
                 saved_mode = set_camera_stream_mode(camera.name_uri, mode)
                 config = wb.camera_stream_config(camera)
                 config["mode"] = saved_mode
@@ -331,8 +326,7 @@ def create_app():
         if not stream_info.get("talkback_supported"):
             return {
                 "status": "error",
-                "response": stream_info.get("talkback_reason")
-                or "Talkback is not available for this camera",
+                "response": stream_info.get("talkback_reason") or "Talkback is not available for this camera",
             }, 409
 
         alias = stream_info.get("talkback_alias") or stream_info.get("native_alias")
@@ -443,9 +437,7 @@ def create_app():
                     os.remove(img_path)
                 raise NotFound
             if exp := request.args.get("exp"):
-                created_at = snapshot_hash_entry(config.IMG_PATH, Path(img_file).stem).get(
-                    "recorded_at", 0
-                )
+                created_at = snapshot_hash_entry(config.IMG_PATH, Path(img_file).stem).get("recorded_at", 0)
                 if time.time() - created_at > int(exp):
                     raise NotFound
             return send_from_directory(config.IMG_PATH, img_file)
@@ -512,9 +504,7 @@ def create_app():
         """
         hostname = request.host
         cameras = web_ui.format_streams(wb.streams.get_all_cam_info())
-        resp = make_response(
-            render_template("m3u8.html", cameras=cameras, hostname=hostname)
-        )
+        resp = make_response(render_template("m3u8.html", cameras=cameras, hostname=hostname))
         resp.headers.set("content-type", "application/x-mpegURL")
         return resp
 

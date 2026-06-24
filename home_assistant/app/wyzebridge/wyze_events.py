@@ -9,6 +9,7 @@ from wyzebridge.mqtt import update_preview
 from wyzebridge.webhooks import send_webhook
 from wyzebridge.wyze_stream import WyzeStream
 
+
 class WyzeEvents:
     __slots__ = "api", "streams", "events", "last_check", "last_ts"
 

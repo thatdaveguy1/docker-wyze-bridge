@@ -4,21 +4,19 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Thread
-from typing import Optional
 
 from threads import AutoRemoveThread
 from wyzebridge.bridge_utils import LIVESTREAM_PLATFORMS, env_bool, env_cam
 from wyzebridge.config import IMG_PATH, IMG_TYPE, SNAPSHOT_FORMAT
 from wyzebridge.logging import logger
 
+
 def internal_rtsp_url(uri: str) -> str:
     rtsp_port = os.getenv("MTX_RTSPADDRESS", ":8554").rsplit(":", 1)[-1] or "8554"
     return f"rtsp://127.0.0.1:{rtsp_port}/{uri}"
 
 
-def get_ffmpeg_cmd(
-    uri: str, vcodec: str, audio: dict, is_vertical: bool = False
-) -> list[str]:
+def get_ffmpeg_cmd(uri: str, vcodec: str, audio: dict, is_vertical: bool = False) -> list[str]:
     """
     Return the ffmpeg cmd with options from the env.
 
@@ -97,6 +95,7 @@ def get_ffmpeg_cmd(
 
     return cmd
 
+
 def get_log_level():
     level = env_bool("FFMPEG_LOGLEVEL", "fatal").lower()
 
@@ -113,6 +112,7 @@ def get_log_level():
         return level
 
     return "warning"
+
 
 def re_encode_video(uri: str, is_vertical: bool) -> list[str]:
     """
@@ -153,9 +153,7 @@ def re_encode_video(uri: str, is_vertical: bool) -> list[str]:
     if not (env_bool("FORCE_ENCODE") or v_filter or custom_filter or filter_complex):
         return ["copy"]
 
-    logger.info(
-        f"Re-encoding using {h264_enc}{f' [{transpose=}]' if v_filter else '' }"
-    )
+    logger.info(f"Re-encoding using {h264_enc}{f' [{transpose=}]' if v_filter else ''}")
     if custom_filter:
         v_filter = [
             "-filter:v",
@@ -179,6 +177,7 @@ def re_encode_video(uri: str, is_vertical: bool) -> list[str]:
 
     return cmd
 
+
 def get_livestream_cmd(uri: str) -> str:
     flv = r"|[f=flv:flvflags=no_duration_filesize:use_fifo=1:fifo_options=attempt_recovery=1\\\:drop_pkts_on_overflow=1:onfail=abort]"
 
@@ -190,10 +189,12 @@ def get_livestream_cmd(uri: str) -> str:
 
     return ""
 
+
 purges_running = dict[str, Thread]()
 
+
 def purge_old(base_path: str, extension: str, keep_time: timedelta):
-    if purges_running.get(base_path):   # extension will always be the same, so we can just use base_path
+    if purges_running.get(base_path):  # extension will always be the same, so we can just use base_path
         logger.debug(f"[FFMPEG] Purge already running for {base_path}")
         return
 
@@ -222,12 +223,13 @@ def purge_old(base_path: str, extension: str, keep_time: timedelta):
                 logger.error(f"[FFMPEG] Error accessing {base_path}/*{extension}: {e}")
             except RecursionError as e:
                 logger.error(f"[FFMPEG] Recursion error while accessing {base_path}/*{extension}: {e}")
-        except Exception as e:
+        except Exception as e:  # purge thread must survive any unexpected error to avoid orphaning cleanup
             logger.error(f"[FFMPEG] Unexpected error in purge_old: {e}")
 
     thread = AutoRemoveThread(purges_running, base_path, target=wrapped, name=f"{base_path}_purge")
     thread.daemon = True  # Set thread as daemon
     thread.start()
+
 
 def wait_for_purges():
     logger.debug("[FFMPEG] Waiting for all purge threads to complete.")
@@ -238,17 +240,19 @@ def wait_for_purges():
     purges_running.clear()  # Clear the dictionary after waiting
     logger.debug("[FFMPEG] All purge threads have completed.")
 
+
 def file_modified(file_path: Path) -> float:
     try:
         file_stat = os.stat(file_path)
         return file_stat.st_mtime
     except FileNotFoundError:
-        pass # ignore these, someone deleted the file out from under us
+        pass  # ignore these, someone deleted the file out from under us
     except OSError as e:
         logger.error(f"[FFMPEG] Error stat {file_path}: {e}")
 
     # if an Exception occurs, we return the current time, which will never qualify for deletion
     return datetime.now().timestamp()
+
 
 def file_unlink(file_path: Path) -> bool:
     try:
@@ -256,11 +260,12 @@ def file_unlink(file_path: Path) -> bool:
         logger.debug(f"[FFMPEG] Deleted: {file_path}")
         return True
     except FileNotFoundError:
-        pass # ignore these, someone deleted the file out from under us
+        pass  # ignore these, someone deleted the file out from under us
     except OSError as e:
         logger.error(f"[FFMPEG] Error unlink {file_path}: {e}")
 
     return False
+
 
 def directory_remove_if_empty(directory: Path) -> bool:
     try:
@@ -269,12 +274,13 @@ def directory_remove_if_empty(directory: Path) -> bool:
             logger.debug(f"[FFMPEG] Deleted empty directory: {directory}")
             return True
     except FileNotFoundError:
-        pass # ignore these, someone deleted the directory out from under us
+        pass  # ignore these, someone deleted the directory out from under us
     except OSError as e:
         logger.error(f"[FFMPEG] Error rmtree {directory}: {e}")
     return False
 
-def parse_timedelta(env_key: str) -> Optional[timedelta]:
+
+def parse_timedelta(env_key: str) -> timedelta | None:
     value = env_bool(env_key)
     if not value:
         return
@@ -290,6 +296,7 @@ def parse_timedelta(env_key: str) -> Optional[timedelta]:
         return timedelta(**{time_map[unit]: amount})
     except (ValueError, TypeError):
         return
+
 
 def rtsp_snap_cmd(cam_name: str, interval: bool = False, skip_early_frames: bool = True):
     ext = IMG_TYPE

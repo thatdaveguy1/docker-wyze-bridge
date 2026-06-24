@@ -1,0 +1,77 @@
+[project]
+name = "docker-wyze-bridge"
+version = "5.0.0"
+description = "Local WebRTC/RTSP/RTMP/HLS bridge for Wyze cameras"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "Flask==3.1.*",
+    "Flask-HTTPAuth==4.8.*",
+    "paho-mqtt==2.1.*",
+    "pydantic==2.11.*",
+    "python-dotenv==1.1.*",
+    "certifi>=2024.12.0",
+    "Pillow>=10.4,<12",
+    "requests==2.32.*",
+    "PyYAML==6.0.*",
+    "xxtea==3.3.*",
+    "astral==3.*",
+    "tzlocal==5.3.*",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-timeout>=2.0",
+    "pytest-asyncio>=0.20",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "E402",   # module level import not at top (test files need sys.path setup first)
+    "B008",   # function call in default argument (used by Flask)
+    "B012",   # return inside finally (intentional in cleanup code)
+    "B028",   # no stacklevel keyword (low priority, noisy on warnings.warn)
+    "B905",   # zip() without strict= (intentional in many places)
+    "UP031",  # use format specifiers instead of percent (legacy code uses %)
+    "UP045",  # use `X | None` instead of `Optional[X]` (gradual migration)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["wyzebridge", "wyzecam"]
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = ["app"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# Start lenient — tighten incrementally
+check_untyped_defs = false
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+timeout = 60
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

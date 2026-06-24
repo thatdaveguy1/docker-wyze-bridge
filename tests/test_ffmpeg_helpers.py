@@ -1,18 +1,16 @@
 """Tests for scripts/ffmpeg_helpers.py shared command-building module."""
+
 import importlib.util
-import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = ROOT / "scripts"
 
 
 def _load_helpers():
-    spec = importlib.util.spec_from_file_location(
-        "ffmpeg_helpers", SCRIPTS_DIR / "ffmpeg_helpers.py"
-    )
+    spec = importlib.util.spec_from_file_location("ffmpeg_helpers", SCRIPTS_DIR / "ffmpeg_helpers.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -60,9 +58,7 @@ class TestFfmpegHelpers(unittest.TestCase):
                 HELPERS.ensure_binary("/fake/path/ffmpeg", "ffmpeg")
 
     def test_build_ffprobe_cmd_basic(self):
-        cmd = HELPERS.build_ffprobe_cmd(
-            "/usr/bin/ffprobe", "rtsp://127.0.0.1:8554/cam", "tcp"
-        )
+        cmd = HELPERS.build_ffprobe_cmd("/usr/bin/ffprobe", "rtsp://127.0.0.1:8554/cam", "tcp")
         self.assertEqual(cmd[0], "/usr/bin/ffprobe")
         self.assertIn("-hide_banner", cmd)
         self.assertIn("-loglevel", cmd)
@@ -94,9 +90,7 @@ class TestFfmpegHelpers(unittest.TestCase):
         self.assertIn("stream=codec_name:format=format_name", cmd)
 
     def test_build_ffmpeg_rtsp_cmd_basic(self):
-        cmd = HELPERS.build_ffmpeg_rtsp_cmd(
-            "/usr/bin/ffmpeg", "rtsp://127.0.0.1:8554/cam", "tcp", 10.0
-        )
+        cmd = HELPERS.build_ffmpeg_rtsp_cmd("/usr/bin/ffmpeg", "rtsp://127.0.0.1:8554/cam", "tcp", 10.0)
         self.assertEqual(cmd[0], "/usr/bin/ffmpeg")
         self.assertIn("-hide_banner", cmd)
         self.assertIn("-nostats", cmd)
@@ -162,9 +156,7 @@ class TestFfmpegHelpers(unittest.TestCase):
         self.assertIn("error", cmd)
 
     def test_build_ffmpeg_rtsp_cmd_duration_as_string(self):
-        cmd = HELPERS.build_ffmpeg_rtsp_cmd(
-            "/usr/bin/ffmpeg", "rtsp://127.0.0.1:8554/cam", "tcp", "3.500"
-        )
+        cmd = HELPERS.build_ffmpeg_rtsp_cmd("/usr/bin/ffmpeg", "rtsp://127.0.0.1:8554/cam", "tcp", "3.500")
         self.assertIn("-t", cmd)
         self.assertIn("3.500", cmd)
 

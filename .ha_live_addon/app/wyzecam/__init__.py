@@ -1,4 +1,3 @@
-# type: ignore[attr-defined]
 """Python package for communicating with wyze cameras over the local network."""
 
 # This is a modified library based on kroo/wyzecam v1.2.0: https://github.com/kroo/wyzecam
@@ -21,13 +20,3 @@
 #  DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 #  OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 #  OR OTHER DEALINGS IN THE SOFTWARE.
-
-try:
-    from importlib.metadata import PackageNotFoundError, version
-except ImportError:  # pragma: no cover
-    from importlib_metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version(__name__)
-except PackageNotFoundError:  # pragma: no cover
-    __version__ = "unknown"

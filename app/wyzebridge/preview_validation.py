@@ -29,7 +29,9 @@ def _has_vertical_smear(payload: bytes) -> bool:
             frame = image.convert("L").resize((160, 90))
     except ImportError:
         return False
-    except Exception:
+    except (
+        Exception
+    ):  # PIL can raise various UnidentifiedImageError/OSError variants on corrupt payloads; treat as smear
         return True
 
     for top in range(0, frame.height - 20, 10):

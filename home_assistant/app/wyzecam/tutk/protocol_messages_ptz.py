@@ -4,6 +4,7 @@ from struct import iter_unpack, pack, unpack
 
 from .protocol_core import TutkWyzeProtocolMessage, encode
 
+
 class K10290GetMotionTagging(TutkWyzeProtocolMessage):
     """
     A message used to check if motion tagging (green box around motion) is enabled.

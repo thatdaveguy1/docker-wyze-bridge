@@ -5,6 +5,7 @@ Architecture review candidate #9: one module owns the native alias lifecycle
 API/probe helpers; this module owns alias-specific logic. Talkback (two-way
 audio) lives in wyzebridge.native_talkback.
 """
+
 import time
 from pathlib import Path
 from typing import Any
@@ -13,23 +14,19 @@ from urllib.parse import quote
 import requests
 
 from wyzebridge.config import IMG_PATH, IMG_TYPE
+
+# --- Port helpers (canonical source: wyzebridge.go2rtc) ---
+from wyzebridge.go2rtc import (  # noqa: E402
+    _go2rtc_api_port,
+    go2rtc_api_base,
+    go2rtc_rtsp_base,
+)
 from wyzebridge.logging import logger
 from wyzebridge.preview_validation import (
     preview_bytes_are_valid_image,
     preview_payload_matches_existing,
     record_preview_hash,
 )
-
-# --- Port helpers (canonical source: wyzebridge.go2rtc) ---
-from wyzebridge.go2rtc import (  # noqa: E402
-    DEFAULT_GO2RTC_API_PORT,
-    DEFAULT_GO2RTC_RTSP_PORT,
-    _go2rtc_api_port,
-    _go2rtc_rtsp_port,
-    go2rtc_api_base,
-    go2rtc_rtsp_base,
-)
-
 
 # --- Caches and constants ---
 
@@ -75,10 +72,6 @@ def native_snapshot_path(cam_name: str) -> Path:
     return Path(f"{IMG_PATH}{cam_name}.{IMG_TYPE}")
 
 
-def _content_matches_existing(output_path: Path, content: bytes) -> bool:
-    return preview_payload_matches_existing(output_path, content)
-
-
 def _validated_native_model(camera) -> dict[str, Any] | None:
     return _VALIDATED_NATIVE_MODELS.get(getattr(camera, "product_model", ""))
 
@@ -108,11 +101,7 @@ def _go2rtc_keyframe_consumer_count(details: dict[str, Any]) -> int:
     consumers = details.get("consumers") if isinstance(details, dict) else None
     if not isinstance(consumers, list):
         return 0
-    return sum(
-        1
-        for consumer in consumers
-        if isinstance(consumer, dict) and consumer.get("format_name") == "keyframe"
-    )
+    return sum(1 for consumer in consumers if isinstance(consumer, dict) and consumer.get("format_name") == "keyframe")
 
 
 def _go2rtc_receiver_child_count(details: dict[str, Any]) -> int:
@@ -167,9 +156,7 @@ def _native_alias_details_are_ready(alias: str, details: dict[str, Any]) -> bool
     return True
 
 
-def _native_alias_status(
-    alias: str, timeout: float = 0.25, use_cache: bool = True
-) -> dict[str, Any]:
+def _native_alias_status(alias: str, timeout: float = 0.25, use_cache: bool = True) -> dict[str, Any]:
     now = time.monotonic()
     cached = _NATIVE_ALIAS_STATUS_CACHE.get(alias)
     if use_cache and cached and now - cached[0] < _NATIVE_ALIAS_READY_CACHE_TTL:
@@ -198,9 +185,9 @@ def native_stream_info(camera, substream: bool = False) -> dict[str, Any]:
     api_reachable = _go2rtc_api_reachable()
     supported = bool(model_support and not getattr(camera, "is_gwell", False))
     selected_flag = (
-        model_support.get("sub_selected") if substream else model_support.get("selected")
-    ) if model_support else False
-    selected = bool(supported and selected_flag)
+        (model_support.get("sub_selected") if substream else model_support.get("selected")) if model_support else False
+    )
+    selected = bool(supported and selected_flag and api_reachable)
     alias_status = (
         _native_alias_status(alias)
         if selected and api_reachable
@@ -321,7 +308,7 @@ def write_native_snapshot(
                 log = logger.warning if warn_on_failure else logger.debug
                 log(f"❗ [{cam_name}] Native snapshot from {alias} was not a valid image")
                 return False
-            if _content_matches_existing(output_path, response.content):
+            if preview_payload_matches_existing(output_path, response.content):
                 last_error = "matched existing preview"
                 time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
                 continue
@@ -336,7 +323,9 @@ def write_native_snapshot(
         except (requests.RequestException, OSError) as ex:
             last_error = f"{type(ex).__name__}: {ex}"
             time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
-    logger.debug(f"[{cam_name}] Native snapshot from {alias} did not produce a fresh frame before fallback: {last_error}")
+    logger.debug(
+        f"[{cam_name}] Native snapshot from {alias} did not produce a fresh frame before fallback: {last_error}"
+    )
     return False
 
 

@@ -4,6 +4,7 @@ This module contains the :class:`ctypes.Structure` subclasses used to marshal
 data to and from the TUTK shared library (``libIOTCAPIs_ALL.so``).  It is a
 pure-data module -- it defines no FFI call bindings and no error classes.
 """
+
 import logging
 from ctypes import (
     POINTER,
@@ -12,14 +13,12 @@ from ctypes import (
     c_char_p,
     c_int8,
     c_int32,
-    c_ubyte,
     c_uint8,
     c_uint16,
     c_uint32,
     cast,
     sizeof,
 )
-from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +47,7 @@ class FormattedStructure(Structure):
             ]
         )
         return f"{self.__class__.__name__}:\n\t{fields}"
+
 
 class SInfoStructEx(FormattedStructure):
     """
@@ -138,28 +138,32 @@ class SInfoStructEx(FormattedStructure):
             c_uint8,
         ),  # 0: Session not created by nebula, 1: Session created by nebula
     ]
+
     def __repr__(self):
-        return (f"SInfoStructEx("
-                f"{self.size=}, "
-                f"{self.mode=}, "
-                f"{self.c_or_d=}, "
-                f"uid={self.uid.decode('ascii')!r}, "
-                f"remote_ip={self.remote_ip.decode('ascii')!r}, "
-                f"{self.remote_port=}, "
-                f"{self.tx_packet_count=}, "
-                f"{self.rx_packet_count=}, "
-                f"{self.iotc_version=}, "
-                f"{self.vendor_id=}, "
-                f"{self.product_id=}, "
-                f"{self.group_id=}, "
-                f"{self.is_secure=}, "
-                f"{self.local_nat_type=}, "
-                f"{self.remote_nat_type=}, "
-                f"{self.relay_type=}, "
-                f"{self.net_state=}, "
-                f"remote_wan_ip={self.remote_wan_ip.decode('ascii')!r}, "
-                f"{self.remote_wan_port=}, "
-                f"{self.is_nebula=})")
+        return (
+            f"SInfoStructEx("
+            f"{self.size=}, "
+            f"{self.mode=}, "
+            f"{self.c_or_d=}, "
+            f"uid={self.uid.decode('ascii')!r}, "
+            f"remote_ip={self.remote_ip.decode('ascii')!r}, "
+            f"{self.remote_port=}, "
+            f"{self.tx_packet_count=}, "
+            f"{self.rx_packet_count=}, "
+            f"{self.iotc_version=}, "
+            f"{self.vendor_id=}, "
+            f"{self.product_id=}, "
+            f"{self.group_id=}, "
+            f"{self.is_secure=}, "
+            f"{self.local_nat_type=}, "
+            f"{self.remote_nat_type=}, "
+            f"{self.relay_type=}, "
+            f"{self.net_state=}, "
+            f"remote_wan_ip={self.remote_wan_ip.decode('ascii')!r}, "
+            f"{self.remote_wan_port=}, "
+            f"{self.is_nebula=})"
+        )
+
 
 class FrameInfoStruct(FormattedStructure):
     """
@@ -213,20 +217,23 @@ class FrameInfoStruct(FormattedStructure):
     def __repr__(self):
         is_keyframe = True if self.is_keyframe else False
         ac_mac_addr = f"{self.ac_mac_addr.decode('ascii')!r}"
-        return (f"FrameInfoStruct("
-                f"{self.codec_id=}, "
-                f"{is_keyframe=}, "
-                f"{self.cam_index=}, "
-                f"{self.online_num=}, "
-                f"{self.framerate=}, "
-                f"{self.frame_size=}, "
-                f"{self.bitrate=}, "
-                f"{self.timestamp_ms=}, "
-                f"{self.timestamp=}, "
-                f"{self.frame_len=}, "
-                f"{self.frame_no=}, "
-                f"{ac_mac_addr=}, "
-                f"{self.n_play_token=})")
+        return (
+            f"FrameInfoStruct("
+            f"{self.codec_id=}, "
+            f"{is_keyframe=}, "
+            f"{self.cam_index=}, "
+            f"{self.online_num=}, "
+            f"{self.framerate=}, "
+            f"{self.frame_size=}, "
+            f"{self.bitrate=}, "
+            f"{self.timestamp_ms=}, "
+            f"{self.timestamp=}, "
+            f"{self.frame_len=}, "
+            f"{self.frame_no=}, "
+            f"{ac_mac_addr=}, "
+            f"{self.n_play_token=})"
+        )
+
 
 class FrameInfo3Struct(FormattedStructure):
     _fields_ = [
@@ -252,24 +259,27 @@ class FrameInfo3Struct(FormattedStructure):
     def __repr__(self):
         is_keyframe = True if self.is_keyframe else False
         ac_mac_addr = f"{self.ac_mac_addr.decode('ascii')!r}"
-        return (f"FrameInfo3Struct("
-                f"{self.codec_id=}, "
-                f"{is_keyframe=}, "
-                f"{self.cam_index=}, "
-                f"{self.online_num=}, "
-                f"{self.framerate=}, "
-                f"{self.frame_size=}, "
-                f"{self.bitrate=}, "
-                f"{self.timestamp_ms=}, "
-                f"{self.timestamp=}, "
-                f"{self.frame_len=}, "
-                f"{self.frame_no=}, "
-                f"{ac_mac_addr=}, "
-                f"{self.n_play_token=}, "
-                f"{self.face_pos_x=}, "
-                f"{self.face_pos_y=}, "
-                f"{self.face_width=}, "
-                f"{self.face_height=})")
+        return (
+            f"FrameInfo3Struct("
+            f"{self.codec_id=}, "
+            f"{is_keyframe=}, "
+            f"{self.cam_index=}, "
+            f"{self.online_num=}, "
+            f"{self.framerate=}, "
+            f"{self.frame_size=}, "
+            f"{self.bitrate=}, "
+            f"{self.timestamp_ms=}, "
+            f"{self.timestamp=}, "
+            f"{self.frame_len=}, "
+            f"{self.frame_no=}, "
+            f"{ac_mac_addr=}, "
+            f"{self.n_play_token=}, "
+            f"{self.face_pos_x=}, "
+            f"{self.face_pos_y=}, "
+            f"{self.face_width=}, "
+            f"{self.face_height=})"
+        )
+
 
 class St_IOTCCheckDeviceInput(FormattedStructure):
     _fields_ = [
@@ -279,10 +289,8 @@ class St_IOTCCheckDeviceInput(FormattedStructure):
     ]
 
     def __repr__(self):
-        return (f"St_IOTCCheckDeviceInput("
-                f"{self.cb=}, "
-                f"{self.auth_type=}, "
-                f"auth_key={self.auth_key.decode('ascii')!r})")
+        return f"St_IOTCCheckDeviceInput({self.cb=}, {self.auth_type=}, auth_key={self.auth_key.decode('ascii')!r})"
+
 
 class St_IOTCCheckDeviceOutput(FormattedStructure):
     _fields_ = [
@@ -291,9 +299,8 @@ class St_IOTCCheckDeviceOutput(FormattedStructure):
     ]
 
     def __repr__(self):
-        return (f"St_IOTCCheckDeviceOutput("
-                f"{self.status=}, "
-                f"{self.last_login=})")
+        return f"St_IOTCCheckDeviceOutput({self.status=}, {self.last_login=})"
+
 
 class St_IOTCConnectInput(FormattedStructure):
     _fields_ = [
@@ -305,11 +312,8 @@ class St_IOTCConnectInput(FormattedStructure):
 
     def __repr__(self):
         auth_key = f"{self.auth_key.decode('ascii')!r}"
-        return (f"St_IOTCConnectInput("
-                f"{self.cb=}, "
-                f"{self.authentication_type=}, "
-                f"{auth_key=}, "
-                f"{self.timeout=})")
+        return f"St_IOTCConnectInput({self.cb=}, {self.authentication_type=}, {auth_key=}, {self.timeout=})"
+
 
 class LogAttr(FormattedStructure):
     _fields_ = [
@@ -321,11 +325,8 @@ class LogAttr(FormattedStructure):
 
     def __repr__(self):
         path = f"{self.path.decode('ascii')!r}" if self.path else None
-        return (f"LogAttr("
-                f"{path=}, "
-                f"{self.log_level=}, "
-                f"{self.file_max_size=}, "
-                f"{self.file_max_count=})")
+        return f"LogAttr({path=}, {self.log_level=}, {self.file_max_size=}, {self.file_max_count=})"
+
 
 class AVClientStartInConfig(FormattedStructure):
     _fields_ = [
@@ -344,17 +345,20 @@ class AVClientStartInConfig(FormattedStructure):
     def __repr__(self):
         account_or_identity = f"{self.account_or_identity.decode('ascii')!r}" if self.account_or_identity else None
         password_or_token = f"{self.password_or_token.decode('ascii')!r}" if self.password_or_token else None
-        return (f"AVClientStartInConfig("
-                f"{self.cb=}, "
-                f"{self.iotc_session_id=}, "
-                f"{self.iotc_channel_id=}, "
-                f"{self.timeout_sec=}, "
-                f"{account_or_identity=}, "
-                f"{password_or_token=}, "
-                f"{self.resend=}, "
-                f"{self.security_mode=}, "
-                f"{self.auth_type=}, "
-                f"{self.sync_recv_data=})")
+        return (
+            f"AVClientStartInConfig("
+            f"{self.cb=}, "
+            f"{self.iotc_session_id=}, "
+            f"{self.iotc_channel_id=}, "
+            f"{self.timeout_sec=}, "
+            f"{account_or_identity=}, "
+            f"{password_or_token=}, "
+            f"{self.resend=}, "
+            f"{self.security_mode=}, "
+            f"{self.auth_type=}, "
+            f"{self.sync_recv_data=})"
+        )
+
 
 class AVClientStartOutConfig(FormattedStructure):
     _fields_ = [
@@ -367,17 +371,19 @@ class AVClientStartOutConfig(FormattedStructure):
     ]
 
     def __repr__(self):
-        return (f"AVClientStartOutConfig("
-                f"{self.cb=}, "
-                f"{self.server_type=}, "
-                f"{self.resend=}, "
-                f"{self.two_way_streaming=}, "
-                f"{self.sync_recv_data=}, "
-                f"{self.security_mode=})")
+        return (
+            f"AVClientStartOutConfig("
+            f"{self.cb=}, "
+            f"{self.server_type=}, "
+            f"{self.resend=}, "
+            f"{self.two_way_streaming=}, "
+            f"{self.sync_recv_data=}, "
+            f"{self.security_mode=})"
+        )
 
 
 def get_frame_info(frame_info_buffer, frame_info_actual_len):
-    frame_info: Union[FrameInfoStruct, FrameInfo3Struct | None]
+    frame_info: FrameInfoStruct | (FrameInfo3Struct | None)
 
     if frame_info_actual_len.value == sizeof(FrameInfo3Struct):
         frame_info = cast(frame_info_buffer, POINTER(FrameInfo3Struct)).contents

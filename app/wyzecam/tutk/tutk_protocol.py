@@ -19,7 +19,6 @@ that test patches on ``wyzecam.tutk.tutk_protocol.supports`` and
 """
 
 from struct import unpack
-from typing import Optional
 
 from wyzecam.api_models import DOORBELL
 
@@ -192,23 +191,17 @@ def respond_to_ioctrl_10001(
     phone_id: str,
     open_userid: str,
     audio: bool = False,
-) -> Optional[TutkWyzeProtocolMessage]:
+) -> TutkWyzeProtocolMessage | None:
     camera_status, camera_enr_b = unpack("<B16s", data[:17])
 
-    logger.info(
-        f"[TUTKP] 10001 challenge: model={product_model} protocol={protocol} camera_status={camera_status}"
-    )
+    logger.info(f"[TUTKP] 10001 challenge: model={product_model} protocol={protocol} camera_status={camera_status}")
 
     if camera_status in STATUS_MESSAGES:
-        logger.warning(
-            f"[TUTKP] Camera is {STATUS_MESSAGES[camera_status]}, can't auth."
-        )
+        logger.warning(f"[TUTKP] Camera is {STATUS_MESSAGES[camera_status]}, can't auth.")
         return
 
     if camera_status not in {1, 3, 6}:
-        logger.warning(
-            f"[TUTKP] Unexpected mode for connect challenge response (10001): {camera_status=}"
-        )
+        logger.warning(f"[TUTKP] Unexpected mode for connect challenge response (10001): {camera_status=}")
         return
 
     resp = generate_challenge_response(camera_enr_b, enr, camera_status)

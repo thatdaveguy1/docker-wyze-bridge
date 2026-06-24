@@ -1,8 +1,8 @@
 from threading import Thread
-from typing import Dict
+
 
 class AutoRemoveThread(Thread):
-    def __init__(self, threads: Dict[str, Thread], key: str, *args, **kwargs):
+    def __init__(self, threads: dict[str, Thread], key: str, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.threads = threads
         self.key = key

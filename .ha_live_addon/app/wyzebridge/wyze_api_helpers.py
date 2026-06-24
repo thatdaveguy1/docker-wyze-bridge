@@ -5,35 +5,28 @@ auth decorators, cache helpers, KVS trace, thumbnail validation, and camera
 filtering from the WyzeApi class. wyze_api.py re-exports everything for
 backward compatibility.
 """
+
 import json
 import pickle
+from collections.abc import Callable
 from datetime import datetime
 from functools import wraps
 from os import environ
-from pathlib import Path
 from time import time
-from typing import Any, Callable, Optional
-from urllib.parse import parse_qs, unquote, urlparse
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
-from requests import get
-from requests.exceptions import ConnectionError, HTTPError, RequestException
+from requests.exceptions import ConnectionError
 
-from wyzecam.api_models import WyzeCamera
+from wyzebridge.bridge_utils import env_bool, env_list
+from wyzebridge.config import TOKEN_PATH
+from wyzebridge.logging import logger
 from wyzecam.api import (
     AccessTokenError,
     RateLimitError,
     WyzeAPIError,
-    _headers,
 )
-from wyzebridge.bridge_utils import env_bool, env_list
-from wyzebridge.config import TOKEN_PATH
-from wyzebridge.logging import logger
-from wyzebridge.preview_validation import (
-    preview_bytes_are_valid_image,
-    preview_file_is_image,
-    preview_payload_matches_existing,
-    record_preview_hash,
-)
+from wyzecam.api_models import WyzeCamera
 
 
 def cached(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -57,10 +50,8 @@ def cached(func: Callable[..., Any]) -> Callable[..., Any]:
             except OSError:
                 cache_logger = logger.debug if name == "cameras" else logger.info
                 cache_logger(f"🔍 Could not find local cache for '{name}'")
-            except Exception as ex:
-                logger.warning(
-                    f"Error restoring data for '{name}': [{type(ex).__name__}] {ex}"
-                )
+            except Exception as ex:  # corrupted pickle can raise UnpicklingError/EOFError/etc; clear cache and re-fetch
+                logger.warning(f"Error restoring data for '{name}': [{type(ex).__name__}] {ex}")
                 self.clear_cache()
         fetch_logger = logger.debug if name == "cameras" else logger.info
         fetch_logger(f"☁️ Fetching '{name}' from the Wyze API...")
@@ -97,9 +88,7 @@ def sanitize_url(url: str) -> str:
 
     parts = urlsplit(url)
     return (
-        f"{parts.scheme}://{parts.netloc}{parts.path}"
-        if parts.scheme and parts.netloc
-        else parts.path or "<redacted>"
+        f"{parts.scheme}://{parts.netloc}{parts.path}" if parts.scheme and parts.netloc else parts.path or "<redacted>"
     )
 
 
@@ -156,12 +145,12 @@ def url_timestamp(url: str) -> int:
                 if token.isdigit() and len(token) >= 10:
                     value = int(token)
                     return value // 1000 if len(token) > 10 else value
-    except Exception:
+    except Exception:  # URL parsing/split/int can raise ValueError/AttributeError/IndexError; default to 0
         pass
     return 0
 
 
-def valid_s3_url(url: Optional[str]) -> bool:
+def valid_s3_url(url: str | None) -> bool:
     if not url:
         return False
 
@@ -173,32 +162,6 @@ def valid_s3_url(url: Optional[str]) -> bool:
         return amz_date.timestamp() + int(x_amz_expires) > time()
     except (ValueError, TypeError, KeyError):
         return False
-
-
-def _looks_like_html(payload: bytes) -> bool:
-    snippet = payload.lstrip().lower()[:64]
-    return snippet.startswith((b"<!doctype html", b"<html", b"<?xml"))
-
-
-def _looks_like_image_bytes(payload: bytes) -> bool:
-    if not payload or _looks_like_html(payload):
-        return False
-
-    header = payload[:16]
-    return (
-        header.startswith(b"\xff\xd8\xff")
-        or header.startswith(b"\x89PNG\r\n\x1a\n")
-        or header.startswith((b"GIF87a", b"GIF89a"))
-        or (len(header) >= 12 and header.startswith(b"RIFF") and header[8:12] == b"WEBP")
-    )
-
-
-def _thumbnail_response_is_image(response) -> bool:
-    return preview_bytes_are_valid_image(response.content or b"")
-
-
-def _cached_thumbnail_is_valid(path: Path) -> bool:
-    return preview_file_is_image(path)
 
 
 def env_filter(cam: WyzeCamera) -> bool:
@@ -233,7 +196,7 @@ def pickle_dump(name: str, data: object):
         pickle.dump(data, f)
 
 
-def parse_token(access_token: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+def parse_token(access_token: str | None) -> tuple[str | None, str | None]:
     if not access_token:
         return None, None
 

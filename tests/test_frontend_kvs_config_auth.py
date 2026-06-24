@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
+import importlib
 import pathlib
 import sys
 import types
 import unittest
-import importlib
-from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
@@ -57,9 +56,7 @@ class TestFrontendKVSConfigAuth(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.get_json(), {"signaling_url": "wss://example.test/dog-run"}
-        )
+        self.assertEqual(response.get_json(), {"signaling_url": "wss://example.test/dog-run"})
 
     def test_kvs_config_requires_auth_off_loopback(self):
         client = self.create_client()

@@ -3,7 +3,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL_GATES = ROOT / "scripts" / "run_master_local_gates.sh"
 

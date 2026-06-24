@@ -5,10 +5,12 @@ Architecture review candidate #12: move inline `python3 -c`/heredoc
 snippets out of the shell script into a reusable module. The shell
 script calls these via `python3 -c "from go2rtc_sidecar_helpers import ..."`.
 """
+
 import base64
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import re
 import socket
@@ -18,6 +20,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
 
 def get_ha_option(var_name: str) -> str:
     """Read a single option from /data/options.json by key name."""
@@ -25,7 +31,7 @@ def get_ha_option(var_name: str) -> str:
         with open("/data/options.json") as f:
             data = json.load(f)
         return str(data.get(var_name, "")).strip()
-    except Exception:
+    except (OSError, ValueError, AttributeError, TypeError):  # file missing, invalid JSON, or non-dict payload
         return ""
 
 
@@ -34,13 +40,9 @@ def list_active_producers() -> str:
     try:
         data = json.load(sys.stdin)
         return ",".join(
-            sorted(
-                name
-                for name, details in data.items()
-                if isinstance(details, dict) and details.get("producers")
-            )
+            sorted(name for name, details in data.items() if isinstance(details, dict) and details.get("producers"))
         )
-    except Exception:
+    except (ValueError, AttributeError, TypeError):  # invalid JSON or non-dict stream table
         return ""
 
 
@@ -48,7 +50,7 @@ def list_active_producers_verbose() -> None:
     """Read go2rtc streams JSON from stdin, print active producer aliases list."""
     data = json.load(sys.stdin)
     active = sorted(name for name, details in data.items() if details.get("producers"))
-    print(f"[GO2RTC] Active producer aliases: {active}", flush=True)
+    logger.info(f"GO2RTC Active producer aliases: {active}")
 
 
 def extract_yaml_aliases(config_path: str) -> None:
@@ -82,9 +84,7 @@ def detect_outbound_ip(target: tuple[str, int] = ("8.8.8.8", 53)) -> str:
         sock.close()
 
 
-def rewrite_go2rtc_config(
-    config_path: str, api_port: str, rtsp_port: str
-) -> None:
+def rewrite_go2rtc_config(config_path: str, api_port: str, rtsp_port: str) -> None:
     """Strip managed api/rtsp/webrtc sections and prepend fresh ones."""
     path = Path(config_path)
     if not path.exists():
@@ -130,7 +130,6 @@ def generate_initial_config(
     wyze_password: str = "",
 ) -> None:
     """Generate the initial go2rtc YAML config with api/rtsp/webrtc/wyze sections."""
-    q = json.dumps
     config = "\n".join(
         [
             "api:",
@@ -142,10 +141,10 @@ def generate_initial_config(
             "log:",
             "  level: info",
             "wyze:",
-            f"  {q(wyze_email)}:",
-            f"    api_id: {q(api_id)}",
-            f"    api_key: {q(api_key)}",
-            f"    password: {q(wyze_password)}",
+            f"  {json.dumps(wyze_email)}:",
+            f"    api_id: {json.dumps(api_id)}",
+            f"    api_key: {json.dumps(api_key)}",
+            f"    password: {json.dumps(wyze_password)}",
             "streams:",
             "",
         ]
@@ -162,11 +161,7 @@ def resolve_bridge_api_token(wyze_email: str) -> str:
             token = ""
         if token:
             return token
-    import base64
-    import hashlib
-    return base64.urlsafe_b64encode(
-        hashlib.sha256(wyze_email.encode()).digest()
-    ).decode()[:40]
+    return base64.urlsafe_b64encode(hashlib.sha256(wyze_email.encode()).digest()).decode()[:40]
 
 
 def payload_has_cameras(payload_json: str) -> bool:
@@ -180,10 +175,6 @@ def payload_has_cameras(payload_json: str) -> bool:
 
 
 # --- Alias seeding logic (extracted from go2rtc_sidecar.sh heredoc) ---
-
-
-def _q(value: str) -> str:
-    return json.dumps(value)
 
 
 def _clean_cam_name(name: str, uri_sep: str = "-") -> str:
@@ -221,7 +212,7 @@ def _lan_ip_overrides() -> dict[str, str]:
         if mac and host:
             overrides[mac] = host
     if overrides:
-        print(f"[GO2RTC] LAN IP overrides loaded for {len(overrides)} camera(s)", flush=True)
+        logger.info(f"GO2RTC LAN IP overrides loaded for {len(overrides)} camera(s)")
     return overrides
 
 
@@ -239,11 +230,7 @@ def _option_string(name: str) -> str:
 
 def _alias_name_set(name: str) -> set[str]:
     raw = _option_string(name)
-    return {
-        _clean_cam_name(item)
-        for item in raw.split(",")
-        if _clean_cam_name(item)
-    }
+    return {_clean_cam_name(item) for item in raw.split(",") if _clean_cam_name(item)}
 
 
 def _with_verbose(url: str) -> str:
@@ -300,7 +287,7 @@ def _is_private_lan_host(host: str) -> bool:
 
 
 def _force_lan_ip_overrides() -> bool:
-    return str(os.environ.get("GO2RTC_FORCE_LAN_IP_OVERRIDES", "")).strip().lower() in {"1", "true", "yes", "on"}
+    return str(os.environ.get("GO2RTC_FORCE_LAN_IP_OVERRIDES", "")).strip().lower() in _TRUTHY
 
 
 def _with_lan_ip_override(url: str, cam: dict) -> str:
@@ -309,10 +296,9 @@ def _with_lan_ip_override(url: str, cam: dict) -> str:
         return url
     parsed = urllib.parse.urlsplit(url)
     if _is_private_lan_host(parsed.hostname or "") and not _force_lan_ip_overrides():
-        print(
-            f"[GO2RTC] LAN override for {cam.get('name', '<unknown>')} is configured, "
-            f"but keeping helper LAN host {parsed.hostname}; set GO2RTC_FORCE_LAN_IP_OVERRIDES=true to force it",
-            flush=True,
+        logger.info(
+            f"GO2RTC LAN override for {cam.get('name', '<unknown>')} is configured, "
+            f"but keeping helper LAN host {parsed.hostname}; set GO2RTC_FORCE_LAN_IP_OVERRIDES=true to force it"
         )
         return url
     return urllib.parse.urlunsplit(parsed._replace(netloc=ip))
@@ -334,18 +320,11 @@ def _helper_flag(cam: dict, key: str):
     value = cam.get(key)
     if isinstance(value, bool):
         return value
-    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+    return str(value or "").strip().lower() in _TRUTHY
 
 
 def _bridge_api_token(email: str) -> str:
-    for path in ("/config/wb_api", "/tokens/wb_api", ".runtime/tokens/wb_api"):
-        try:
-            token = Path(path).read_text(encoding="utf-8").strip()
-        except OSError:
-            token = ""
-        if token:
-            return token
-    return base64.urlsafe_b64encode(hashlib.sha256(email.encode()).digest()).decode()[:40]
+    return resolve_bridge_api_token(email)
 
 
 def _fetch_json(url: str, timeout: float = 2.0, api_token: str = ""):
@@ -414,8 +393,7 @@ def _bridge_camera_state(cam_uri: str) -> dict:
         state["published"] = bool(enabled_entries)
         state["enabled"] = bool(enabled_entries)
         state["hd"] = any(
-            _clean_cam_name(camera.get("name_uri") or uri) == cam_uri
-            and not bool(camera.get("substream"))
+            _clean_cam_name(camera.get("name_uri") or uri) == cam_uri and not bool(camera.get("substream"))
             for uri, camera in enabled_entries
         )
         state["sd"] = any(
@@ -467,10 +445,10 @@ def seed_go2rtc_aliases() -> None:
         "log:",
         "  level: info",
         "wyze:",
-        f"  {_q(os.environ['WYZE_EMAIL'])}:",
-        f"    api_id: {_q(os.environ.get('API_ID', ''))}",
-        f"    api_key: {_q(os.environ.get('API_KEY', ''))}",
-        f"    password: {_q(os.environ['WYZE_PASSWORD'])}",
+        f"  {json.dumps(os.environ['WYZE_EMAIL'])}:",
+        f"    api_id: {json.dumps(os.environ.get('API_ID', ''))}",
+        f"    api_key: {json.dumps(os.environ.get('API_KEY', ''))}",
+        f"    password: {json.dumps(os.environ['WYZE_PASSWORD'])}",
         "streams:",
     ]
 
@@ -493,11 +471,11 @@ def seed_go2rtc_aliases() -> None:
             cam.setdefault(key, value)
         published = _helper_flag(cam, "published")
         if published is False and _helper_flag(cam, "hd") is False and _helper_flag(cam, "sd") is False:
-            print(f"[GO2RTC] Skipping camera not published by bridge: {name}", flush=True)
+            logger.debug(f"GO2RTC Skipping camera not published by bridge: {name}")
             continue
         enabled = _helper_flag(cam, "enabled")
         if enabled is False:
-            print(f"[GO2RTC] Skipping disabled camera from helper: {name}", flush=True)
+            logger.debug(f"GO2RTC Skipping disabled camera from helper: {name}")
             continue
         model = _parse_model(info, url)
         hd_enabled = _helper_flag(cam, "hd")
@@ -519,7 +497,7 @@ def seed_go2rtc_aliases() -> None:
             aliases.append((f"{uri}-sd", "sd"))
 
         if not aliases:
-            print(f"[GO2RTC] Skipping camera with no enabled native feeds: {name} ({info})", flush=True)
+            logger.debug(f"GO2RTC Skipping camera with no enabled native feeds: {name} ({info})")
             continue
 
         for alias, subtype in aliases:
@@ -528,7 +506,7 @@ def seed_go2rtc_aliases() -> None:
                 stream_url = _with_verbose(stream_url)
             lines.append(f"  {alias}:")
             lines.append(f"    - {stream_url}")
-            print(f"[GO2RTC] Prepared stream: {alias} ({info}) subtype={subtype}", flush=True)
+            logger.debug(f"GO2RTC Prepared stream: {alias} ({info}) subtype={subtype}")
             prepared[alias] = stream_url
             added += 1
 
@@ -541,40 +519,31 @@ def seed_go2rtc_aliases() -> None:
                     recovery_url = _with_verbose(recovery_url)
                 lines.append(f"  {recovery_alias}:")
                 lines.append(f"    - {recovery_url}")
-                print(
-                    f"[GO2RTC] Prepared North Yard recovery stream: {recovery_alias} from {uri}-sd subtype=hd",
-                    flush=True,
-                )
+                logger.debug(f"GO2RTC Prepared North Yard recovery stream: {recovery_alias} from {uri}-sd subtype=hd")
                 prepared[recovery_alias] = recovery_url
                 seen.add(recovery_alias)
                 added += 1
 
     for alias_name, source_name, subtype in _parse_diagnostic_aliases():
         if alias_name in seen or alias_name in prepared:
-            print(f"[GO2RTC] Skipping duplicate diagnostic alias: {alias_name}", flush=True)
+            logger.debug(f"GO2RTC Skipping duplicate diagnostic alias: {alias_name}")
             continue
         source_url = prepared.get(source_name)
         if not source_url:
-            print(
-                f"[GO2RTC] Skipping diagnostic alias {alias_name}: source {source_name} not prepared",
-                flush=True,
-            )
+            logger.debug(f"GO2RTC Skipping diagnostic alias {alias_name}: source {source_name} not prepared")
             continue
         stream_url = _with_subtype(source_url, subtype)
         if alias_name in verbose_aliases:
             stream_url = _with_verbose(stream_url)
         lines.append(f"  {alias_name}:")
         lines.append(f"    - {stream_url}")
-        print(
-            f"[GO2RTC] Prepared diagnostic stream: {alias_name} from {source_name} subtype={subtype}",
-            flush=True,
-        )
+        logger.debug(f"GO2RTC Prepared diagnostic stream: {alias_name} from {source_name} subtype={subtype}")
         prepared[alias_name] = stream_url
         seen.add(alias_name)
         added += 1
 
     Path(os.environ["GO2RTC_CONFIG"]).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"[GO2RTC] Total aliases prepared in config: {added}", flush=True)
+    logger.info(f"GO2RTC Total aliases prepared in config: {added}")
 
 
 if __name__ == "__main__":

@@ -3,68 +3,57 @@
 import os
 import pathlib
 import sys
-import unittest
 import types
+import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-sys.path.insert(
-    0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app")
-)
-
-if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
-    for module_name in list(sys.modules):
-        if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
-            del sys.modules[module_name]
-
-sys.modules.setdefault("xxtea", types.ModuleType("xxtea"))
-
-fake_wyzecam_iotc = types.ModuleType("wyzecam.iotc")
-fake_wyzecam_iotc.WyzeIOTC = object
-fake_wyzecam_iotc.WyzeIOTCSession = object
-sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
-
-fake_wyzecam_tutk_pkg = types.ModuleType("wyzecam.tutk")
-fake_wyzecam_tutk = types.ModuleType("wyzecam.tutk.tutk")
-fake_wyzecam_tutk_protocol = types.ModuleType("wyzecam.tutk.tutk_protocol")
-fake_wyzecam_tutk_ioctl_mux = types.ModuleType("wyzecam.tutk.tutk_ioctl_mux")
-fake_wyzecam_tutk.FRAME_SIZE_2K = 4
-fake_wyzecam_tutk.FRAME_SIZE_1080P = 3
-fake_wyzecam_tutk.FRAME_SIZE_360P = 1
-fake_wyzecam_tutk.FRAME_SIZE_DOORBELL_HD = 6
-fake_wyzecam_tutk.FRAME_SIZE_DOORBELL_SD = 7
-fake_wyzecam_tutk.TutkError = type("TutkError", (Exception,), {})
-fake_wyzecam_tutk_pkg.tutk = fake_wyzecam_tutk
-fake_wyzecam_tutk_pkg.tutk_protocol = fake_wyzecam_tutk_protocol
-fake_wyzecam_tutk_pkg.tutk_ioctl_mux = fake_wyzecam_tutk_ioctl_mux
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
 
-def _fake_tutk_protocol_attr(name: str):
-    if name == "logger":
-        return SimpleNamespace(setLevel=lambda *args, **kwargs: None)
-    return type(name, (), {})
+def _build_fake_wyzecam_modules():
+    """Build fake wyzecam.iotc / wyzecam.tutk.* modules for this test module only.
 
+    These are returned (not installed into sys.modules) so the caller can install
+    them inside setUpClass and remove them in tearDownClass, preventing the fake
+    ``TutkError`` from leaking into other test modules that import the real
+    ``wyzecam.tutk.tutk``.
+    """
+    fake_wyzecam_iotc = types.ModuleType("wyzecam.iotc")
+    fake_wyzecam_iotc.WyzeIOTC = object
+    fake_wyzecam_iotc.WyzeIOTCSession = object
 
-fake_wyzecam_tutk_protocol.__getattr__ = _fake_tutk_protocol_attr
-fake_wyzecam_tutk_ioctl_mux.TutkIOCtlMux = type("TutkIOCtlMux", (), {})
-sys.modules.setdefault("wyzecam.tutk", fake_wyzecam_tutk_pkg)
-tutk_module = sys.modules.setdefault("wyzecam.tutk.tutk", fake_wyzecam_tutk)
-sys.modules.setdefault("wyzecam.tutk.tutk_protocol", fake_wyzecam_tutk_protocol)
-sys.modules.setdefault("wyzecam.tutk.tutk_ioctl_mux", fake_wyzecam_tutk_ioctl_mux)
-for name in (
-    "FRAME_SIZE_2K",
-    "FRAME_SIZE_1080P",
-    "FRAME_SIZE_360P",
-    "FRAME_SIZE_DOORBELL_HD",
-    "FRAME_SIZE_DOORBELL_SD",
-    "TutkError",
-):
-    setattr(tutk_module, name, getattr(fake_wyzecam_tutk, name))
+    fake_wyzecam_tutk_pkg = types.ModuleType("wyzecam.tutk")
+    fake_wyzecam_tutk = types.ModuleType("wyzecam.tutk.tutk")
+    fake_wyzecam_tutk_protocol = types.ModuleType("wyzecam.tutk.tutk_protocol")
+    fake_wyzecam_tutk_ioctl_mux = types.ModuleType("wyzecam.tutk.tutk_ioctl_mux")
+    fake_wyzecam_tutk.FRAME_SIZE_2K = 4
+    fake_wyzecam_tutk.FRAME_SIZE_1080P = 3
+    fake_wyzecam_tutk.FRAME_SIZE_360P = 1
+    fake_wyzecam_tutk.FRAME_SIZE_DOORBELL_HD = 6
+    fake_wyzecam_tutk.FRAME_SIZE_DOORBELL_SD = 7
+    fake_wyzecam_tutk.TutkError = type("TutkError", (Exception,), {})
+    fake_wyzecam_tutk_pkg.tutk = fake_wyzecam_tutk
+    fake_wyzecam_tutk_pkg.tutk_protocol = fake_wyzecam_tutk_protocol
+    fake_wyzecam_tutk_pkg.tutk_ioctl_mux = fake_wyzecam_tutk_ioctl_mux
+
+    def _fake_tutk_protocol_attr(name: str):
+        if name == "logger":
+            return SimpleNamespace(setLevel=lambda *args, **kwargs: None)
+        return type(name, (), {})
+
+    fake_wyzecam_tutk_protocol.__getattr__ = _fake_tutk_protocol_attr
+    fake_wyzecam_tutk_ioctl_mux.TutkIOCtlMux = type("TutkIOCtlMux", (), {})
+    return {
+        "wyzecam.iotc": fake_wyzecam_iotc,
+        "wyzecam.tutk": fake_wyzecam_tutk_pkg,
+        "wyzecam.tutk.tutk": fake_wyzecam_tutk,
+        "wyzecam.tutk.tutk_protocol": fake_wyzecam_tutk_protocol,
+        "wyzecam.tutk.tutk_ioctl_mux": fake_wyzecam_tutk_ioctl_mux,
+    }
+
 
 from wyzecam.api_models import WyzeCamera
-import wyzebridge.wyze_stream as wyze_stream_module
-from wyzebridge.wyze_stream import StreamStatus, WyzeStream
-from wyzebridge.wyze_stream_options import WyzeStreamOptions
 
 
 def make_camera(model: str = "HL_CAM4", nickname: str = "North Yard") -> WyzeCamera:
@@ -87,21 +76,54 @@ def make_camera(model: str = "HL_CAM4", nickname: str = "North Yard") -> WyzeCam
 
 
 class TestBridgeSubstreamSupport(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Remove any cached wyzebridge modules so the import below picks up
+        # a fresh copy bound to our fake wyzecam modules.
+        for module_name in list(sys.modules):
+            if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
+                del sys.modules[module_name]
+        sys.modules.setdefault("xxtea", types.ModuleType("xxtea"))
+        cls._fake_modules = _build_fake_wyzecam_modules()
+        cls._saved_modules = {}
+        for name, mod in cls._fake_modules.items():
+            cls._saved_modules[name] = sys.modules.get(name)
+            sys.modules[name] = mod
+        import wyzebridge.wyze_stream as wyze_stream_module
+        from wyzebridge.wyze_stream import StreamStatus, WyzeStream
+        from wyzebridge.wyze_stream_options import WyzeStreamOptions
+
+        cls.wyze_stream_module = wyze_stream_module
+        cls.StreamStatus = StreamStatus
+        cls.WyzeStream = WyzeStream
+        cls.WyzeStreamOptions = WyzeStreamOptions
+
+    @classmethod
+    def tearDownClass(cls):
+        for name, _mod in cls._fake_modules.items():
+            if cls._saved_modules[name] is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = cls._saved_modules[name]
+        for module_name in list(sys.modules):
+            if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
+                del sys.modules[module_name]
+
     def test_kvs_camera_exposes_bridge_substream_even_without_firmware_map(self):
         camera = make_camera("HL_CAM4")
 
         self.assertFalse(camera.can_substream)
         self.assertTrue(camera.bridge_can_substream)
 
-        with patch.object(wyze_stream_module, "publish_discovery"):
-            stream = WyzeStream(
+        with patch.object(self.wyze_stream_module, "publish_discovery"):
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(),
                 camera,
-                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+                self.WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
 
-        self.assertNotEqual(stream.state, StreamStatus.DISABLED)
+        self.assertNotEqual(stream.state, self.StreamStatus.DISABLED)
         self.assertFalse(stream.uses_kvs_source)
         self.assertTrue(stream.uses_tutk_source)
 
@@ -110,14 +132,14 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         api = SimpleNamespace(setup_mtx_proxy=lambda uri: True)
 
         with (
-            patch.object(wyze_stream_module, "publish_discovery"),
+            patch.object(self.wyze_stream_module, "publish_discovery"),
             patch.dict(os.environ, {"HL_CAM4_MAIN_PROBE_MODE": "kvs"}, clear=False),
         ):
-            stream = WyzeStream(
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 api,
                 camera,
-                WyzeStreamOptions(quality="hd180", reconnect=True),
+                self.WyzeStreamOptions(quality="hd180", reconnect=True),
             )
             self.assertTrue(stream.uses_kvs_source)
             self.assertFalse(stream.uses_tutk_source)
@@ -127,14 +149,14 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         api = SimpleNamespace(setup_mtx_proxy=lambda uri: True)
 
         with (
-            patch.object(wyze_stream_module, "publish_discovery"),
+            patch.object(self.wyze_stream_module, "publish_discovery"),
             patch.dict(os.environ, {"HL_CAM4_MAIN_PROBE_MODE": "tutk_dtls"}, clear=False),
         ):
-            stream = WyzeStream(
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 api,
                 camera,
-                WyzeStreamOptions(quality="hd180", reconnect=True),
+                self.WyzeStreamOptions(quality="hd180", reconnect=True),
             )
             self.assertFalse(stream.uses_kvs_source)
             self.assertTrue(stream.uses_tutk_source)
@@ -143,14 +165,14 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         camera = make_camera("HL_CAM4")
 
         with (
-            patch.object(wyze_stream_module, "publish_discovery"),
+            patch.object(self.wyze_stream_module, "publish_discovery"),
             patch.dict(os.environ, {"HL_CAM4_MAIN_PROBE_MODE": "banana"}, clear=False),
         ):
-            stream = WyzeStream(
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(setup_mtx_proxy=lambda uri: True),
                 camera,
-                WyzeStreamOptions(quality="hd180", reconnect=True),
+                self.WyzeStreamOptions(quality="hd180", reconnect=True),
             )
             self.assertTrue(stream.uses_kvs_source)
             self.assertFalse(stream.uses_tutk_source)
@@ -160,14 +182,14 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         process = SimpleNamespace(start=lambda: None, is_alive=lambda: True)
 
         with (
-            patch.object(wyze_stream_module, "publish_discovery"),
-            patch.object(wyze_stream_module.mp, "Process", return_value=process) as proc_cls,
+            patch.object(self.wyze_stream_module, "publish_discovery"),
+            patch.object(self.wyze_stream_module.mp, "Process", return_value=process) as proc_cls,
         ):
-            stream = WyzeStream(
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(setup_mtx_proxy=lambda uri: False),
                 camera,
-                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+                self.WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
             started = stream.start()
 
@@ -178,12 +200,12 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
     def test_v3_substream_stays_on_kvs_path(self):
         camera = make_camera("WYZE_CAKP2JFUS", "Deck")
 
-        with patch.object(wyze_stream_module, "publish_discovery"):
-            stream = WyzeStream(
+        with patch.object(self.wyze_stream_module, "publish_discovery"):
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(setup_mtx_proxy=lambda uri: True),
                 camera,
-                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+                self.WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
 
         self.assertTrue(camera.can_substream)
@@ -194,12 +216,12 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         camera = make_camera("HL_CAM3P", "Hamster")
         camera.firmware_ver = "4.58.11.1234"
 
-        with patch.object(wyze_stream_module, "publish_discovery"):
-            stream = WyzeStream(
+        with patch.object(self.wyze_stream_module, "publish_discovery"):
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(setup_mtx_proxy=lambda uri: True),
                 camera,
-                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+                self.WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
 
         self.assertTrue(camera.can_substream)
@@ -212,15 +234,15 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         self.assertFalse(camera.can_substream)
         self.assertTrue(camera.bridge_can_substream)
 
-        with patch.object(wyze_stream_module, "publish_discovery"):
-            stream = WyzeStream(
+        with patch.object(self.wyze_stream_module, "publish_discovery"):
+            stream = self.WyzeStream(
                 SimpleNamespace(),
                 SimpleNamespace(setup_mtx_proxy=lambda uri: True),
                 camera,
-                WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
+                self.WyzeStreamOptions(quality="sd30", substream=True, reconnect=True),
             )
 
-        self.assertNotEqual(stream.state, StreamStatus.DISABLED)
+        self.assertNotEqual(stream.state, self.StreamStatus.DISABLED)
         self.assertFalse(stream.uses_tutk_source)
         self.assertTrue(stream.uses_kvs_source)
 

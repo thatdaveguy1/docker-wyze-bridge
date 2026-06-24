@@ -6,15 +6,17 @@ tightly coupled to the WyzeIOTCSession class only through `self.camera`
 and `self.av_chan_id`. Extracting them here keeps iotc.py focused on
 session lifecycle and connection/auth logic.
 """
+
 import json
 import logging
 import os
 import pathlib
 from ctypes import CDLL, c_uint32
-from typing import Optional
 
+from wyzebridge.auth import redact_password as redact_password  # noqa: F401
+from wyzebridge.bridge_utils import truthy
 from wyzebridge.config import CONNECT_TIMEOUT
-from wyzebridge.source_selector import hl_cam4_main_probe_mode
+from wyzebridge.source_selector import hl_cam4_main_probe_mode as hl_cam4_main_probe_mode  # noqa: F401
 from wyzecam.api_models import WyzeCamera
 from wyzecam.tutk import tutk
 
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 # --- Environment / config helpers ---
+
 
 def tutk_trace_enabled(camera: WyzeCamera) -> bool:
     raw = os.getenv("TUTK_TRACE_STREAM", "").strip().lower()
@@ -36,20 +39,16 @@ def log_tutk_trace(camera: WyzeCamera, event: str, **fields) -> None:
     raw = os.getenv("TUTK_TRACE_STREAM", "").strip().lower()
     enabled = tutk_trace_enabled(camera)
     if event == "connect_start":
-        print(
-            f"[TUTK_TRACE_GATE] raw={raw!r} camera={camera.name_uri} enabled={enabled}",
-            flush=True,
-        )
+        logger.debug(f"TUTK_TRACE_GATE raw={raw!r} camera={camera.name_uri} enabled={enabled}")
     if not enabled:
         return
 
     payload = {"camera": camera.name_uri, "event": event} | fields
     trace = f"[TUTK_TRACE] {json.dumps(payload, sort_keys=True)}"
     logger.info(trace)
-    print(trace, flush=True)
 
 
-def hl_cam4_connect_watchdog_secs() -> Optional[float]:
+def hl_cam4_connect_watchdog_secs() -> float | None:
     raw = os.getenv("HL_CAM4_CONNECT_WATCHDOG_SECS", "").strip().lower()
     if raw in {"0", "false", "no", "off"}:
         return None
@@ -57,25 +56,20 @@ def hl_cam4_connect_watchdog_secs() -> Optional[float]:
         try:
             return max(float(raw), 0.1)
         except ValueError:
-            logger.warning(
-                "[IOTC] Ignoring invalid HL_CAM4_CONNECT_WATCHDOG_SECS=%r", raw
-            )
+            logger.warning("[IOTC] Ignoring invalid HL_CAM4_CONNECT_WATCHDOG_SECS=%r", raw)
             return None
     return float(CONNECT_TIMEOUT + 2)
 
 
 def truthy_env(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    return truthy(os.getenv(name))
 
 
 def configure_tutk_native_log(tutk_platform_lib: CDLL) -> None:
     if not truthy_env("TUTK_NATIVE_LOG"):
         return
 
-    log_path = (
-        os.getenv("TUTK_NATIVE_LOG_PATH", "/tmp/tutk_iotc.log").strip()
-        or "/tmp/tutk_iotc.log"
-    )
+    log_path = os.getenv("TUTK_NATIVE_LOG_PATH", "/tmp/tutk_iotc.log").strip() or "/tmp/tutk_iotc.log"
     level_raw = os.getenv("TUTK_NATIVE_LOG_LEVEL", "0").strip()
     try:
         log_level = max(int(level_raw), 0)
@@ -86,20 +80,14 @@ def configure_tutk_native_log(tutk_platform_lib: CDLL) -> None:
     try:
         pathlib.Path(log_path).parent.mkdir(parents=True, exist_ok=True)
     except OSError as ex:
-        print(
-            f"[TUTK_NATIVE_LOG] mkdir_failed path={log_path} error={type(ex).__name__}: {ex}",
-            flush=True,
-        )
+        logger.warning(f"TUTK_NATIVE_LOG mkdir_failed path={log_path} error={type(ex).__name__}: {ex}")
 
     errno = tutk.iotc_set_log_attr(
         tutk_platform_lib,
         log_path,
         c_uint32(log_level),
     )
-    print(
-        f"[TUTK_NATIVE_LOG] path={log_path} level={log_level} errno={errno}",
-        flush=True,
-    )
+    logger.info(f"TUTK_NATIVE_LOG path={log_path} level={log_level} errno={errno}")
 
 
 # --- Audio codec mapping ---
@@ -133,7 +121,3 @@ def resolve_audio_codec(codec_id: int, sample_rate: int) -> tuple[str, int]:
     rate = mapped_rate or sample_rate
     logger.info(f"[IOTC] Audio {codec=} {rate=} {codec_id=}")
     return codec, rate or 16000
-
-
-def redact_password(password: Optional[str]):
-    return f"{password[0]}{'*' * (len(password) - 1)}" if password else "NOT SET"

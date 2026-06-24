@@ -14,7 +14,6 @@ if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
         if module_name == "wyzebridge" or module_name.startswith("wyzebridge."):
             del sys.modules[module_name]
 
-import wyzebridge.wyze_stream as wyze_stream_module
 import wyzebridge.tutk_session as tutk_session_module
 from wyzebridge.wyze_stream import (
     QueueTuple,

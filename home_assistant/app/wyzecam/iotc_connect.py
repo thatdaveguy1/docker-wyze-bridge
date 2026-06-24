@@ -20,8 +20,8 @@ import os
 import threading
 import time
 import warnings
+from collections.abc import Callable
 from ctypes import c_int, c_ubyte, c_uint, c_uint32
-from typing import Callable, Optional
 
 from wyzecam.iotc_helpers import (
     hl_cam4_connect_watchdog_secs,
@@ -40,7 +40,7 @@ _hl_cam4_main_probe_mode = hl_cam4_main_probe_mode
 _hl_cam4_connect_watchdog_secs = hl_cam4_connect_watchdog_secs
 
 
-def _connect_watchdog_timeout(session) -> Optional[float]:
+def _connect_watchdog_timeout(session) -> float | None:
     if session.camera.product_model != "HL_CAM4":
         return None
 
@@ -50,9 +50,7 @@ def _connect_watchdog_timeout(session) -> Optional[float]:
     return _hl_cam4_connect_watchdog_secs()
 
 
-def _arm_connect_watchdog(
-    session, connect_mode: str
-) -> tuple[Optional[threading.Timer], threading.Event]:
+def _arm_connect_watchdog(session, connect_mode: str) -> tuple[threading.Timer | None, threading.Event]:
     from wyzecam.iotc import _log_tutk_trace
 
     connect_done = threading.Event()
@@ -73,10 +71,7 @@ def _arm_connect_watchdog(
         if connect_done.is_set() or session.session_id is None:
             return
 
-        print(
-            f"[DEBUG-IOTC] Connect watchdog firing after {timeout_s:.3f}s for {session.camera.nickname}",
-            flush=True,
-        )
+        logger.warning(f"Connect watchdog firing after {timeout_s:.3f}s for {session.camera.nickname}")
         session._connect_watchdog_fired = True
         _log_tutk_trace(
             session.camera,
@@ -85,9 +80,7 @@ def _arm_connect_watchdog(
             substream=session.substream,
             watchdog_timeout_s=round(timeout_s, 3),
         )
-        err_no = tutk.iotc_connect_stop_by_session_id(
-            session.tutk_platform_lib, session.session_id
-        )
+        err_no = tutk.iotc_connect_stop_by_session_id(session.tutk_platform_lib, session.session_id)
         _log_tutk_trace(
             session.camera,
             "connect_watchdog_stop",
@@ -95,10 +88,7 @@ def _arm_connect_watchdog(
             errno=int(err_no),
             substream=session.substream,
         )
-        print(
-            f"[DEBUG-IOTC] Connect watchdog stop returned {int(err_no)} for {session.camera.nickname}",
-            flush=True,
-        )
+        logger.debug(f"Connect watchdog stop returned {int(err_no)} for {session.camera.nickname}")
 
     watchdog = threading.Timer(timeout_s, stop_connect)
     watchdog.daemon = True
@@ -108,7 +98,7 @@ def _arm_connect_watchdog(
 
 def _release_connect_watchdog(
     session,
-    watchdog: Optional[threading.Timer],
+    watchdog: threading.Timer | None,
     connect_done: threading.Event,
 ) -> None:
     connect_done.set()
@@ -120,9 +110,7 @@ def _release_connect_watchdog(
         watchdog.join(timeout=0.1)
 
 
-def _run_connect_with_watchdog(
-    session, connect_mode: str, connect_call: Callable[[], int]
-) -> int:
+def _run_connect_with_watchdog(session, connect_mode: str, connect_call: Callable[[], int]) -> int:
     watchdog, connect_done = session._arm_connect_watchdog(connect_mode)
     try:
         return connect_call()
@@ -189,22 +177,17 @@ def _connect_attempt(
 
     try:
         session.state = WyzeIOTCSessionState.IOTC_CONNECTING
-        print(
-            f"[DEBUG-IOTC] _connect() starting for {session.camera.nickname} ({session.camera.product_model})",
-            flush=True,
-        )
-        print(
-            f"[DEBUG-IOTC] P2P ID present: {bool(session.camera.p2p_id)}", flush=True
-        )
+        logger.debug(f"_connect() starting for {session.camera.nickname} ({session.camera.product_model})")
+        logger.debug(f"P2P ID present: {bool(session.camera.p2p_id)}")
         assert session.camera.p2p_id, "Missing p2p_id"
 
-        print("[DEBUG-IOTC] Getting session ID...", flush=True)
+        logger.debug("Getting session ID...")
         session_id = tutk.iotc_get_session_id(session.tutk_platform_lib)
         if int(session_id) < 0:
-            print(f"[DEBUG-IOTC] get_session_id FAILED: {session_id}", flush=True)
+            logger.error(f"get_session_id FAILED: {session_id}")
             raise tutk.TutkError(session_id)
         session.session_id = session_id
-        print(f"[DEBUG-IOTC] Got session ID: {session_id}", flush=True)
+        logger.debug(f"Got session ID: {session_id}")
 
         force_v4_parallel_raw = os.getenv("FORCE_V4_PARALLEL", "")
         probe_mode = _hl_cam4_main_probe_mode()
@@ -212,16 +195,11 @@ def _connect_attempt(
             "HL_CAM3P",
             "HL_CAM4",
         }
-        force_v4_parallel = (
-            session.camera.product_model == "HL_CAM4"
-            and (
-                probe_mode == "tutk_parallel"
-                or force_v4_parallel_raw.lower() in {"1", "true", "yes"}
-            )
+        force_v4_parallel = session.camera.product_model == "HL_CAM4" and (
+            probe_mode == "tutk_parallel" or force_v4_parallel_raw.lower() in {"1", "true", "yes"}
         )
-        print(
-            f"[DEBUG-IOTC] FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel or force_parallel_substream}",
-            flush=True,
+        logger.debug(
+            f"FORCE_V4_PARALLEL raw='{force_v4_parallel_raw}' active={force_v4_parallel or force_parallel_substream}"
         )
         _log_tutk_trace(
             session.camera,
@@ -237,20 +215,21 @@ def _connect_attempt(
             substream=session.substream,
         )
 
-        if force_parallel_substream or force_v4_parallel or (
-            not session.camera.dtls and not session.camera.parent_dtls
+        if (
+            force_parallel_substream
+            or force_v4_parallel
+            or (not session.camera.dtls and not session.camera.parent_dtls)
         ):
             connect_mode = "parallel"
-            print(
-                "[DEBUG-IOTC] Using IOTC_Connect_ByUID_Parallel"
+            logger.debug(
+                "Using IOTC_Connect_ByUID_Parallel"
                 + (
                     " (forced substream)"
                     if force_parallel_substream
                     else " (forced HL_CAM4)"
                     if force_v4_parallel
                     else " (no DTLS)"
-                ),
-                flush=True,
+                )
             )
             connect_started = time.monotonic()
             session_id = session._run_connect_with_watchdog(
@@ -259,22 +238,12 @@ def _connect_attempt(
                     session.tutk_platform_lib, session.camera.p2p_id, session.session_id
                 ),
             )
-            print(
-                f"[DEBUG-IOTC] iotc_connect_by_uid_parallel elapsed={time.monotonic() - connect_started:.3f}s",
-                flush=True,
-            )
+            logger.debug(f"iotc_connect_by_uid_parallel elapsed={time.monotonic() - connect_started:.3f}s")
         else:
             connect_mode = "dtls_ex"
-            print(
-                f"[DEBUG-IOTC] Using IOTC_Connect_ByUIDEx (DTLS={session.camera.dtls})",
-                flush=True,
-            )
-            password = (
-                str(session.camera.parent_enr)
-                if session.camera.parent_dtls
-                else str(session.camera.enr)
-            )
-            print("[DEBUG-IOTC] Calling iotc_connect_by_uid_ex...", flush=True)
+            logger.debug(f"Using IOTC_Connect_ByUIDEx (DTLS={session.camera.dtls})")
+            password = str(session.camera.parent_enr) if session.camera.parent_dtls else str(session.camera.enr)
+            logger.debug("Calling iotc_connect_by_uid_ex...")
             connect_started = time.monotonic()
             session_id = session._run_connect_with_watchdog(
                 connect_mode,
@@ -286,10 +255,7 @@ def _connect_attempt(
                     session.connect_timeout,
                 ),
             )
-            print(
-                f"[DEBUG-IOTC] iotc_connect_by_uid_ex elapsed={time.monotonic() - connect_started:.3f}s",
-                flush=True,
-            )
+            logger.debug(f"iotc_connect_by_uid_ex elapsed={time.monotonic() - connect_started:.3f}s")
         connect_elapsed = round(time.monotonic() - connect_started, 3)
         _log_tutk_trace(
             session.camera,
@@ -303,22 +269,16 @@ def _connect_attempt(
             watchdog_fired=session._connect_watchdog_fired,
         )
 
-        print(f"[DEBUG-IOTC] Connect returned: {session_id}", flush=True)
+        logger.debug(f"Connect returned: {session_id}")
         if int(session_id) < 0:
-            print(
-                f"[DEBUG-IOTC] Session connection FAILED: {int(session_id)}",
-                flush=True,
-            )
+            logger.error(f"Session connection FAILED: {int(session_id)}")
             raise tutk.TutkError(session_id)
         session.session_id = session_id
-        print(f"[DEBUG-IOTC] Session connected OK: {session_id}", flush=True)
+        logger.debug(f"Session connected OK: {session_id}")
 
-        print("[DEBUG-IOTC] Calling session_check...", flush=True)
+        logger.debug("Calling session_check...")
         session_info = session.session_check()
-        print(
-            f"[DEBUG-IOTC] Session mode: {session_info.mode} (0=P2P, 1=Relay, 2=LAN)",
-            flush=True,
-        )
+        logger.debug(f"Session mode: {session_info.mode} (0=P2P, 1=Relay, 2=LAN)")
         _log_tutk_trace(
             session.camera,
             "session_check",
@@ -327,8 +287,7 @@ def _connect_attempt(
         )
         resend = (
             c_int(1)
-            if session.camera.product_model not in ("WVOD1", "HL_WCO2")
-            and int(os.getenv("RESEND", 1)) != 0
+            if session.camera.product_model not in ("WVOD1", "HL_WCO2") and int(os.getenv("RESEND", 1)) != 0
             else c_int(0)
         )
 
@@ -354,9 +313,7 @@ def _connect_attempt(
         )
 
         if int(av_chan_id) < 0:
-            logger.error(
-                f"[DEBUG] AV client start failed with error code: {int(av_chan_id)}"
-            )
+            logger.error(f"[DEBUG] AV client start failed with error code: {int(av_chan_id)}")
             raise tutk.TutkError(av_chan_id)
         session.av_chan_id = av_chan_id
         session.state = WyzeIOTCSessionState.CONNECTED
@@ -376,14 +333,10 @@ def _connect_attempt(
         if session.state != WyzeIOTCSessionState.CONNECTED:
             session.state = WyzeIOTCSessionState.CONNECTING_FAILED
 
-    logger.info(
-        f"[IOTC] AV Client Start: {session.av_chan_id=} expected_chan={channel_id}"
-    )
+    logger.info(f"[IOTC] AV Client Start: {session.av_chan_id=} expected_chan={channel_id}")
 
     session.tutk_platform_lib.avClientSetMaxBufSize(max_buf_size)
-    tutk.av_client_set_recv_buf_size(
-        session.tutk_platform_lib, session.av_chan_id or c_int(0), max_buf_size
-    )
+    tutk.av_client_set_recv_buf_size(session.tutk_platform_lib, session.av_chan_id or c_int(0), max_buf_size)
 
 
 def get_auth_key(session) -> str:
@@ -395,11 +348,7 @@ def get_auth_key(session) -> str:
     )
     hashed_enr = hashlib.sha256(auth.encode("utf-8")).digest()
     auth_key = (
-        base64.b64encode(hashed_enr[:6])
-        .decode()
-        .replace("+", "Z")
-        .replace("/", "9")
-        .replace("=", "A")
+        base64.b64encode(hashed_enr[:6]).decode().replace("+", "Z").replace("/", "9").replace("=", "A")
         # .encode() # https://github.com/kroo/wyzecam/compare/main...mrlt8:wyzecam:dev#diff-ed2b3d2defa5e765636d4536ebf34452e05bfec37377d62c71a9e58789e093dfR667
     )
     return auth_key
@@ -424,9 +373,7 @@ def _auth(session):
             wake_mac = None
             if session.camera.product_model in {"WVOD1", "HL_WCO2"}:
                 wake_mac = session.camera.mac
-                logger.info(
-                    f"[DEBUG] Using wake_mac for outdoor camera: {wake_mac}"
-                )
+                logger.info(f"[DEBUG] Using wake_mac for outdoor camera: {wake_mac}")
 
             logger.info("[DEBUG] Sending K10000ConnectRequest...")
             challenge = mux.send_ioctl(K10000ConnectRequest(wake_mac))
@@ -438,9 +385,7 @@ def _auth(session):
                 raise ValueError("CONNECT_REQUEST_FAILED")
 
             logger.info(f"[IOTC] {challenge.resp_protocol=}")
-            logger.info(
-                f"[DEBUG] Challenge result received, protocol: {challenge.resp_protocol}"
-            )
+            logger.info(f"[DEBUG] Challenge result received, protocol: {challenge.resp_protocol}")
             _log_tutk_trace(
                 session.camera,
                 "auth_challenge",
@@ -470,9 +415,7 @@ def _auth(session):
                 logger.error("[DEBUG] auth_response is None - AUTH_RESPONSE_NONE")
                 raise ValueError("AUTH_RESPONSE_NONE")
 
-            logger.info(
-                f"[DEBUG] Auth response received: connectionRes={auth_response.get('connectionRes')}"
-            )
+            logger.info(f"[DEBUG] Auth response received: connectionRes={auth_response.get('connectionRes')}")
             _log_tutk_trace(
                 session.camera,
                 "auth_response",
@@ -485,9 +428,7 @@ def _auth(session):
                 raise ValueError("ENR_AUTH_FAILED")
 
             if auth_response["connectionRes"] != "1":
-                logger.error(
-                    f"[DEBUG] connectionRes={auth_response.get('connectionRes')} - AUTH_FAILED"
-                )
+                logger.error(f"[DEBUG] connectionRes={auth_response.get('connectionRes')} - AUTH_FAILED")
                 warnings.warn(f"[IOTC] AUTH FAILED: {auth_response=}")
                 raise ValueError("AUTH_FAILED")
 
@@ -527,7 +468,5 @@ def _auth(session):
     finally:
         if session.state != WyzeIOTCSessionState.AUTHENTICATION_SUCCEEDED:
             session.state = WyzeIOTCSessionState.AUTHENTICATION_FAILED
-            logger.error(
-                f"[DEBUG] Authentication failed, state set to: {session.state.name}"
-            )
+            logger.error(f"[DEBUG] Authentication failed, state set to: {session.state.name}")
     return session

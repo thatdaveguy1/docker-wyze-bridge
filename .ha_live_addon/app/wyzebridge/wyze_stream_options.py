@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass(slots=True)
 class WyzeStreamOptions:
     quality: str = "hd180"

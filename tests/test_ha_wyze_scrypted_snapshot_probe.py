@@ -4,7 +4,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 PROBE = ROOT / "scripts" / "ha_wyze_scrypted_snapshot_probe.sh"
 
@@ -64,7 +63,7 @@ class TestHAWyzeScryptedSnapshotProbe(unittest.TestCase):
 
         expected_snippets = [
             'jq -c \'.data.entries[] | select(.domain=="scrypted" and (.disabled_by | not)) | .data\' "$SCRYPTED_CONFIG_PATH"',
-            'https://$SCRYPTED_HOST/login',
+            "https://$SCRYPTED_HOST/login",
             "/endpoint/@scrypted/snapshot/$device_id/Camera",
             "is_jpeg_file",
             "od -An -tx1 -N2",
@@ -82,7 +81,7 @@ class TestHAWyzeScryptedSnapshotProbe(unittest.TestCase):
         library = (ROOT / "scripts" / "ha_bridge_probe.sh").read_text()
         self.assertIn("ha_bridge_probe.sh", script)
         self.assertIn('s/api=[^" ]+/api=<redacted>/g', library)
-        self.assertIn('s/(Bearer )[A-Za-z0-9._~-]+/\\1<redacted>/g', script)
+        self.assertIn("s/(Bearer )[A-Za-z0-9._~-]+/\\1<redacted>/g", script)
 
 
 if __name__ == "__main__":

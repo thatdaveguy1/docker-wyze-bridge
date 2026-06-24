@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
+import importlib
 import pathlib
 import sys
 import types
 import unittest
-import importlib
 from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
@@ -75,9 +75,7 @@ class TestFrontendIngressBaseHref(unittest.TestCase):
         app.testing = True
         client = app.test_client()
 
-        with patch.object(
-            frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn
-        ):
+        with patch.object(frontend.web_ui.auth, "login_required", side_effect=lambda fn: fn):
             response = client.get(
                 "/",
                 headers={"X-Ingress-Path": "/api/hassio_ingress/test-token"},
