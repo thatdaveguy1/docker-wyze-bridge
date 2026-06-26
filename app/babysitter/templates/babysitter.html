@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+
+{% block stylesheet %}
+<link rel="stylesheet" href="{{ url_for('static', filename='babysitter.css') }}" />
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {# ================================================================== #}
+    {# Page title with dry-run/live badge                                  #}
+    {# ================================================================== #}
+    <h1 class="title is-3 has-text-white-ter">
+        <span class="icon-text">
+            <span class="icon"><i class="fas fa-shield-halved"></i></span>
+            <span>Camera Babysitter</span>
+        </span>
+        <span id="dry-run-badge" class="tag is-warning is-medium">Loading...</span>
+    </h1>
+
+    {# ================================================================== #}
+    {# Status section — 3 camera cards                                     #}
+    {# ================================================================== #}
+    <h2 class="subtitle is-5 has-text-grey-light">
+        <span class="icon"><i class="fas fa-heart-pulse"></i></span>
+        Camera Status
+    </h2>
+    <p class="help has-text-grey-light mb-3">
+        Each card shows real-time health for a Reolink camera.
+        <strong>VIDEO_DOWN</strong> means the camera's RTSP stream has zero FPS,
+        the Scrypted snapshot is broken, and ffprobe confirms no valid stream —
+        the watchdog will reboot the camera if approved and not in cooldown.
+    </p>
+    <div id="status-cards" class="columns is-multiline">
+        {# Cards are populated by babysitter.js #}
+        <div class="column is-4">
+            <div class="card">
+                <div class="card-content">
+                    <p class="has-text-grey">Loading camera status...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ================================================================== #}
+    {# Controls section                                                    #}
+    {# ================================================================== #}
+    <h2 class="subtitle is-5 has-text-grey-light mt-6">
+        <span class="icon"><i class="fas fa-sliders"></i></span>
+        Controls
+    </h2>
+    <p class="help has-text-grey-light mb-3">
+        Toggle dry-run mode (no actual reboots), approve cameras for automatic
+        recovery, or trigger a manual reboot. <strong>Approve</strong> a camera
+        before it can be rebooted — this is a safety guard.
+    </p>
+    <div class="field is-grouped is-grouped-multiline mb-4">
+        <div class="control">
+            <button id="btn-global-dryrun" class="button is-warning">
+                <span class="icon"><i class="fas fa-flask"></i></span>
+                <span>Toggle Global Dry-Run</span>
+            </button>
+        </div>
+        <div class="control">
+            <button id="btn-discover" class="button is-info">
+                <span class="icon"><i class="fas fa-magnifying-glass"></i></span>
+                <span>Run Discovery Now</span>
+            </button>
+        </div>
+    </div>
+
+    {# Per-camera controls table #}
+    <div class="table-container">
+        <table class="table is-hoverable is-fullwidth">
+            <thead>
+                <tr>
+                    <th>Camera</th>
+                    <th>Approved</th>
+                    <th>Dry-Run Override</th>
+                    <th>Manual Reboot</th>
+                </tr>
+            </thead>
+            <tbody id="controls-table-body">
+                {# Rows populated by babysitter.js #}
+            </tbody>
+        </table>
+    </div>
+
+    {# Discovery results section (expandable) #}
+    <div id="discovery-results" class="is-hidden mt-4">
+        <div class="message is-info">
+            <div class="message-header">
+                <p>Discovery Results</p>
+                <button class="delete" onclick="document.getElementById('discovery-results').classList.add('is-hidden')"></button>
+            </div>
+            <div class="message-body">
+                <pre id="discovery-json" class="has-text-white-ter"></pre>
+            </div>
+        </div>
+    </div>
+
+    {# ================================================================== #}
+    {# Configuration section (collapsible)                                 #}
+    {# ================================================================== #}
+    <details class="mt-6">
+        <summary class="subtitle is-5 has-text-grey-light cursor-pointer">
+            <span class="icon"><i class="fas fa-gear"></i></span>
+            Configuration
+        </summary>
+        <p class="help has-text-grey-light mt-2">
+            Edit watchdog tuning parameters and service credentials.
+            Passwords are shown as <code>****</code> — leave them unchanged to
+            keep the existing value. Click <strong>Save</strong> to persist.
+        </p>
+        <form id="config-form" class="box has-background-grey-dark">
+            <input type="hidden" id="cfg-cameras-json" value="[]" />
+
+            {# Watchdog tuning #}
+            <h3 class="title is-6 has-text-white-ter">Watchdog Tuning</h3>
+            <div class="columns is-multiline">
+                <div class="column is-3">
+                    <label class="label is-small">Cooldown (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-cooldown" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Max Daily Reboots</label>
+                    <input class="input is-small" type="number" id="cfg-max_daily" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Video Down Threshold (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-video_down_threshold" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Snapshot Samples</label>
+                    <input class="input is-small" type="number" id="cfg-snapshot_samples" min="1" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Snapshot Stale Window (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-snapshot_stale_window" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Recovery Wait (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-recovery_wait" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Reboot Timeout (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-reboot_timeout" min="0" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Poll Interval (sec)</label>
+                    <input class="input is-small" type="number" id="cfg-interval" min="1" />
+                </div>
+            </div>
+
+            {# Service credentials #}
+            <h3 class="title is-6 has-text-white-ter mt-4">Service Credentials</h3>
+            <div class="columns is-multiline">
+                <div class="column is-4">
+                    <label class="label is-small">Scrypted Host</label>
+                    <input class="input is-small" type="text" id="cfg-scrypted_host" placeholder="https://scrypted.local:10443" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Scrypted Username</label>
+                    <input class="input is-small" type="text" id="cfg-scrypted_username" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Scrypted Password</label>
+                    <input class="input is-small" type="password" id="cfg-scrypted_password" placeholder="****" />
+                </div>
+                <div class="column is-4">
+                    <label class="label is-small">Frigate Host</label>
+                    <input class="input is-small" type="text" id="cfg-frigate_host" placeholder="http://frigate.local:5000" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">MQTT Broker</label>
+                    <input class="input is-small" type="text" id="cfg-mqtt_broker" />
+                </div>
+                <div class="column is-2">
+                    <label class="label is-small">MQTT Port</label>
+                    <input class="input is-small" type="number" id="cfg-mqtt_port" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">MQTT Username</label>
+                    <input class="input is-small" type="text" id="cfg-mqtt_username" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">MQTT Password</label>
+                    <input class="input is-small" type="password" id="cfg-mqtt_password" placeholder="****" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Reolink Username</label>
+                    <input class="input is-small" type="text" id="cfg-reolink_username" />
+                </div>
+                <div class="column is-3">
+                    <label class="label is-small">Reolink Password</label>
+                    <input class="input is-small" type="password" id="cfg-reolink_password" placeholder="****" />
+                </div>
+            </div>
+
+            {# Camera mapping table #}
+            <h3 class="title is-6 has-text-white-ter mt-4">Camera Mapping</h3>
+            <p class="help has-text-grey-light">
+                Edit the friendly name, Scrypted device ID, camera IP, and
+                Frigate camera name for each camera.
+            </p>
+            <div class="table-container">
+                <table class="table is-narrow is-fullwidth" id="camera-mapping-table">
+                    <thead>
+                        <tr>
+                            <th>Friendly Name</th>
+                            <th>Scrypted ID</th>
+                            <th>IP Address</th>
+                            <th>Frigate Name</th>
+                        </tr>
+                    </thead>
+                    <tbody id="camera-mapping-body">
+                        {# Rows populated by babysitter.js #}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="field mt-4">
+                <div class="control">
+                    <button type="submit" class="button is-primary">
+                        <span class="icon"><i class="fas fa-floppy-disk"></i></span>
+                        <span>Save Configuration</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </details>
+
+    {# ================================================================== #}
+    {# History section                                                     #}
+    {# ================================================================== #}
+    <h2 class="subtitle is-5 has-text-grey-light mt-6">
+        <span class="icon"><i class="fas fa-clock-rotate-left"></i></span>
+        Reboot History
+    </h2>
+    <p class="help has-text-grey-light mb-3">
+        Last 20 reboot events. <strong>Outcome</strong> shows success or failed.
+        <strong>Duration</strong> is seconds from reboot to recovery confirmation.
+    </p>
+    <div class="table-container">
+        <table class="table is-striped is-hoverable is-fullwidth">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Camera</th>
+                    <th>Action</th>
+                    <th>Reason</th>
+                    <th>Outcome</th>
+                    <th>Duration (s)</th>
+                </tr>
+            </thead>
+            <tbody id="history-table-body">
+                {# Rows populated by babysitter.js #}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascript %}
+<script src="{{ url_for('static', filename='babysitter.js') }}"></script>
+{% endblock %}

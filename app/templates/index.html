@@ -28,6 +28,14 @@
     </div>
     <div class="navbar-menu" id="refresh-menu">
         <div class="navbar-end">
+            {% if babysitter_enabled %}
+            <a class="navbar-item is-tab" href="{{ base_href }}babysitter" title="Camera Babysitter">
+                <span class="icon-text">
+                    <span class="icon"><i class="fas fa-shield-halved"></i></span>
+                    <span>Babysitter</span>
+                </span>
+            </a>
+            {% endif %}
             <div class="navbar-item">
                 <div class="field is-grouped">
                     <div class="control has-icons-left is-hidden-mobile">

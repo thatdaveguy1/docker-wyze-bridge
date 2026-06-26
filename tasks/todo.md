@@ -1,5 +1,57 @@
 # Todo
 
+## 2026-06-26 Reolink Camera Babysitter
+
+Plan: `implementation.md`. Lives in `app/babysitter/` as a self-contained
+package inside the Docker Wyze Bridge. Feature-flagged via
+`ENABLE_BABYSITTER=true`. Settings page at `/babysitter`. Reolink CGI
+reboot (no Scrypted MQTT script). No new dependencies (paho-mqtt +
+requests already in requirements.txt).
+
+### Phase 0 — Helpers + config + state + tests
+- [ ] 0.1 Create `app/babysitter/__init__.py` — package init, exports create_blueprint()
+- [ ] 0.2 Create `app/babysitter/helpers.py` — Scrypted HTTP client (login, snapshot probe), Frigate REST client (stats, config, ffprobe), Reolink CGI client (login, reboot), TCP probe, JPEG validation + hash compare, secret redaction
+- [ ] 0.3 Create `app/babysitter/config.py` — config loading from env defaults + `/config/babysitter_config.json`, merge logic, write-back
+- [ ] 0.4 Create `app/babysitter/state.py` — atomic state file writes to `/config/babysitter_state.json`, cooldown tracking, daily count rolling window, reboot history (last 20)
+- [ ] 0.5 Write `tests/test_babysitter_helpers.py` — mocked HTTP for each client, JPEG validation, hash comparison, redaction
+- [ ] 0.6 Write `tests/test_babysitter_config.py` — config loading, env override, JSON file read/write
+- [ ] 0.7 Write `tests/test_babysitter_state.py` — atomic writes, cooldown tracking, daily count rolling window
+- [ ] 0.8 Phase 0 gate: `python -m pytest tests/test_babysitter_helpers.py tests/test_babysitter_config.py tests/test_babysitter_state.py -v`, `./scripts/build.sh --check`
+
+### Phase 1 — Watchdog logic + tests
+- [ ] 1.1 Create `app/babysitter/watchdog.py` — background thread, signal convergence (camera_fps + process_fps + skipped_fps + snapshot + ffprobe), wifi-up guard, Reolink CGI reboot, cooldown, max daily, dry-run, per-camera approval, sequential processing, MQTT event publishing
+- [ ] 1.2 Write `tests/test_babysitter_watchdog.py` — mocked Frigate/Scrypted/Reolink/MQTT, convergence logic, wifi guard, cooldown, max daily, dry-run, approval, sequential processing
+- [ ] 1.3 Phase 1 gate: `python -m pytest tests/test_babysitter_watchdog.py -v`, `./scripts/build.sh --check`
+
+### Phase 2 — Flask blueprint + settings page
+- [ ] 2.1 Create `app/babysitter/routes.py` — Flask blueprint with all API endpoints (status, config, reboot, approve, dryrun, discover, history)
+- [ ] 2.2 Create `app/babysitter/templates/babysitter.html` — settings/status page extending base.html with Bulma styling: status cards, controls, config knobs, history table, on-screen guidance
+- [ ] 2.3 Create `app/static/babysitter.js` — client-side JS for settings page (fetch status, toggle controls, manual reboot, discovery)
+- [ ] 2.4 Modify `app/frontend.py` — register babysitter blueprint when ENABLE_BABYSITTER=true, start watchdog thread
+- [ ] 2.5 Modify `app/templates/index.html` — add "Babysitter" navbar tab conditional on ENABLE_BABYSITTER
+- [ ] 2.6 Modify `app/static/site.js` — minimal tab switching logic for babysitter tab
+- [ ] 2.7 Write `tests/test_babysitter_routes.py` — Flask test client, all endpoints, auth, config updates, password masking, blueprint not loaded when disabled
+- [ ] 2.8 Phase 2 gate: `python -m pytest tests/test_babysitter_routes.py -v`, `./scripts/build.sh --check`, manual page render check
+
+### Phase 3 — Live single-camera reboot test (user-approved, mutating)
+- [ ] 3.1 Set ENABLE_BABYSITTER=true + Scrypted/Frigate/Reolink env vars, start bridge
+- [ ] 3.2 Navigate to /babysitter, run discovery, verify camera mapping
+- [ ] 3.3 Keep dry-run ON, let watchdog run 30 min, verify detection on status page
+- [ ] 3.4 Approve one camera via settings page
+- [ ] 3.5 Do NOT induce a wedge. Either wait for natural wedge (Option A) or click "Reboot now" button (Option B). Never block RTSP / pull cables / firewall IPs.
+- [ ] 3.6 Observe state transitions on status page: ONLINE → RECOVERING → ONLINE, Frigate FPS drop/recovery
+- [ ] 3.7 Verify recovery: Frigate FPS > 0, snapshot valid, reboot history entry shows success
+- [ ] 3.8 Measure reboot duration (T0→T4), set RECOVERY_WAIT to measured + 30s via settings page
+
+### Phase 4 — Full deployment (all 3 cameras, user-approved)
+- [ ] 4.1 Approve all 3 cameras via settings page
+- [ ] 4.2 Set RECOVERY_WAIT to Phase 3 measured value + 30s
+- [ ] 4.3 Toggle global dry-run OFF via settings page
+- [ ] 4.4 Monitor 24h via settings page — no false positives, real wedges recovered, max daily not exceeded
+- [ ] 4.5 Update AGENTS.md with babysitter module boundary + env vars
+- [ ] 4.6 Update README.md with babysitter feature description + setup guide
+- [ ] 4.7 Update lessons.md if any learned mistakes occur
+
 ## 2026-06-20 Thermo-Nuclear Code Quality Remediation
 
 Plan: `implementation.md`. Phases 1–2 are BLOCKERs, 3–5 are MAJOR, 6 is optional.
