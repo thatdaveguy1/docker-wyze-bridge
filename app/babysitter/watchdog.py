@@ -41,6 +41,7 @@ from typing import Any
 from babysitter.config import BabysitterConfig, CameraEntry
 from babysitter.helpers import (
     FrigateClient,
+    OnvifRebootClient,
     ReolinkClient,
     ScryptedClient,
     is_valid_jpeg,
@@ -194,7 +195,7 @@ class Watchdog:
             password=config.scrypted_password,
         )
         self.frigate = FrigateClient(host=config.frigate_host)
-        # Per-camera Reolink clients, keyed by friendly_name.
+        # Per-camera Reolink CGI clients, keyed by friendly_name.
         self.reolink: dict[str, ReolinkClient] = {
             cam.friendly_name: ReolinkClient(
                 ip=cam.ip,
@@ -204,6 +205,16 @@ class Watchdog:
                 use_https=config.reolink_use_https
                 if cam.reolink_use_https is None
                 else cam.reolink_use_https,
+            )
+            for cam in config.cameras
+        }
+        # Per-camera ONVIF reboot clients (fallback for cameras without CGI).
+        self.onvif: dict[str, OnvifRebootClient] = {
+            cam.friendly_name: OnvifRebootClient(
+                ip=cam.ip,
+                username=config.reolink_username,
+                password=config.reolink_password,
+                port=config.onvif_port,
             )
             for cam in config.cameras
         }
@@ -270,12 +281,13 @@ class Watchdog:
 
         # 1. TCP reachability (wifi-up guard).
         tcp_ok = tcp_reachable(entry.ip, 554)
-        # Also check CGI API reachability (for reboot path).
+        # Check reboot path reachability: CGI API first, ONVIF as fallback.
         reolink = self.reolink.get(entry.friendly_name)
-        cgi_ok = False
-        if reolink:
-            cgi_port = reolink.port
-            cgi_ok = tcp_reachable(entry.ip, cgi_port)
+        onvif = self.onvif.get(entry.friendly_name)
+        cgi_ok = bool(reolink and tcp_reachable(entry.ip, reolink.port))
+        onvif_ok = bool(onvif and tcp_reachable(entry.ip, onvif.port))
+        # cgi_reachable in status means "can we reboot this camera at all?"
+        cgi_reachable = cgi_ok or onvif_ok
 
         if not tcp_ok:
             cam_state.current_state = STATE_WIFI_DOWN
@@ -290,7 +302,7 @@ class Watchdog:
                 name=entry.friendly_name,
                 state=STATE_WIFI_DOWN,
                 tcp_reachable=False,
-                cgi_reachable=cgi_ok,
+                cgi_reachable=cgi_reachable,
                 last_reboot=cam_state.last_reboot,
                 reboots_today=daily_reboot_count(cam_state),
                 cooldown_remaining=cooldown_remaining(cam_state, self.config.cooldown),
@@ -416,7 +428,7 @@ class Watchdog:
             snapshot_valid=snapshot_valid,
             snapshot_hash=snapshot_hash,
             tcp_reachable=True,
-            cgi_reachable=cgi_ok,
+            cgi_reachable=cgi_reachable,
             stale_hash_warning=stale_hash_warning,
             last_reboot=cam_state.last_reboot,
             reboots_today=daily_reboot_count(cam_state),
@@ -448,13 +460,14 @@ class Watchdog:
             logger.warning("%s: video_down but TCP unreachable — skipping reboot", camera_name)
             return None
 
-        # CGI reachability guard.
+        # CGI reachability guard (CGI or ONVIF must be reachable).
         if not status.cgi_reachable:
             logger.error(
-                "%s: video_down but Reolink CGI API (port %d) unreachable — "
-                "cannot reboot. Enable the web interface on the camera.",
+                "%s: video_down but no reboot path reachable "
+                "(CGI port %s, ONVIF port %s) — cannot reboot.",
                 camera_name,
-                self.reolink[camera_name].port if camera_name in self.reolink else 80,
+                self.reolink[camera_name].port if camera_name in self.reolink else "N/A",
+                self.onvif[camera_name].port if camera_name in self.onvif else "N/A",
             )
             return None
 
@@ -477,9 +490,13 @@ class Watchdog:
             return None
 
         if dry_run:
+            # Determine which method would be used.
+            reolink = self.reolink.get(camera_name)
+            cgi_ok = bool(reolink and tcp_reachable(entry.ip, reolink.port))
+            method = "reolink_cgi" if cgi_ok else "onvif"
             logger.info(
-                "%s: DRY-RUN — would reboot via Reolink CGI %s (reason=video_down)",
-                camera_name, entry.ip,
+                "%s: DRY-RUN — would reboot via %s %s (reason=video_down)",
+                camera_name, method, entry.ip,
             )
             if self.mqtt:
                 self.mqtt.publish_reboot_event(camera_name, {
@@ -488,38 +505,71 @@ class Watchdog:
                 })
             return None
 
-        # Perform the reboot.
+        # Perform the reboot: try CGI first, fall back to ONVIF.
         reolink = self.reolink.get(camera_name)
-        if reolink is None:
-            logger.error("%s: no ReolinkClient configured", camera_name)
+        onvif = self.onvif.get(camera_name)
+        cgi_ok = bool(reolink and tcp_reachable(entry.ip, reolink.port))
+
+        if cgi_ok and reolink:
+            action = "reolink_cgi"
+            logger.info("%s: initiating Reolink CGI reboot (reason=video_down)", camera_name)
+            start = time.time()
+            try:
+                success = reolink.reboot_with_retry()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("%s: CGI reboot failed: %s, trying ONVIF", camera_name, exc)
+                success = False
+        elif onvif:
+            action = "onvif"
+            logger.info("%s: initiating ONVIF reboot (reason=video_down)", camera_name)
+            start = time.time()
+            try:
+                success = onvif.reboot_with_retry()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("%s: ONVIF reboot failed: %s", camera_name, exc)
+                record_reboot(
+                    self.state, camera_name, "onvif", "video_down", "failed",
+                    duration=time.time() - start,
+                )
+                if self.mqtt:
+                    self.mqtt.publish_reboot_event(camera_name, {
+                        "action": "onvif", "reason": "video_down",
+                        "outcome": "failed", "error": str(exc),
+                    })
+                return self.state.history[0]
+        else:
+            logger.error("%s: no reboot client available", camera_name)
             return None
 
-        logger.info("%s: initiating Reolink CGI reboot (reason=video_down)", camera_name)
-        start = time.time()
-        try:
-            success = reolink.reboot_with_retry()
-        except Exception as exc:  # noqa: BLE001
-            logger.error("%s: reboot failed: %s", camera_name, exc)
-            record_reboot(
-                self.state, camera_name, "reolink_cgi", "video_down", "failed",
-                duration=time.time() - start,
-            )
-            if self.mqtt:
-                self.mqtt.publish_reboot_event(camera_name, {
-                    "action": "reolink_cgi", "reason": "video_down",
-                    "outcome": "failed", "error": str(exc),
-                })
-            return self.state.history[0]
+        # If CGI failed, try ONVIF as fallback.
+        if not success and cgi_ok and onvif:
+            action = "onvif"
+            logger.info("%s: CGI reboot failed, falling back to ONVIF", camera_name)
+            start = time.time()
+            try:
+                success = onvif.reboot_with_retry()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("%s: ONVIF fallback reboot failed: %s", camera_name, exc)
+                record_reboot(
+                    self.state, camera_name, "onvif", "video_down", "failed",
+                    duration=time.time() - start,
+                )
+                if self.mqtt:
+                    self.mqtt.publish_reboot_event(camera_name, {
+                        "action": "onvif", "reason": "video_down",
+                        "outcome": "failed", "error": str(exc),
+                    })
+                return self.state.history[0]
 
         if not success:
             logger.error("%s: reboot API returned failure", camera_name)
             record_reboot(
-                self.state, camera_name, "reolink_cgi", "video_down", "failed",
+                self.state, camera_name, action, "video_down", "failed",
                 duration=time.time() - start,
             )
             if self.mqtt:
                 self.mqtt.publish_reboot_event(camera_name, {
-                    "action": "reolink_cgi", "reason": "video_down",
+                    "action": action, "reason": "video_down",
                     "outcome": "failed",
                 })
             return self.state.history[0]
@@ -528,15 +578,16 @@ class Watchdog:
         recovery_duration = self._wait_for_recovery(camera_name, entry)
         total_duration = time.time() - start
         record_reboot(
-            self.state, camera_name, "reolink_cgi", "video_down", "success",
+            self.state, camera_name, action, "video_down", "success",
             duration=total_duration,
         )
         logger.info(
-            "%s: reboot succeeded, recovered in %.1fs", camera_name, total_duration,
+            "%s: reboot succeeded (%s), recovered in %.1fs",
+            camera_name, action, total_duration,
         )
         if self.mqtt:
             self.mqtt.publish_reboot_event(camera_name, {
-                "action": "reolink_cgi", "reason": "video_down",
+                "action": action, "reason": "video_down",
                 "outcome": "success", "duration": total_duration,
                 "recovery_wait": recovery_duration,
             })

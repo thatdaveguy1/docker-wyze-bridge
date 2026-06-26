@@ -54,6 +54,8 @@ class BabysitterConfig:
     reolink_password: str = ""
     reolink_port: int = 80
     reolink_use_https: bool = False
+    # ONVIF (fallback reboot for cameras without web UI, e.g. E1 Pro)
+    onvif_port: int = 8000
 
     # Watchdog config
     dry_run: bool = True
@@ -135,6 +137,7 @@ def from_env() -> BabysitterConfig:
         reolink_password=os.environ.get("REOLINK_PASSWORD", ""),
         reolink_port=_env_int("REOLINK_PORT", 80),
         reolink_use_https=_env_bool("REOLINK_USE_HTTPS", False),
+        onvif_port=_env_int("ONVIF_PORT", 8000),
         dry_run=_env_bool("BABYSIT_DRY_RUN", True),
         cooldown=_env_int("BABYSIT_COOLDOWN", 900),
         max_daily=_env_int("BABYSIT_MAX_DAILY", 3),

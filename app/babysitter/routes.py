@@ -177,47 +177,87 @@ def create_blueprint(
         # Dry-run guard (global or per-camera).
         is_dry = cfg.per_camera_dry_run.get(camera, False) or cfg.dry_run
         if is_dry:
+            from babysitter.helpers import tcp_reachable as _tcp
+            reolink_dr = wd.reolink.get(camera)
+            onvif_dr = wd.onvif.get(camera)
+            cgi_ok_dr = bool(reolink_dr and _tcp(entry.ip, reolink_dr.port))
+            method_dr = "reolink_cgi" if cgi_ok_dr else "onvif"
             return jsonify({
                 "dry_run": True,
-                "message": f"Would reboot {camera} via Reolink CGI at {entry.ip}",
+                "method": method_dr,
+                "message": f"Would reboot {camera} via {method_dr} at {entry.ip}",
             }), 200
 
-        # Perform the reboot directly via ReolinkClient.
+        # Perform the reboot: try CGI first, fall back to ONVIF.
         reolink = wd.reolink.get(camera)
-        if reolink is None:
+        onvif = wd.onvif.get(camera)
+        entry = wd._camera_entry(camera)
+
+        # Determine which method to use.
+        from babysitter.helpers import tcp_reachable
+        cgi_ok = bool(reolink and entry and tcp_reachable(entry.ip, reolink.port))
+        if cgi_ok and reolink:
+            action = "reolink_cgi"
+            client = reolink
+        elif onvif:
+            action = "onvif"
+            client = onvif
+        else:
             return jsonify({
-                "error": f"No ReolinkClient configured for '{camera}'",
+                "error": f"No reboot path available for '{camera}'",
             }), 500
 
         start = time.time()
         try:
-            success = reolink.reboot_with_retry()
+            success = client.reboot_with_retry()
         except Exception as exc:  # noqa: BLE001
-            logger.error("%s: manual reboot failed: %s", camera, exc)
-            record_reboot(
-                wd.state, camera, "reolink_cgi", "manual", "failed",
-                duration=time.time() - start,
-            )
-            save_state(wd.state, state_path)
-            return jsonify({
-                "camera": camera,
-                "action": "reolink_cgi",
-                "reason": "manual",
-                "outcome": "failed",
-                "error": str(exc),
-            }), 500
+            logger.error("%s: manual %s reboot failed: %s", camera, action, exc)
+            # If CGI failed and ONVIF is available, try it.
+            if action == "reolink_cgi" and onvif:
+                logger.info("%s: CGI failed, trying ONVIF fallback", camera)
+                action = "onvif"
+                start = time.time()
+                try:
+                    success = onvif.reboot_with_retry()
+                except Exception as exc2:  # noqa: BLE001
+                    logger.error("%s: ONVIF fallback also failed: %s", camera, exc2)
+                    record_reboot(
+                        wd.state, camera, "onvif", "manual", "failed",
+                        duration=time.time() - start,
+                    )
+                    save_state(wd.state, state_path)
+                    return jsonify({
+                        "camera": camera,
+                        "action": "onvif",
+                        "reason": "manual",
+                        "outcome": "failed",
+                        "error": str(exc2),
+                    }), 500
+            else:
+                record_reboot(
+                    wd.state, camera, action, "manual", "failed",
+                    duration=time.time() - start,
+                )
+                save_state(wd.state, state_path)
+                return jsonify({
+                    "camera": camera,
+                    "action": action,
+                    "reason": "manual",
+                    "outcome": "failed",
+                    "error": str(exc),
+                }), 500
 
         duration = time.time() - start
         outcome = "success" if success else "failed"
         record_reboot(
-            wd.state, camera, "reolink_cgi", "manual", outcome,
+            wd.state, camera, action, "manual", outcome,
             duration=duration,
         )
         save_state(wd.state, state_path)
 
         return jsonify({
             "camera": camera,
-            "action": "reolink_cgi",
+            "action": action,
             "reason": "manual",
             "outcome": outcome,
             "duration": round(duration, 2),

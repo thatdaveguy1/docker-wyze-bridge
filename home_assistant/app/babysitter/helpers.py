@@ -6,11 +6,14 @@ All secrets are redacted in logs via :func:`redact_url`.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
 import re
+import secrets
 import socket
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -318,6 +321,104 @@ class ReolinkClient:
                 if attempt >= max_retries:
                     raise
         return False
+
+
+# ---------------------------------------------------------------------------
+# ONVIF reboot client (for cameras without a web UI / CGI API)
+# ---------------------------------------------------------------------------
+
+
+def _onvif_wsse_header(username: str, password: str) -> str:
+    """Build an ONVIF WS-Security UsernameToken XML header.
+
+    Uses the UsernameToken profile with PasswordDigest (SHA-1 of
+    nonce + created + password, base64-encoded).
+    """
+    nonce_bytes = secrets.token_bytes(16)
+    nonce_b64 = base64.b64encode(nonce_bytes).decode()
+    created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    digest = base64.b64encode(
+        hashlib.sha1(nonce_bytes + created.encode() + password.encode()).digest()
+    ).decode()
+    return (
+        "<wsse:Security>"
+        f"<wsse:UsernameToken>"
+        f"<wsse:Username>{username}</wsse:Username>"
+        f'<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/'
+        f'oasis-200401-wss-username-token-profile-1.0#PasswordDigest">'
+        f"{digest}</wsse:Password>"
+        f'<wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/'
+        f'oasis-200401-wss-soap-message-security-1.0#Base64Binary">'
+        f"{nonce_b64}</wsse:Nonce>"
+        f"<wsu:Created>{created}</wsu:Created>"
+        "</wsse:UsernameToken>"
+        "</wsse:Security>"
+    )
+
+
+@dataclass
+class OnvifRebootClient:
+    """ONVIF SOAP client for cameras that lack a Reolink CGI web UI.
+
+    Uses the standard ONVIF SystemReboot command via the device service
+    endpoint, with WS-Security UsernameToken authentication.
+    """
+
+    ip: str
+    username: str = "admin"
+    password: str = ""
+    port: int = 8000
+    timeout: float = 15.0
+
+    @property
+    def _url(self) -> str:
+        return f"http://{self.ip}:{self.port}/onvif/device_service"
+
+    def reboot(self) -> bool:
+        """Send an ONVIF SystemReboot command. Returns True if accepted."""
+        header = _onvif_wsse_header(self.username, self.password)
+        soap = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope"'
+            ' xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/'
+            "oasis-200401-wss-wssecurity-secext-1.0.xsd"
+            '" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/'
+            'oasis-200401-wss-wssecurity-utility-1.0.xsd">'
+            f"<s:Header>{header}</s:Header>"
+            '<s:Body><tds:SystemReboot xmlns:tds='
+            '"http://www.onvif.org/ver10/device/wsdl"/></s:Body>'
+            "</s:Envelope>"
+        )
+        try:
+            resp = requests.post(
+                self._url,
+                headers={"Content-Type": "application/soap+xml"},
+                data=soap,
+                timeout=self.timeout,
+            )
+            # A successful reboot returns 200 with SystemRebootResponse,
+            # or the connection drops as the camera starts rebooting.
+            if resp.status_code == 200:
+                body = resp.text
+                return "SystemRebootResponse" in body or "reboot" in body.lower()
+            return False
+        except requests.RequestException:
+            # Camera is rebooting — connection may drop. That's expected.
+            return True
+
+    def reboot_with_retry(self, max_retries: int = 1) -> bool:
+        """Retry reboot once on connection failure."""
+        for attempt in range(max_retries + 1):
+            try:
+                return self.reboot()
+            except requests.RequestException:
+                if attempt >= max_retries:
+                    raise
+        return False
+
+    def reachable(self) -> bool:
+        """Check if the ONVIF device service port is reachable."""
+        return tcp_reachable(self.ip, self.port, timeout=5.0)
 
 
 # ---------------------------------------------------------------------------

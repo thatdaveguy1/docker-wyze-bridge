@@ -314,7 +314,8 @@ class TestRebootEndpoint(_BaseRouteTest):
         wd = self.bp.watchdog
         reolink = wd.reolink.get("doorbell")
         self.assertIsNotNone(reolink)
-        with patch.object(reolink, "reboot_with_retry", return_value=True):
+        with patch.object(reolink, "reboot_with_retry", return_value=True), \
+             patch("babysitter.helpers.tcp_reachable", return_value=True):
             resp = self.client.post("/babysitter/api/reboot/doorbell")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
