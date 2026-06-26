@@ -142,9 +142,9 @@ except Exception:
 start_go2rtc_health_monitor() {
     # Monitor go2rtc streams every 15s. Two checks:
     # 1. Producer check: if producers drop to 0 for >30s, force-restart the stream.
-    # 2. RTSP wedge check: if the API shows producers but RTSP DESCRIBE fails for
-    #    >60s, restart the entire go2rtc process (the RTSP server can wedge after
-    #    producer reconnections while the API still reports healthy producers).
+    # 2. RTSP wedge check: probe ALL alive aliases with DESCRIBE. Only restart the
+    #    go2rtc process if DESCRIBE fails for EVERY alive alias for >60s. A single
+    #    camera dropping should NOT trigger a full restart that drops all connections.
     (
         dead_since=""
         wedge_since=0
@@ -179,8 +179,10 @@ for line in open(path, encoding='utf-8'):
 " 2>/dev/null || echo "")
             now=$(date +%s)
 
-            # Pick the first alias with an active producer for the RTSP wedge probe
-            wedge_probe_alias=""
+            # Collect ALL aliases with active producers for the RTSP wedge probe.
+            # Probing only one alias was too aggressive — a single camera dropping
+            # would trigger a full go2rtc restart, dropping all 9 connections.
+            alive_aliases=""
 
             for alias in ${aliases}; do
                 [ -n "${alias}" ] || continue
@@ -224,23 +226,29 @@ except Exception:
                         echo "[GO2RTC_HEALTH] ${alias}: recovered after $((now - was_dead))s" >&2
                     fi
                     dead_since=$(printf '%s' "${dead_since}" | grep -v "^${alias}=")
-                    # Use this alias for the RTSP wedge probe if we haven't picked one yet
-                    if [ -z "${wedge_probe_alias}" ]; then
-                        wedge_probe_alias="${alias}"
-                    fi
+                    alive_aliases="${alive_aliases} ${alias}"
                 fi
             done
 
-            # RTSP wedge detection: probe the RTSP server with a DESCRIBE request
-            if [ -n "${wedge_probe_alias}" ]; then
-                if rtsp_describe_ok "${wedge_probe_alias}"; then
+            # RTSP wedge detection: probe ALL alive aliases. Only declare a wedge
+            # if DESCRIBE fails for every single one of them (a single camera
+            # dropping should NOT trigger a full go2rtc restart).
+            if [ -n "${alive_aliases}" ]; then
+                any_describe_ok=0
+                for alias in ${alive_aliases}; do
+                    if rtsp_describe_ok "${alias}"; then
+                        any_describe_ok=1
+                        break
+                    fi
+                done
+                if [ "${any_describe_ok}" = "1" ]; then
                     if [ "${wedge_since}" -ne 0 ]; then
                         echo "[GO2RTC_HEALTH] RTSP server recovered after $((now - wedge_since))s" >&2
                     fi
                     wedge_since=0
                 else
                     if [ "${wedge_since}" -eq 0 ]; then
-                        echo "[GO2RTC_HEALTH] RTSP DESCRIBE failed for ${wedge_probe_alias}, monitoring for wedge" >&2
+                        echo "[GO2RTC_HEALTH] RTSP DESCRIBE failed for all ${alive_aliases} , monitoring for wedge" >&2
                         wedge_since=${now}
                     elif [ $((now - wedge_since)) -gt 60 ]; then
                         echo "[GO2RTC_HEALTH] RTSP server wedged for >60s, restarting go2rtc process" >&2

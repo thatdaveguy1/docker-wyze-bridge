@@ -10,7 +10,6 @@ import base64
 import hashlib
 import ipaddress
 import json
-import logging
 import os
 import re
 import socket
@@ -20,7 +19,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+# NOTE: Do NOT import the stdlib `logging` module here. When PYTHONPATH includes
+# this directory, `import logging` resolves to the local wyzebridge/logging.py
+# which triggers a circular import (logging.py -> bridge_utils.py -> logging.getLogger
+# before the local logging module is fully initialized). Use _log() instead.
+def _log(msg: str) -> None:
+    print(msg, file=sys.stderr, flush=True)
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -50,7 +54,7 @@ def list_active_producers_verbose() -> None:
     """Read go2rtc streams JSON from stdin, print active producer aliases list."""
     data = json.load(sys.stdin)
     active = sorted(name for name, details in data.items() if details.get("producers"))
-    logger.info(f"GO2RTC Active producer aliases: {active}")
+    _log(f"GO2RTC Active producer aliases: {active}")
 
 
 def extract_yaml_aliases(config_path: str) -> None:
@@ -212,7 +216,7 @@ def _lan_ip_overrides() -> dict[str, str]:
         if mac and host:
             overrides[mac] = host
     if overrides:
-        logger.info(f"GO2RTC LAN IP overrides loaded for {len(overrides)} camera(s)")
+        _log(f"GO2RTC LAN IP overrides loaded for {len(overrides)} camera(s)")
     return overrides
 
 
@@ -296,7 +300,7 @@ def _with_lan_ip_override(url: str, cam: dict) -> str:
         return url
     parsed = urllib.parse.urlsplit(url)
     if _is_private_lan_host(parsed.hostname or "") and not _force_lan_ip_overrides():
-        logger.info(
+        _log(
             f"GO2RTC LAN override for {cam.get('name', '<unknown>')} is configured, "
             f"but keeping helper LAN host {parsed.hostname}; set GO2RTC_FORCE_LAN_IP_OVERRIDES=true to force it"
         )
@@ -471,11 +475,11 @@ def seed_go2rtc_aliases() -> None:
             cam.setdefault(key, value)
         published = _helper_flag(cam, "published")
         if published is False and _helper_flag(cam, "hd") is False and _helper_flag(cam, "sd") is False:
-            logger.debug(f"GO2RTC Skipping camera not published by bridge: {name}")
+            _log(f"GO2RTC Skipping camera not published by bridge: {name}")
             continue
         enabled = _helper_flag(cam, "enabled")
         if enabled is False:
-            logger.debug(f"GO2RTC Skipping disabled camera from helper: {name}")
+            _log(f"GO2RTC Skipping disabled camera from helper: {name}")
             continue
         model = _parse_model(info, url)
         hd_enabled = _helper_flag(cam, "hd")
@@ -497,7 +501,7 @@ def seed_go2rtc_aliases() -> None:
             aliases.append((f"{uri}-sd", "sd"))
 
         if not aliases:
-            logger.debug(f"GO2RTC Skipping camera with no enabled native feeds: {name} ({info})")
+            _log(f"GO2RTC Skipping camera with no enabled native feeds: {name} ({info})")
             continue
 
         for alias, subtype in aliases:
@@ -506,7 +510,7 @@ def seed_go2rtc_aliases() -> None:
                 stream_url = _with_verbose(stream_url)
             lines.append(f"  {alias}:")
             lines.append(f"    - {stream_url}")
-            logger.debug(f"GO2RTC Prepared stream: {alias} ({info}) subtype={subtype}")
+            _log(f"GO2RTC Prepared stream: {alias} ({info}) subtype={subtype}")
             prepared[alias] = stream_url
             added += 1
 
@@ -519,31 +523,31 @@ def seed_go2rtc_aliases() -> None:
                     recovery_url = _with_verbose(recovery_url)
                 lines.append(f"  {recovery_alias}:")
                 lines.append(f"    - {recovery_url}")
-                logger.debug(f"GO2RTC Prepared North Yard recovery stream: {recovery_alias} from {uri}-sd subtype=hd")
+                _log(f"GO2RTC Prepared North Yard recovery stream: {recovery_alias} from {uri}-sd subtype=hd")
                 prepared[recovery_alias] = recovery_url
                 seen.add(recovery_alias)
                 added += 1
 
     for alias_name, source_name, subtype in _parse_diagnostic_aliases():
         if alias_name in seen or alias_name in prepared:
-            logger.debug(f"GO2RTC Skipping duplicate diagnostic alias: {alias_name}")
+            _log(f"GO2RTC Skipping duplicate diagnostic alias: {alias_name}")
             continue
         source_url = prepared.get(source_name)
         if not source_url:
-            logger.debug(f"GO2RTC Skipping diagnostic alias {alias_name}: source {source_name} not prepared")
+            _log(f"GO2RTC Skipping diagnostic alias {alias_name}: source {source_name} not prepared")
             continue
         stream_url = _with_subtype(source_url, subtype)
         if alias_name in verbose_aliases:
             stream_url = _with_verbose(stream_url)
         lines.append(f"  {alias_name}:")
         lines.append(f"    - {stream_url}")
-        logger.debug(f"GO2RTC Prepared diagnostic stream: {alias_name} from {source_name} subtype={subtype}")
+        _log(f"GO2RTC Prepared diagnostic stream: {alias_name} from {source_name} subtype={subtype}")
         prepared[alias_name] = stream_url
         seen.add(alias_name)
         added += 1
 
     Path(os.environ["GO2RTC_CONFIG"]).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    logger.info(f"GO2RTC Total aliases prepared in config: {added}")
+    _log(f"GO2RTC Total aliases prepared in config: {added}")
 
 
 if __name__ == "__main__":
