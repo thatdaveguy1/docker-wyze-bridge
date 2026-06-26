@@ -305,23 +305,22 @@ class TestRebootEndpoint(_BaseRouteTest):
         data = resp.get_json()
         self.assertIn("max daily", data["error"].lower())
 
-    def test_reboot_live_calls_reolink(self):
+    def test_reboot_live_calls_onvif(self):
         # Approve + disable dry-run.
         self.client.post("/babysitter/api/approve/doorbell")
         self.client.post("/babysitter/api/dryrun")  # toggles to False
 
-        # Mock the ReolinkClient.reboot_with_retry.
+        # Mock the OnvifRebootClient.reboot_with_retry.
         wd = self.bp.watchdog
-        reolink = wd.reolink.get("doorbell")
-        self.assertIsNotNone(reolink)
-        with patch.object(reolink, "reboot_with_retry", return_value=True), \
-             patch("babysitter.helpers.tcp_reachable", return_value=True):
+        onvif = wd.onvif.get("doorbell")
+        self.assertIsNotNone(onvif)
+        with patch.object(onvif, "reboot_with_retry", return_value=True):
             resp = self.client.post("/babysitter/api/reboot/doorbell")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data["outcome"], "success")
         self.assertEqual(data["reason"], "manual")
-        self.assertEqual(data["action"], "reolink_cgi")
+        self.assertEqual(data["action"], "onvif")
 
     def test_reboot_unknown_camera_returns_404(self):
         self.client.post("/babysitter/api/approve/unknown")
@@ -369,7 +368,7 @@ class TestHistoryEndpoint(_BaseRouteTest):
         wd.state.history.append(RebootEvent(
             timestamp=time.time(),
             camera="doorbell",
-            action="reolink_cgi",
+            action="onvif",
             reason="video_down",
             outcome="success",
             duration=12.5,

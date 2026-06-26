@@ -14,7 +14,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from babysitter.helpers import (  # noqa: E402
     FrigateClient,
-    ReolinkClient,
     ScryptedClient,
     is_valid_jpeg,
     redact_token,
@@ -262,64 +261,6 @@ class TestFrigateClient(unittest.TestCase):
         )
         result = self.client.ffprobe("rtsp://test/stream")
         self.assertIn("streams", result)
-
-
-class TestReolinkClient(unittest.TestCase):
-    def setUp(self):
-        self.client = ReolinkClient(ip="192.168.1.69", username="admin", password="pass")
-
-    @patch("babysitter.helpers.requests.post")
-    def test_login_success(self, mock_post):
-        mock_post.return_value = MagicMock(
-            status_code=200,
-            json=lambda: [{"code": 0, "value": {"Token": {"name": "reolink-token"}}}],
-        )
-        token = self.client.login()
-        self.assertEqual(token, "reolink-token")
-
-    @patch("babysitter.helpers.requests.post")
-    def test_login_failure(self, mock_post):
-        mock_post.return_value = MagicMock(
-            status_code=200,
-            json=lambda: [{"code": 1}],
-        )
-        with self.assertRaises(ValueError):
-            self.client.login()
-
-    @patch("babysitter.helpers.requests.post")
-    def test_reboot_success(self, mock_post):
-        # First call: login. Second call: reboot.
-        mock_post.side_effect = [
-            MagicMock(status_code=200, json=lambda: [{"code": 0, "value": {"Token": {"name": "tok"}}}]),
-            MagicMock(status_code=200, json=lambda: [{"code": 0}]),
-        ]
-        result = self.client.reboot()
-        self.assertTrue(result)
-
-    @patch("babysitter.helpers.requests.post")
-    def test_reboot_connection_drop_is_success(self, mock_post):
-        """Reboot POST may fail because camera is rebooting — that's OK."""
-        mock_post.side_effect = [
-            MagicMock(status_code=200, json=lambda: [{"code": 0, "value": {"Token": {"name": "tok"}}}]),
-            requests.ConnectionError("Connection refused"),
-        ]
-        result = self.client.reboot()
-        self.assertTrue(result)
-
-    @patch("babysitter.helpers.requests.post")
-    def test_reboot_with_retry_on_token_expiry(self, mock_post):
-        mock_post.side_effect = [
-            # First login
-            MagicMock(status_code=200, json=lambda: [{"code": 0, "value": {"Token": {"name": "tok1"}}}]),
-            # First reboot fails
-            requests.RequestException("401"),
-            # Second login (retry)
-            MagicMock(status_code=200, json=lambda: [{"code": 0, "value": {"Token": {"name": "tok2"}}}]),
-            # Second reboot succeeds
-            MagicMock(status_code=200, json=lambda: [{"code": 0}]),
-        ]
-        result = self.client.reboot_with_retry(max_retries=1)
-        self.assertTrue(result)
 
 
 if __name__ == "__main__":

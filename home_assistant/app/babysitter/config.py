@@ -27,8 +27,6 @@ class CameraEntry:
     scrypted_id: str
     ip: str
     frigate_name: str
-    reolink_port: int = 0  # 0 = use global reolink_port
-    reolink_use_https: bool | None = None  # None = use global setting
 
 
 @dataclass
@@ -49,12 +47,10 @@ class BabysitterConfig:
     mqtt_username: str = ""
     mqtt_password: str = ""
 
-    # Reolink CGI (reboot)
+    # Reolink credentials (used by ONVIF reboot)
     reolink_username: str = ""
     reolink_password: str = ""
-    reolink_port: int = 80
-    reolink_use_https: bool = False
-    # ONVIF (fallback reboot for cameras without web UI, e.g. E1 Pro)
+    # ONVIF (reboot via industry-standard camera control protocol)
     onvif_port: int = 8000
 
     # Watchdog config
@@ -100,8 +96,7 @@ def _env_int(key: str, default: int) -> int:
 def _parse_cameras(env_val: str) -> list[CameraEntry]:
     """Parse BABYSIT_CAMERAS env var.
 
-    Format: friendly_name:scrypted_id:ip:frigate_name[:port[:https]]
-    Port and https are optional; 0/None means use global defaults.
+    Format: friendly_name:scrypted_id:ip:frigate_name
     """
     if not env_val:
         return []
@@ -109,15 +104,11 @@ def _parse_cameras(env_val: str) -> list[CameraEntry]:
     for entry in env_val.split(","):
         parts = entry.strip().split(":")
         if len(parts) >= 4:
-            port = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
-            use_https = parts[5].lower() in ("1", "true", "yes") if len(parts) > 5 else None
             cameras.append(CameraEntry(
                 friendly_name=parts[0],
                 scrypted_id=parts[1],
                 ip=parts[2],
                 frigate_name=parts[3],
-                reolink_port=port,
-                reolink_use_https=use_https,
             ))
     return cameras
 
@@ -135,8 +126,6 @@ def from_env() -> BabysitterConfig:
         mqtt_password=os.environ.get("MQTT_PASSWORD", ""),
         reolink_username=os.environ.get("REOLINK_USERNAME", ""),
         reolink_password=os.environ.get("REOLINK_PASSWORD", ""),
-        reolink_port=_env_int("REOLINK_PORT", 80),
-        reolink_use_https=_env_bool("REOLINK_USE_HTTPS", False),
         onvif_port=_env_int("ONVIF_PORT", 8000),
         dry_run=_env_bool("BABYSIT_DRY_RUN", True),
         cooldown=_env_int("BABYSIT_COOLDOWN", 900),
@@ -173,9 +162,13 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> BabysitterConfig:
 
     # Merge: JSON file takes precedence over env for non-empty values
     cfg = env_cfg
+    valid_cam_keys = {f for f in CameraEntry.__dataclass_fields__}
     for key, value in data.items():
         if key == "cameras":
-            cfg.cameras = [CameraEntry(**c) for c in value]
+            cfg.cameras = [
+                CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys})
+                for c in value
+            ]
         elif key == "approved_cameras":
             cfg.approved_cameras = set(value)
         elif key == "per_camera_dry_run":
@@ -204,9 +197,13 @@ def update_config(
     Passwords are only updated if the new value is not '****' (masked).
     """
     cfg = load_config(path)
+    valid_cam_keys = {f for f in CameraEntry.__dataclass_fields__}
     for key, value in updates.items():
         if key == "cameras":
-            cfg.cameras = [CameraEntry(**c) for c in value]
+            cfg.cameras = [
+                CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys})
+                for c in value
+            ]
         elif key == "approved_cameras":
             cfg.approved_cameras = set(value)
         elif key == "per_camera_dry_run":

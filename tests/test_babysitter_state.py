@@ -98,7 +98,7 @@ class TestCanReboot(unittest.TestCase):
 class TestRecordReboot(unittest.TestCase):
     def test_record_success(self):
         state = BabysitterState()
-        record_reboot(state, "doorbell", "reolink_cgi", "video_down", "success", 75.0)
+        record_reboot(state, "doorbell", "onvif", "video_down", "success", 75.0)
         cam = state.get_camera("doorbell")
         self.assertGreater(cam.last_reboot, 0)
         self.assertEqual(len(cam.reboot_times), 1)
@@ -110,7 +110,7 @@ class TestRecordReboot(unittest.TestCase):
     def test_record_failed_no_count(self):
         """Failed reboots should not count toward daily limit."""
         state = BabysitterState()
-        record_reboot(state, "doorbell", "reolink_cgi", "video_down", "failed")
+        record_reboot(state, "doorbell", "onvif", "video_down", "failed")
         cam = state.get_camera("doorbell")
         self.assertEqual(len(cam.reboot_times), 0)
         self.assertEqual(len(state.history), 1)
@@ -118,7 +118,7 @@ class TestRecordReboot(unittest.TestCase):
     def test_history_trimmed(self):
         state = BabysitterState()
         for i in range(25):
-            record_reboot(state, f"cam{i}", "reolink_cgi", "test", "success")
+            record_reboot(state, f"cam{i}", "onvif", "test", "success")
         self.assertEqual(len(state.history), 20)
 
 
@@ -129,7 +129,7 @@ class TestAtomicSaveLoad(unittest.TestCase):
 
     def test_save_and_load(self):
         state = BabysitterState()
-        record_reboot(state, "doorbell", "reolink_cgi", "video_down", "success", 75.0)
+        record_reboot(state, "doorbell", "onvif", "video_down", "success", 75.0)
         save_state(state, self.state_path)
 
         loaded = load_state(self.state_path)

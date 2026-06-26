@@ -291,10 +291,7 @@ class _BaseRecoverTest(unittest.TestCase):
 
     def _patch_reboot(self, return_value: bool = True) -> MagicMock:
         mock = MagicMock(return_value=return_value)
-        self.wd.reolink["doorbell"].reboot_with_retry = mock  # type: ignore[assignment]
-        # Disable ONVIF fallback by default so CGI tests behave as before.
-        if "doorbell" in self.wd.onvif:
-            self.wd.onvif["doorbell"].reboot_with_retry = MagicMock(side_effect=RuntimeError("no onvif"))
+        self.wd.onvif["doorbell"].reboot_with_retry = mock  # type: ignore[assignment]
         return mock
 
 
@@ -306,7 +303,7 @@ class TestCheckAndRecoverVideoDown(_BaseRecoverTest):
         event = self.wd.check_and_recover("doorbell")
         self.assertIsNotNone(event)
         self.assertEqual(event.outcome, "success")  # type: ignore[union-attr]
-        self.assertEqual(event.action, "reolink_cgi")  # type: ignore[union-attr]
+        self.assertEqual(event.action, "onvif")  # type: ignore[union-attr]
         mock_reboot.assert_called_once()
         cam = self.state.get_camera("doorbell")
         self.assertGreater(cam.last_reboot, 0)
@@ -335,50 +332,13 @@ class TestCheckAndRecoverTcpUnreachable(_BaseRecoverTest):
         mock_reboot.assert_not_called()
 
 
-class TestCheckAndRecoverCgiUnreachable(_BaseRecoverTest):
-    def test_cgi_unreachable_skips_reboot(self):
+class TestCheckAndRecoverOnvifUnreachable(_BaseRecoverTest):
+    def test_onvif_unreachable_skips_reboot(self):
         self.wd._last_status["doorbell"].cgi_reachable = False
         mock_reboot = self._patch_reboot(True)
         event = self.wd.check_and_recover("doorbell")
         self.assertIsNone(event)
         mock_reboot.assert_not_called()
-
-
-class TestCheckAndRecoverOnvifFallback(_BaseRecoverTest):
-    """When CGI is unreachable but ONVIF is, reboot via ONVIF."""
-
-    @patch("babysitter.watchdog.tcp_reachable")
-    @patch.object(Watchdog, "_wait_for_recovery", return_value=30.0)
-    def test_onvif_fallback_when_cgi_port_closed(self, _mock_wait, mock_tcp):
-        # CGI port 80 = closed, ONVIF port 8000 = open.
-        def _tcp(host, port, **kw):
-            return port == 8000
-        mock_tcp.side_effect = _tcp
-
-        mock_onvif_reboot = MagicMock(return_value=True)
-        self.wd.onvif["doorbell"].reboot_with_retry = mock_onvif_reboot
-
-        event = self.wd.check_and_recover("doorbell")
-        self.assertIsNotNone(event)
-        self.assertEqual(event.outcome, "success")  # type: ignore[union-attr]
-        self.assertEqual(event.action, "onvif")  # type: ignore[union-attr]
-        mock_onvif_reboot.assert_called_once()
-
-    @patch("babysitter.watchdog.tcp_reachable", return_value=True)
-    @patch.object(Watchdog, "_wait_for_recovery", return_value=30.0)
-    def test_cgi_failure_falls_back_to_onvif(self, _mock_wait, _mock_tcp):
-        # CGI reboot raises, ONVIF succeeds.
-        self.wd.reolink["doorbell"].reboot_with_retry = MagicMock(
-            side_effect=RuntimeError("cgi down")
-        )  # type: ignore[assignment]
-        mock_onvif = MagicMock(return_value=True)
-        self.wd.onvif["doorbell"].reboot_with_retry = mock_onvif
-
-        event = self.wd.check_and_recover("doorbell")
-        self.assertIsNotNone(event)
-        self.assertEqual(event.outcome, "success")  # type: ignore[union-attr]
-        self.assertEqual(event.action, "onvif")  # type: ignore[union-attr]
-        mock_onvif.assert_called_once()
 
 
 class TestCheckAndRecoverUnapproved(_BaseRecoverTest):
@@ -445,9 +405,7 @@ class TestCheckAndRebootFailure(_BaseRecoverTest):
     @patch("babysitter.watchdog.tcp_reachable", return_value=True)
     def test_reboot_exception_records_failed_event(self, _mock_tcp):
         mock_reboot = MagicMock(side_effect=RuntimeError("connection refused"))
-        self.wd.reolink["doorbell"].reboot_with_retry = mock_reboot  # type: ignore[assignment]
-        # Also mock ONVIF to fail so the fallback doesn't hang.
-        self.wd.onvif["doorbell"].reboot_with_retry = MagicMock(side_effect=RuntimeError("no onvif"))  # type: ignore[assignment]
+        self.wd.onvif["doorbell"].reboot_with_retry = mock_reboot  # type: ignore[assignment]
         event = self.wd.check_and_recover("doorbell")
         self.assertIsNotNone(event)
         self.assertEqual(event.outcome, "failed")  # type: ignore[union-attr]
@@ -509,8 +467,8 @@ class TestRunCycle(unittest.TestCase):
                 return True
             return _reboot
 
-        wd.reolink["doorbell"].reboot_with_retry = _make_reboot("doorbell")  # type: ignore[assignment]
-        wd.reolink["south_driveway"].reboot_with_retry = _make_reboot("south_driveway")  # type: ignore[assignment]
+        wd.onvif["doorbell"].reboot_with_retry = _make_reboot("doorbell")  # type: ignore[assignment]
+        wd.onvif["south_driveway"].reboot_with_retry = _make_reboot("south_driveway")  # type: ignore[assignment]
 
         # Mock poll_once to return our seeded statuses.
         with patch.object(wd, "poll_once", return_value=wd._last_status), \
