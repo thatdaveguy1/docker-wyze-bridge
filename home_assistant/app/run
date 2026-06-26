@@ -65,6 +65,18 @@ PY
 
 start_whep_proxy
 
+# Load HA options into environment before sidecar starts.
+# setup_hass() in hass.py does this for the Flask app, but the go2rtc
+# sidecar starts before Flask and needs WYZE_EMAIL/WYZE_PASSWORD.
+if [ -f /data/options.json ] && [ -n "${SUPERVISOR_TOKEN:-}" ]; then
+    for key in WYZE_EMAIL WYZE_PASSWORD API_ID API_KEY; do
+        val=$(python3 -c "import json; print(json.load(open('/data/options.json')).get('$key',''))" 2>/dev/null || echo "")
+        if [ -n "$val" ]; then
+            export "$key=$val"
+        fi
+    done
+fi
+
 . /app/go2rtc_sidecar.sh
 start_go2rtc_sidecar
 

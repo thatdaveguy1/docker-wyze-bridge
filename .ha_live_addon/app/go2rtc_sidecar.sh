@@ -111,6 +111,153 @@ start_go2rtc_preload_refresh_loop() {
     ) &
 }
 
+rtsp_describe_ok() {
+    # Probe the RTSP server with a DESCRIBE request using Python (nc is not
+    # available in the container). Returns 0 if the server responds with
+    # "200 OK" within 5 seconds, 1 otherwise. This catches the case where
+    # the go2rtc API shows producers alive but the RTSP server is wedged.
+    alias="$1"
+    python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(5)
+try:
+    s.connect(('127.0.0.1', ${GO2RTC_RTSP_PORT}))
+    req = 'DESCRIBE rtsp://127.0.0.1:${GO2RTC_RTSP_PORT}/${alias} RTSP/1.0\r\nCSeq: 1\r\n\r\n'
+    s.sendall(req.encode())
+    data = s.recv(256).decode('utf-8', errors='replace')
+    s.close()
+    if '200 OK' in data.split('\r\n')[0]:
+        sys.exit(0)
+    sys.exit(1)
+except Exception:
+    try:
+        s.close()
+    except Exception:
+        pass
+    sys.exit(1)
+" 2>/dev/null
+}
+
+start_go2rtc_health_monitor() {
+    # Monitor go2rtc streams every 15s. Two checks:
+    # 1. Producer check: if producers drop to 0 for >30s, force-restart the stream.
+    # 2. RTSP wedge check: if the API shows producers but RTSP DESCRIBE fails for
+    #    >60s, restart the entire go2rtc process (the RTSP server can wedge after
+    #    producer reconnections while the API still reports healthy producers).
+    (
+        dead_since=""
+        wedge_since=0
+        while :; do
+            sleep 15
+            if [ -z "${GO2RTC_API_BASE}" ]; then
+                continue
+            fi
+            streams_json=$(curl -sf "${GO2RTC_API_BASE}/api/streams" 2>/dev/null || echo "")
+            if [ -z "${streams_json}" ]; then
+                continue
+            fi
+            # Get list of expected aliases from config (standalone parser —
+            # avoid importing go2rtc_sidecar_helpers to prevent circular imports)
+            aliases=$(python3 -c "
+import os
+path = os.environ.get('GO2RTC_CONFIG', '')
+if not path:
+    raise SystemExit
+in_streams = False
+for line in open(path, encoding='utf-8'):
+    line = line.rstrip('\n')
+    if line == 'streams:':
+        in_streams = True
+        continue
+    if in_streams and line and not line.startswith((' ', '\t')):
+        break
+    if not in_streams:
+        continue
+    if line.startswith('  ') and line.rstrip().endswith(':') and not line.startswith('    '):
+        print(line.strip()[:-1])
+" 2>/dev/null || echo "")
+            now=$(date +%s)
+
+            # Pick the first alias with an active producer for the RTSP wedge probe
+            wedge_probe_alias=""
+
+            for alias in ${aliases}; do
+                [ -n "${alias}" ] || continue
+                producer_count=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    s = data.get('${alias}', {})
+    p = s.get('producers') or []
+    print(len(p))
+except Exception:
+    print(0)
+" 2>/dev/null || echo "0")
+                if [ "${producer_count}" = "0" ]; then
+                    # Stream is dead — producer-level recovery
+                    key="${alias}"
+                    last=$(printf '%s' "${dead_since}" | grep "^${key}=" | cut -d= -f2)
+                    if [ -z "${last}" ]; then
+                        last=0
+                    fi
+                    if [ "${last}" = "0" ]; then
+                        echo "[GO2RTC_HEALTH] ${alias}: producer dropped, monitoring for recovery" >&2
+                        last=${now}
+                        dead_since="${dead_since}${key}=${last}\n"
+                    elif [ $((now - last)) -gt 30 ]; then
+                        echo "[GO2RTC_HEALTH] ${alias}: dead for >30s, forcing restart" >&2
+                        # Stop the stream
+                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        sleep 2
+                        # Preload to restart
+                        curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                        # Reset dead timer
+                        dead_since=$(printf '%s' "${dead_since}" | grep -v "^${key}=")
+                        dead_since="${dead_since}${key}=0\n"
+                        echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
+                    fi
+                else
+                    # Stream is alive — clear dead timer
+                    was_dead=$(printf '%s' "${dead_since}" | grep "^${alias}=" | cut -d= -f2)
+                    if [ -n "${was_dead}" ] && [ "${was_dead}" != "0" ]; then
+                        echo "[GO2RTC_HEALTH] ${alias}: recovered after $((now - was_dead))s" >&2
+                    fi
+                    dead_since=$(printf '%s' "${dead_since}" | grep -v "^${alias}=")
+                    # Use this alias for the RTSP wedge probe if we haven't picked one yet
+                    if [ -z "${wedge_probe_alias}" ]; then
+                        wedge_probe_alias="${alias}"
+                    fi
+                fi
+            done
+
+            # RTSP wedge detection: probe the RTSP server with a DESCRIBE request
+            if [ -n "${wedge_probe_alias}" ]; then
+                if rtsp_describe_ok "${wedge_probe_alias}"; then
+                    if [ "${wedge_since}" -ne 0 ]; then
+                        echo "[GO2RTC_HEALTH] RTSP server recovered after $((now - wedge_since))s" >&2
+                    fi
+                    wedge_since=0
+                else
+                    if [ "${wedge_since}" -eq 0 ]; then
+                        echo "[GO2RTC_HEALTH] RTSP DESCRIBE failed for ${wedge_probe_alias}, monitoring for wedge" >&2
+                        wedge_since=${now}
+                    elif [ $((now - wedge_since)) -gt 60 ]; then
+                        echo "[GO2RTC_HEALTH] RTSP server wedged for >60s, restarting go2rtc process" >&2
+                        kill "${GO2RTC_PID}" 2>/dev/null || true
+                        wait "${GO2RTC_PID}" 2>/dev/null || true
+                        start_go2rtc_process
+                        sleep 5
+                        preload_go2rtc_aliases
+                        wedge_since=0
+                        echo "[GO2RTC_HEALTH] go2rtc process restarted" >&2
+                    fi
+                fi
+            fi
+        done
+    ) &
+}
+
 start_go2rtc_sidecar() {
     if [ -x /config/go2rtc ] && ! command -v go2rtc >/dev/null 2>&1; then
         export PATH="/config:$PATH"
@@ -247,6 +394,7 @@ generate_initial_config(
         sleep 5
         preload_go2rtc_aliases
         start_go2rtc_preload_refresh_loop
+        start_go2rtc_health_monitor
         curl -sf -X OPTIONS "${GO2RTC_API_BASE}/api/streams" 2>/dev/null | PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import list_active_producers_verbose; list_active_producers_verbose()" >&2 || echo "[GO2RTC] WARNING: could not confirm active producer aliases yet" >&2
     ) &
 }
