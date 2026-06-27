@@ -380,6 +380,25 @@ generate_initial_config(
             exit 0
         fi
 
+        # Local streams (Wyze DTLS + Reolink RTSP) are static and don't need
+        # the Wyze cloud API.  Merge them immediately and start streaming.
+        # The Wyze cloud API is only needed for camera *discovery* (IP/MAC/ENR
+        # changes), which is handled by the bridge separately.  If the extra
+        # streams file is absent, fall back to the Wyze API discovery loop.
+        if [ -f /config/go2rtc_extra_streams.yaml ]; then
+            echo "[GO2RTC] Using local extra streams (Wyze API discovery skipped)" >&2
+            append_extra_streams
+            kill "${GO2RTC_PID}" 2>/dev/null || true
+            wait "${GO2RTC_PID}" 2>/dev/null || true
+            start_go2rtc_process
+            sleep 5
+            preload_go2rtc_aliases
+            start_go2rtc_preload_refresh_loop
+            start_go2rtc_health_monitor
+            curl -sf -X OPTIONS "${GO2RTC_API_BASE}/api/streams" 2>/dev/null | PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import list_active_producers_verbose; list_active_producers_verbose()" >&2 || echo "[GO2RTC] WARNING: could not confirm active producer aliases yet" >&2
+            exit 0
+        fi
+
         CAM_JSON=""
         for retry in $(seq 1 30); do
             CAM_JSON=$(curl -sf "${GO2RTC_API_BASE}/api/wyze?id=${WYZE_EMAIL}" 2>/dev/null)
@@ -391,14 +410,6 @@ generate_initial_config(
         done
         if [ -z "${CAM_JSON}" ] || [ "${CAM_JSON}" = "null" ] || [ "${CAM_JSON}" = "[]" ]; then
             echo "[GO2RTC] WARNING: /api/wyze?id=${WYZE_EMAIL} still empty after retries - check credentials and camera list" >&2
-            echo "[GO2RTC] Wyze API unavailable — appending extra (non-Wyze) streams only" >&2
-            append_extra_streams
-            kill "${GO2RTC_PID}" 2>/dev/null || true
-            wait "${GO2RTC_PID}" 2>/dev/null || true
-            start_go2rtc_process
-            sleep 5
-            preload_go2rtc_aliases
-            start_go2rtc_health_monitor
             exit 0
         fi
         echo "[GO2RTC] Camera list received, refreshing native Wyze aliases..." >&2
