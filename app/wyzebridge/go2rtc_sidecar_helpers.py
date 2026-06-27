@@ -124,6 +124,43 @@ def rewrite_go2rtc_config(config_path: str, api_port: str, rtsp_port: str) -> No
     path.write_text("\n".join(prefix + kept).rstrip() + "\n", encoding="utf-8")
 
 
+def merge_extra_streams(config_path: str, extra_file: str) -> None:
+    """Merge extra streams from a YAML snippet file into the go2rtc config.
+
+    The extra file contains stream entries (same format as the ``streams:``
+    section body).  Only streams that are NOT already present in the config
+    are added — existing streams are never overwritten.  This lets local
+    Wyze DTLS and Reolink RTSP streams survive seed_go2rtc_aliases() config
+    regeneration even when the Wyze cloud API is unavailable.
+    """
+    import yaml
+
+    config_p = Path(config_path)
+    extra_p = Path(extra_file)
+    if not config_p.exists() or not extra_p.exists():
+        return
+
+    config_text = config_p.read_text(encoding="utf-8")
+    config = yaml.safe_load(config_text) or {}
+    extra = yaml.safe_load(extra_p.read_text(encoding="utf-8")) or {}
+
+    streams = config.get("streams") or {}
+    added = 0
+    for name, sources in extra.items():
+        if name in streams:
+            continue
+        streams[name] = sources
+        added += 1
+        _log(f"GO2RTC Merged extra stream: {name}")
+
+    if added == 0:
+        _log("GO2RTC No extra streams to merge (all already present)")
+        return
+
+    config["streams"] = streams
+    config_p.write_text(yaml.dump(config, default_flow_style=False, sort_keys=False), encoding="utf-8")
+
+
 def generate_initial_config(
     config_path: str,
     api_port: str,

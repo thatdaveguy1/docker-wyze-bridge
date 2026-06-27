@@ -84,6 +84,24 @@ normalize_go2rtc_config() {
     PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import rewrite_go2rtc_config; rewrite_go2rtc_config(__import__('os').environ['GO2RTC_CONFIG'], __import__('os').environ['GO2RTC_API_PORT'], __import__('os').environ['GO2RTC_RTSP_PORT'])"
 }
 
+append_extra_streams() {
+    # Merge extra streams (Wyze local DTLS + Reolink RTSP) from a YAML snippet
+    # file into the go2rtc config so they survive seed_go2rtc_aliases() config
+    # regeneration on restart.  The Wyze cloud API is only needed for camera
+    # *discovery*; the wyze:// URLs are static local DTLS connections that work
+    # without cloud auth.
+    # Source file: /config/go2rtc_extra_streams.yaml (managed via addon_config)
+    local extra_file="/config/go2rtc_extra_streams.yaml"
+    if [ ! -f "${extra_file}" ]; then
+        return
+    fi
+    PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "
+import os, sys
+from go2rtc_sidecar_helpers import merge_extra_streams
+merge_extra_streams(os.environ['GO2RTC_CONFIG'], '${extra_file}')
+" && echo "[GO2RTC] Merged extra streams from ${extra_file}" >&2
+}
+
 preload_go2rtc_aliases() {
     if [ -z "${GO2RTC_API_BASE}" ]; then
         return
@@ -373,6 +391,14 @@ generate_initial_config(
         done
         if [ -z "${CAM_JSON}" ] || [ "${CAM_JSON}" = "null" ] || [ "${CAM_JSON}" = "[]" ]; then
             echo "[GO2RTC] WARNING: /api/wyze?id=${WYZE_EMAIL} still empty after retries - check credentials and camera list" >&2
+            echo "[GO2RTC] Wyze API unavailable — appending extra (non-Wyze) streams only" >&2
+            append_extra_streams
+            kill "${GO2RTC_PID}" 2>/dev/null || true
+            wait "${GO2RTC_PID}" 2>/dev/null || true
+            start_go2rtc_process
+            sleep 5
+            preload_go2rtc_aliases
+            start_go2rtc_health_monitor
             exit 0
         fi
         echo "[GO2RTC] Camera list received, refreshing native Wyze aliases..." >&2
@@ -395,6 +421,7 @@ generate_initial_config(
         GO2RTC_CAM_JSON_FILE=/tmp/go2rtc_cam_sources.json
         printf '%s\n' "${CAM_JSON}" > "${GO2RTC_CAM_JSON_FILE}"
         GO2RTC_CONFIG="${GO2RTC_CONFIG}" GO2RTC_API_PORT="${GO2RTC_API_PORT}" GO2RTC_RTSP_PORT="${GO2RTC_RTSP_PORT}" GO2RTC_CAM_JSON_FILE="${GO2RTC_CAM_JSON_FILE}" WB_APP_API_BASE="${WB_APP_API_BASE}" WYZE_EMAIL="${WYZE_EMAIL}" API_ID="${API_ID}" API_KEY="${API_KEY}" WYZE_PASSWORD="${WYZE_PASSWORD}" PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import seed_go2rtc_aliases; seed_go2rtc_aliases()"
+        append_extra_streams
         echo "[GO2RTC] Restarting sidecar with direct DTLS helper URLs" >&2
         kill "${GO2RTC_PID}" 2>/dev/null || true
         wait "${GO2RTC_PID}" 2>/dev/null || true
