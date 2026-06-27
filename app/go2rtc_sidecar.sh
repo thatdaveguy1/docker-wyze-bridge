@@ -204,16 +204,25 @@ for line in open(path, encoding='utf-8'):
 
             for alias in ${aliases}; do
                 [ -n "${alias}" ] || continue
-                producer_count=$(printf '%s' "${streams_json}" | python3 -c "
+                # Get producer count and keyframe consumer count in one pass.
+                # Keyframe consumers are snapshot requests (frame.jpeg) that
+                # go2rtc fails to clean up when the client disconnects. They
+                # accumulate over time and choke the stream, preventing new
+                # snapshots from being served. Threshold: >5 = pileup.
+                counts=$(printf '%s' "${streams_json}" | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
     s = data.get('${alias}', {})
     p = s.get('producers') or []
-    print(len(p))
+    c = s.get('consumers') or []
+    kf = sum(1 for con in c if con.get('format_name') == 'keyframe')
+    print(len(p), kf)
 except Exception:
-    print(0)
-" 2>/dev/null || echo "0")
+    print(0, 0)
+" 2>/dev/null || echo "0 0")
+                producer_count=$(echo "${counts}" | cut -d' ' -f1)
+                keyframe_count=$(echo "${counts}" | cut -d' ' -f2)
                 if [ "${producer_count}" = "0" ]; then
                     # Stream is dead — producer-level recovery
                     key="${alias}"
@@ -237,6 +246,16 @@ except Exception:
                         dead_since="${dead_since}${key}=0\n"
                         echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
                     fi
+                elif [ "${keyframe_count}" -gt 5 ] 2>/dev/null; then
+                    # Keyframe consumer pileup — stuck snapshot requests that
+                    # go2rtc didn't clean up. Force-restart the stream to clear
+                    # them before they prevent new snapshots from being served.
+                    echo "[GO2RTC_HEALTH] ${alias}: keyframe consumer pileup (${keyframe_count}), forcing restart" >&2
+                    curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                    sleep 2
+                    curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                    echo "[GO2RTC_HEALTH] ${alias}: restart triggered (pileup cleared)" >&2
+                    alive_aliases="${alive_aliases} ${alias}"
                 else
                     # Stream is alive — clear dead timer
                     was_dead=$(printf '%s' "${dead_since}" | grep "^${alias}=" | cut -d= -f2)
