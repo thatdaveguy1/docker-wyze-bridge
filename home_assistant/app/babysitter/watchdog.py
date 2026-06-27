@@ -33,6 +33,7 @@ Convergence rules (see AGENTS.md plan):
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -226,6 +227,18 @@ class Watchdog:
             return True
         return self.config.dry_run
 
+    def _go2rtc_producer_alive(self, alias: str) -> bool:
+        """Check if a go2rtc stream has an active producer (for non-RTSP cameras)."""
+        try:
+            import requests
+            host = os.environ.get("GO2RTC_API_BASE", "http://127.0.0.1:11984")
+            resp = requests.get(f"{host}/api/streams?src={alias}", timeout=5)
+            data = resp.json()
+            producers = data.get("producers") or []
+            return len(producers) > 0
+        except Exception:
+            return False
+
     def _ffprobe_returns_stream(self, rtsp_url: str) -> bool:
         """Return True if Frigate ffprobe reports a valid stream."""
         try:
@@ -266,7 +279,14 @@ class Watchdog:
         now = time.time()
 
         # 1. TCP reachability (wifi-up guard).
-        tcp_ok = tcp_reachable(entry.ip, 554)
+        # Cameras without RTSP port 554 (e.g. Wyze DTLS) use go2rtc stream
+        # status as the reachability check instead.
+        has_frigate = bool(entry.frigate_name)
+        if has_frigate:
+            tcp_ok = tcp_reachable(entry.ip, 554)
+        else:
+            # Non-RTSP camera: check go2rtc producer status instead of TCP.
+            tcp_ok = self._go2rtc_producer_alive(entry.friendly_name)
         # Check ONVIF reboot path reachability.
         onvif = self.onvif.get(entry.friendly_name)
         onvif_ok = bool(onvif and tcp_reachable(entry.ip, onvif.port))
@@ -291,11 +311,14 @@ class Watchdog:
                 cooldown_remaining=cooldown_remaining(cam_state, self.config.cooldown),
             )
 
-        # 2. Frigate FPS.
-        try:
-            fps = self.frigate.camera_fps(entry.frigate_name)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("%s: Frigate stats failed: %s", entry.friendly_name, exc)
+        # 2. Frigate FPS (skip for cameras not in Frigate — e.g. Wyze).
+        if has_frigate:
+            try:
+                fps = self.frigate.camera_fps(entry.frigate_name)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s: Frigate stats failed: %s", entry.friendly_name, exc)
+                fps = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0}
+        else:
             fps = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0}
 
         camera_fps = float(fps.get("camera_fps", 0.0))
@@ -350,7 +373,7 @@ class Watchdog:
         )
 
         new_state = STATE_ONLINE
-        if fps_all_zero and skipped_fps == 0 and bad_snapshot_confirmed:
+        if has_frigate and fps_all_zero and skipped_fps == 0 and bad_snapshot_confirmed:
             # Suspect video-down; confirm with ffprobe + duration threshold.
             if fps_zero_duration > self.config.video_down_threshold:
                 rtsp_url = ""
@@ -374,6 +397,10 @@ class Watchdog:
             else:
                 new_state = STATE_RECOVERING
         elif fps_healthy and bad_snapshot_confirmed:
+            new_state = STATE_SNAPSHOT_DOWN
+        elif not has_frigate and bad_snapshot_confirmed:
+            # Non-Frigate camera (e.g. Wyze) with bad snapshots — snapshot_down.
+            # The go2rtc health monitor handles stream recovery for these cameras.
             new_state = STATE_SNAPSHOT_DOWN
         elif stale_hash_warning:
             new_state = STATE_ONLINE  # stale hash is a warning, not a down state
