@@ -239,6 +239,14 @@ class Watchdog:
         except Exception:
             return False
 
+    def _go2rtc_snapshot(self, alias: str) -> bytes:
+        """Fetch a JPEG snapshot from go2rtc for non-Scrypted cameras."""
+        import requests
+        host = os.environ.get("GO2RTC_API_BASE", "http://127.0.0.1:11984")
+        resp = requests.get(f"{host}/api/frame.jpeg?src={alias}", timeout=15)
+        resp.raise_for_status()
+        return resp.content
+
     def _ffprobe_returns_stream(self, rtsp_url: str) -> bool:
         """Return True if Frigate ffprobe reports a valid stream."""
         try:
@@ -334,16 +342,21 @@ class Watchdog:
 
         fps_zero_duration = (now - cam_state.fps_zero_since) if cam_state.fps_zero_since else 0.0
 
-        # 3. Scrypted snapshot.
+        # 3. Snapshot — Scrypted for Frigate cameras, go2rtc for non-Frigate.
+        # Non-Frigate cameras (Wyze) use go2rtc frame.jpeg directly because
+        # their Scrypted snapshot sources may be broken (stale RTSP URLs).
         snapshot_valid = False
         snapshot_hash = ""
         try:
-            data = self.scrypted.snapshot(entry.scrypted_id)
+            if has_frigate:
+                data = self.scrypted.snapshot(entry.scrypted_id)
+            else:
+                data = self._go2rtc_snapshot(entry.friendly_name)
             snapshot_valid = is_valid_jpeg(data)
             if snapshot_valid:
                 snapshot_hash = sha256_hex(data)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("%s: Scrypted snapshot fetch failed: %s", entry.friendly_name, exc)
+            logger.debug("%s: snapshot fetch failed: %s", entry.friendly_name, exc)
 
         # Track consecutive bad snapshots (structural failures only).
         if snapshot_valid:
