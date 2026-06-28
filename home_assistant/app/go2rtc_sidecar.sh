@@ -158,13 +158,21 @@ except Exception:
 }
 
 start_go2rtc_health_monitor() {
-    # Monitor go2rtc streams every 15s. Two checks:
+    # Monitor go2rtc streams every 15s. Three per-stream checks:
     # 1. Producer check: if producers drop to 0 for >30s, force-restart the stream.
-    # 2. RTSP wedge check: probe ALL alive aliases with DESCRIBE. Only restart the
-    #    go2rtc process if DESCRIBE fails for EVERY alive alias for >60s. A single
-    #    camera dropping should NOT trigger a full restart that drops all connections.
+    # 2. Bytes-stall check: if producers>0 but receiver bytes don't increase
+    #    for >30s, the stream is wedged (DTLS/RTSP connected but no video
+    #    flowing). go2rtc returns HTTP 200 with 0-byte snapshots → black frames.
+    #    Force-restart the stream to reconnect.
+    # 3. Keyframe consumer pileup: if >5 stuck keyframe consumers, force-restart.
+    # Full-process RTSP wedge check: probe ALL alive aliases with DESCRIBE.
+    #    Only restart the go2rtc process if DESCRIBE fails for EVERY alive
+    #    alias for >60s. A single camera dropping should NOT trigger a full
+    #    restart that drops all connections.
     (
         dead_since=""
+        stall_since=""
+        prev_bytes=""
         wedge_since=0
         while :; do
             sleep 15
@@ -175,9 +183,19 @@ start_go2rtc_health_monitor() {
             if [ -z "${streams_json}" ]; then
                 continue
             fi
-            # Get list of expected aliases from config (standalone parser —
-            # avoid importing go2rtc_sidecar_helpers to prevent circular imports)
-            aliases=$(python3 -c "
+            # Get list of expected aliases from the go2rtc API (resilient to
+            # missing config files) with config-file fallback for offline API.
+            aliases=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys, os
+try:
+    data = json.load(sys.stdin)
+    for name in sorted(data.keys()):
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+            if [ -z "${aliases}" ]; then
+                aliases=$(python3 -c "
 import os
 path = os.environ.get('GO2RTC_CONFIG', '')
 if not path:
@@ -195,6 +213,7 @@ for line in open(path, encoding='utf-8'):
     if line.startswith('  ') and line.rstrip().endswith(':') and not line.startswith('    '):
         print(line.strip()[:-1])
 " 2>/dev/null || echo "")
+            fi
             now=$(date +%s)
 
             # Collect ALL aliases with active producers for the RTSP wedge probe.
@@ -204,16 +223,30 @@ for line in open(path, encoding='utf-8'):
 
             for alias in ${aliases}; do
                 [ -n "${alias}" ] || continue
-                producer_count=$(printf '%s' "${streams_json}" | python3 -c "
+                # Get producer count, keyframe consumer count, and receiver bytes
+                # in one pass. Receiver bytes = total bytes received from the
+                # camera by go2rtc. If this doesn't increase between checks, the
+                # stream is wedged (connected but no video flowing).
+                counts=$(printf '%s' "${streams_json}" | python3 -c "
 import json, sys
 try:
     data = json.load(sys.stdin)
     s = data.get('${alias}', {})
     p = s.get('producers') or []
-    print(len(p))
+    c = s.get('consumers') or []
+    kf = sum(1 for con in c if con.get('format_name') == 'keyframe')
+    # Sum bytes across all receivers of the first producer
+    bytes_recv = 0
+    if p:
+        for r in (p[0].get('receivers') or []):
+            bytes_recv += r.get('bytes', 0)
+    print(len(p), kf, bytes_recv)
 except Exception:
-    print(0)
-" 2>/dev/null || echo "0")
+    print(0, 0, 0)
+" 2>/dev/null || echo "0 0 0")
+                producer_count=$(echo "${counts}" | cut -d' ' -f1)
+                keyframe_count=$(echo "${counts}" | cut -d' ' -f2)
+                current_bytes=$(echo "${counts}" | cut -d' ' -f3)
                 if [ "${producer_count}" = "0" ]; then
                     # Stream is dead — producer-level recovery
                     key="${alias}"
@@ -232,13 +265,63 @@ except Exception:
                         sleep 2
                         # Preload to restart
                         curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
-                        # Reset dead timer
+                        # Reset dead timer and bytes tracking
                         dead_since=$(printf '%s' "${dead_since}" | grep -v "^${key}=")
                         dead_since="${dead_since}${key}=0\n"
+                        stall_since=$(printf '%s' "${stall_since}" | grep -v "^${key}=")
+                        prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
                         echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
                     fi
+                elif [ "${keyframe_count}" -gt 5 ] 2>/dev/null; then
+                    # Keyframe consumer pileup — stuck snapshot requests that
+                    # go2rtc didn't clean up. Force-restart the stream to clear
+                    # them before they prevent new snapshots from being served.
+                    echo "[GO2RTC_HEALTH] ${alias}: keyframe consumer pileup (${keyframe_count}), forcing restart" >&2
+                    curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                    sleep 2
+                    curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                    # Reset bytes tracking after restart
+                    stall_since=$(printf '%s' "${stall_since}" | grep -v "^${alias}=")
+                    prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${alias}=")
+                    echo "[GO2RTC_HEALTH] ${alias}: restart triggered (pileup cleared)" >&2
+                    alive_aliases="${alive_aliases} ${alias}"
                 else
-                    # Stream is alive — clear dead timer
+                    # Producer is alive — check for bytes stall (wedged stream)
+                    key="${alias}"
+                    prev_b=$(printf '%s' "${prev_bytes}" | grep "^${key}=" | cut -d= -f2)
+                    if [ -z "${prev_b}" ]; then
+                        prev_b=0
+                    fi
+                    if [ "${current_bytes}" -le "${prev_b}" ] 2>/dev/null; then
+                        # Bytes didn't increase — stream is wedged
+                        stall_last=$(printf '%s' "${stall_since}" | grep "^${key}=" | cut -d= -f2)
+                        if [ -z "${stall_last}" ]; then
+                            stall_last=0
+                        fi
+                        if [ "${stall_last}" = "0" ]; then
+                            echo "[GO2RTC_HEALTH] ${alias}: bytes stalled at ${current_bytes}, monitoring" >&2
+                            stall_since="${stall_since}${key}=${now}\n"
+                        elif [ $((now - stall_last)) -gt 30 ]; then
+                            echo "[GO2RTC_HEALTH] ${alias}: bytes stalled for >30s (bytes=${current_bytes}), forcing restart" >&2
+                            curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                            sleep 2
+                            curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                            stall_since=$(printf '%s' "${stall_since}" | grep -v "^${key}=")
+                            prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
+                            echo "[GO2RTC_HEALTH] ${alias}: restart triggered (bytes stall cleared)" >&2
+                        fi
+                    else
+                        # Bytes are increasing — stream is healthy
+                        was_stalled=$(printf '%s' "${stall_since}" | grep "^${alias}=" | cut -d= -f2)
+                        if [ -n "${was_stalled}" ] && [ "${was_stalled}" != "0" ]; then
+                            echo "[GO2RTC_HEALTH] ${alias}: bytes flowing again after $((now - was_stalled))s stall" >&2
+                        fi
+                        stall_since=$(printf '%s' "${stall_since}" | grep -v "^${alias}=")
+                    fi
+                    # Update prev_bytes for next check
+                    prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
+                    prev_bytes="${prev_bytes}${key}=${current_bytes}\n"
+                    # Clear dead timer — stream is alive
                     was_dead=$(printf '%s' "${dead_since}" | grep "^${alias}=" | cut -d= -f2)
                     if [ -n "${was_dead}" ] && [ "${was_dead}" != "0" ]; then
                         echo "[GO2RTC_HEALTH] ${alias}: recovered after $((now - was_dead))s" >&2

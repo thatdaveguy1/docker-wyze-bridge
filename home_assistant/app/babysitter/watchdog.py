@@ -243,7 +243,13 @@ class Watchdog:
         """Fetch a JPEG snapshot from go2rtc for non-Scrypted cameras."""
         import requests
         host = os.environ.get("GO2RTC_API_BASE", "http://127.0.0.1:11984")
-        resp = requests.get(f"{host}/api/frame.jpeg?src={alias}", timeout=15)
+        # Use cache=30s to get instant cached keyframe responses. Without
+        # cache, go2rtc waits for the next keyframe (up to 2-4s). If the
+        # client times out, go2rtc leaves a stuck "keyframe" consumer that
+        # accumulates and eventually chokes the stream.
+        resp = requests.get(
+            f"{host}/api/frame.jpeg?src={alias}&cache=30s", timeout=10
+        )
         resp.raise_for_status()
         return resp.content
 

@@ -183,9 +183,19 @@ start_go2rtc_health_monitor() {
             if [ -z "${streams_json}" ]; then
                 continue
             fi
-            # Get list of expected aliases from config (standalone parser —
-            # avoid importing go2rtc_sidecar_helpers to prevent circular imports)
-            aliases=$(python3 -c "
+            # Get list of expected aliases from the go2rtc API (resilient to
+            # missing config files) with config-file fallback for offline API.
+            aliases=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys, os
+try:
+    data = json.load(sys.stdin)
+    for name in sorted(data.keys()):
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+            if [ -z "${aliases}" ]; then
+                aliases=$(python3 -c "
 import os
 path = os.environ.get('GO2RTC_CONFIG', '')
 if not path:
@@ -203,6 +213,7 @@ for line in open(path, encoding='utf-8'):
     if line.startswith('  ') and line.rstrip().endswith(':') and not line.startswith('    '):
         print(line.strip()[:-1])
 " 2>/dev/null || echo "")
+            fi
             now=$(date +%s)
 
             # Collect ALL aliases with active producers for the RTSP wedge probe.
