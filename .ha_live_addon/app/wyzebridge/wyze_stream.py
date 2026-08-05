@@ -333,11 +333,12 @@ class WyzeStream:
             self.update_cam_info()
         if self.camera.camera_info and "boa_info" in self.camera.camera_info:
             data["boa_url"] = f"http://{self.camera.ip}/cgi-bin/hello.cgi?name=/"
-        native_info = native_stream_info(self.camera, self.options.substream)
         sd_only_bridge_feed = env_bool("SD_ONLY", style="bool") and str(self.options.quality or "").lower().startswith(
             "sd"
         )
-        if sd_only_bridge_feed:
+        native_info_substream = bool(self.options.substream or (sd_only_bridge_feed and self.camera.is_kvs))
+        native_info = native_stream_info(self.camera, native_info_substream)
+        if sd_only_bridge_feed and not native_info.get("native_selected"):
             native_info = native_info | {
                 "native_selected": False,
                 "native_preload": False,

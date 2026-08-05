@@ -77,3 +77,28 @@ jobs:
 
       - name: Go tests
         run: go test ./whep_proxy/... -v -count=1
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Scan for host-specific secrets
+        run: |
+          matches=$(grep -rInE '192\.168\.1\.|172\.30\.32\.|***REDACTED***|Cessna|***REDACTED***|ccab4aaf|0eb0428f|local_docker_wyze' \
+            app/ scripts/ runtime_overlays/ home_assistant/ .ha_live_addon/ || true)
+          # Allow the intentional HA ingress default (172.30.32.2) at web_ui.py:39 in app/ and generated trees
+          if [ -n "$matches" ]; then
+            matches=$(printf '%s\n' "$matches" | grep -vE 'web_ui\.py:39:.*172\.30\.32\.2' || true)
+          fi
+          if [ -n "$matches" ]; then
+            echo "Host-specific patterns found:"
+            echo "$matches"
+            exit 1
+          fi
+          echo "No host-specific patterns found in app/, scripts/, runtime_overlays/, home_assistant/, .ha_live_addon/"

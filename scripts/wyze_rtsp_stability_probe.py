@@ -35,12 +35,20 @@ from ffmpeg_helpers import (
     ensure_binary,
 )
 
+DEFAULT_RTSP_HOST = os.environ.get("WYZE_RTSP_HOST", "192.0.2.10")
+DEFAULT_RTSP_PORT = os.environ.get("WYZE_RTSP_PORT", "8554")
+
+
+def _rtsp_url(path: str) -> str:
+    return f"rtsp://{DEFAULT_RTSP_HOST}:{DEFAULT_RTSP_PORT}/{path}"
+
+
 DEFAULT_CAMERAS = [
-    ("north_yard", "rtsp://192.168.1.244:8554/north_yard_sd"),
-    ("garage", "rtsp://192.168.1.244:8554/garage_sd"),
-    ("deck", "rtsp://192.168.1.244:8554/deck_sd"),
-    ("south_yard", "rtsp://192.168.1.244:8554/south_yard_sd"),
-    ("hamster", "rtsp://192.168.1.244:8554/hamster_sd"),
+    ("north_yard", _rtsp_url("north_yard_sd")),
+    ("garage", _rtsp_url("garage_sd")),
+    ("patio", _rtsp_url("cam_patio_sd")),
+    ("south_yard", _rtsp_url("south_yard_sd")),
+    ("side_yard", _rtsp_url("side_yard_sd")),
 ]
 
 PROGRESS_WINDOW = 10.0

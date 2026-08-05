@@ -3,13 +3,14 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-CAMERA="${HA_NORTH_YARD_CAMERA:-north-yard}"
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
+CAMERA="${HA_NORTH_YARD_CAMERA:-}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
 SAMPLES="${HA_NORTH_YARD_PROBE_SAMPLES:-3}"
 INTERVAL="${HA_NORTH_YARD_PROBE_INTERVAL_SECONDS:-20}"
-IPS="${HA_NORTH_YARD_PROBE_IPS:-192.168.1.175 192.168.1.179 192.168.1.183 192.168.1.185}"
-BRIDGE_BASE="${HA_NORTH_YARD_BRIDGE_BASE:-http://172.30.32.1:5000}"
-GO2RTC_BASE="${HA_NORTH_YARD_GO2RTC_BASE:-http://172.30.32.1:11984}"
+IPS="${HA_NORTH_YARD_PROBE_IPS:-}"
+MAC="${HA_NORTH_YARD_MAC:-}"
+BRIDGE_BASE="${HA_NORTH_YARD_BRIDGE_BASE:-http://192.0.2.10:5000}"
+GO2RTC_BASE="${HA_NORTH_YARD_GO2RTC_BASE:-http://192.0.2.11:11984}"
 
 # Source shared library for validate_slug, validate_base_url, section,
 # redact_api_keys, derive_bridge_token
@@ -25,7 +26,7 @@ checks bridge API state, snapshot hash registry, health/details, authenticated
 It does not stop, start, rebuild, restart, reboot, or edit anything.
 
 Environment:
-  HA_NORTH_YARD_CAMERA                  default: $CAMERA
+  HA_NORTH_YARD_CAMERA                  required, camera name to probe
   HA_PROD_ADDON_SLUG                    default: $PROD_SLUG
   HA_NORTH_YARD_PROBE_SAMPLES           default: $SAMPLES
   HA_NORTH_YARD_PROBE_INTERVAL_SECONDS  default: $INTERVAL
@@ -47,6 +48,11 @@ case "${1:-}" in
     exit 1
     ;;
 esac
+
+if [ -z "$CAMERA" ]; then
+  echo "HA_NORTH_YARD_CAMERA is required: set it to the camera name to probe." >&2
+  exit 1
+fi
 
 validate_name() {
   name="$1"
@@ -101,6 +107,7 @@ PROD_SLUG="$HA_NY_PROD_SLUG"
 SAMPLES="$HA_NY_SAMPLES"
 INTERVAL="$HA_NY_INTERVAL"
 IPS="$HA_NY_IPS"
+MAC="$HA_NY_MAC"
 BRIDGE_BASE="$HA_NY_BRIDGE_BASE"
 GO2RTC_BASE="$HA_NY_GO2RTC_BASE"
 API_TOKEN=""
@@ -201,6 +208,10 @@ for ip in $IPS; do
   ping -c 1 -W 1 "$ip" >/dev/null 2>&1 && state=reachable || state=unreachable
   printf '%s\t%s\n' "$ip" "$state"
 done
-ip neigh show 2>/dev/null | grep -Ei '192\.168\.1\.(175|179|183|185)|80:48:2c:31:c9:e7|80482c31c9e7' || true
+ip_regex=$(printf '%s' "$IPS" | sed 's/ /|/g')
+if [ -n "$MAC" ]; then
+  ip_regex="$ip_regex|$(printf '%s' "$MAC" | tr -d ':')"
+fi
+ip neigh show 2>/dev/null | grep -Ei "$ip_regex" || true
 REMOTE
-} | "$SCRIPT_DIR/ha_ssh.sh" "HA_NY_CAMERA=$CAMERA HA_NY_PROD_SLUG=$PROD_SLUG HA_NY_SAMPLES=$SAMPLES HA_NY_INTERVAL=$INTERVAL HA_NY_IPS='$IPS' HA_NY_BRIDGE_BASE=$BRIDGE_BASE HA_NY_GO2RTC_BASE=$GO2RTC_BASE sh -s"
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_NY_CAMERA=$CAMERA HA_NY_PROD_SLUG=$PROD_SLUG HA_NY_SAMPLES=$SAMPLES HA_NY_INTERVAL=$INTERVAL HA_NY_IPS='$IPS' HA_NY_MAC=$MAC HA_NY_BRIDGE_BASE=$BRIDGE_BASE HA_NY_GO2RTC_BASE=$GO2RTC_BASE sh -s"

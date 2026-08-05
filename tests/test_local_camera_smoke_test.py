@@ -25,7 +25,7 @@ class TestLocalCameraSmokeTest(unittest.TestCase):
             test_name="deco-a",
             reolink_camera=["doorbell"],
             reolink_camera_url=["doorbell=rtsp://user:pass@example/stream"],
-            reolink_camera_ip=["doorbell=192.168.1.69"],
+            reolink_camera_ip=["doorbell=192.0.2.69"],
         )
 
         command = MODULE.build_reolink_command(args)
@@ -45,8 +45,8 @@ class TestLocalCameraSmokeTest(unittest.TestCase):
             wyze_sample_interval=20.0,
             status_interval=30.0,
             artifact_root="tmp",
-            bridge_base="http://192.168.1.244:5000",
-            go2rtc_base="http://192.168.1.244:1984",
+            bridge_base="http://192.0.2.10:5000",
+            go2rtc_base="http://192.0.2.10:1984",
             test_name="asus-b",
             wyze_camera=["north-yard"],
             wyze_camera_alias=["north-yard=north-yard-sd"],

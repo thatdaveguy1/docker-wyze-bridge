@@ -161,19 +161,21 @@ start_go2rtc_health_monitor() {
     # Monitor go2rtc streams every 15s. Three per-stream checks:
     # 1. Producer check: if producers drop to 0 for >30s, force-restart the stream.
     # 2. Bytes-stall check: if producers>0 but receiver bytes don't increase
-    #    for >30s, the stream is wedged (DTLS/RTSP connected but no video
+    #    for >45s, the stream is wedged (DTLS/RTSP connected but no video
     #    flowing). go2rtc returns HTTP 200 with 0-byte snapshots → black frames.
-    #    Force-restart the stream to reconnect.
+    #    Force-restart the stream to reconnect. (45s, not 30s, to avoid noise
+    #    from low-motion cameras that naturally stall for one 15s check.)
     # 3. Keyframe consumer pileup: if >5 stuck keyframe consumers, force-restart.
     # Full-process RTSP wedge check: probe ALL alive aliases with DESCRIBE.
     #    Only restart the go2rtc process if DESCRIBE fails for EVERY alive
     #    alias for >60s. A single camera dropping should NOT trigger a full
     #    restart that drops all connections.
+    _STATE_DIR=/tmp/go2rtc_health_state
+    _QUARANTINE_DIR=/config/go2rtc_quarantine
+    mkdir -p "${_STATE_DIR}" "${_QUARANTINE_DIR}"
     (
-        dead_since=""
-        stall_since=""
-        prev_bytes=""
         wedge_since=0
+        _process_restarted=0
         while :; do
             sleep 15
             if [ -z "${GO2RTC_API_BASE}" ]; then
@@ -215,11 +217,9 @@ for line in open(path, encoding='utf-8'):
 " 2>/dev/null || echo "")
             fi
             now=$(date +%s)
+            _process_restarted=0
 
             # Collect ALL aliases with active producers for the RTSP wedge probe.
-            # Probing only one alias was too aggressive — a single camera dropping
-            # would trigger a full go2rtc restart, dropping all 9 connections.
-            alive_aliases=""
 
             for alias in ${aliases}; do
                 [ -n "${alias}" ] || continue
@@ -244,33 +244,33 @@ try:
 except Exception:
     print(0, 0, 0)
 " 2>/dev/null || echo "0 0 0")
-                producer_count=$(echo "${counts}" | cut -d' ' -f1)
-                keyframe_count=$(echo "${counts}" | cut -d' ' -f2)
-                current_bytes=$(echo "${counts}" | cut -d' ' -f3)
+                producer_count=$(echo "${counts}" | cut -d' ' -f1 | tr -cd '0-9')
+                keyframe_count=$(echo "${counts}" | cut -d' ' -f2 | tr -cd '0-9')
+                current_bytes=$(echo "${counts}" | cut -d' ' -f3 | tr -cd '0-9')
+                [ -z "${producer_count}" ] && producer_count=0
+                [ -z "${keyframe_count}" ] && keyframe_count=0
+                [ -z "${current_bytes}" ] && current_bytes=0
+                # State files: one per alias per metric. No string parsing.
+                _dead_file="${_STATE_DIR}/dead_${alias}"
+                _stall_file="${_STATE_DIR}/stall_${alias}"
+                _bytes_file="${_STATE_DIR}/bytes_${alias}"
+                _stall_state_file="${_STATE_DIR}/stall_state_${alias}.json"
+                _quarantine_file="${_QUARANTINE_DIR}/quarantine_${alias}.json"
                 if [ "${producer_count}" = "0" ]; then
                     # Stream is dead — producer-level recovery
-                    key="${alias}"
-                    last=$(printf '%s' "${dead_since}" | grep "^${key}=" | cut -d= -f2)
-                    if [ -z "${last}" ]; then
-                        last=0
-                    fi
-                    if [ "${last}" = "0" ]; then
+                    if [ ! -f "${_dead_file}" ]; then
                         echo "[GO2RTC_HEALTH] ${alias}: producer dropped, monitoring for recovery" >&2
-                        last=${now}
-                        dead_since="${dead_since}${key}=${last}\n"
-                    elif [ $((now - last)) -gt 30 ]; then
-                        echo "[GO2RTC_HEALTH] ${alias}: dead for >30s, forcing restart" >&2
-                        # Stop the stream
-                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
-                        sleep 2
-                        # Preload to restart
-                        curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
-                        # Reset dead timer and bytes tracking
-                        dead_since=$(printf '%s' "${dead_since}" | grep -v "^${key}=")
-                        dead_since="${dead_since}${key}=0\n"
-                        stall_since=$(printf '%s' "${stall_since}" | grep -v "^${key}=")
-                        prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
-                        echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
+                        echo "${now}" > "${_dead_file}"
+                    else
+                        last=$(cat "${_dead_file}" 2>/dev/null | tr -cd '0-9')
+                        [ -z "${last}" ] && last=0
+                        if [ $((now - last)) -gt 30 ]; then
+                            echo "[GO2RTC_HEALTH] ${alias}: dead for >30s, forcing restart" >&2
+                            curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                            sleep 2
+                            rm -f "${_dead_file}" "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
+                            echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
+                        fi
                     fi
                 elif [ "${keyframe_count}" -gt 5 ] 2>/dev/null; then
                     # Keyframe consumer pileup — stuck snapshot requests that
@@ -280,53 +280,96 @@ except Exception:
                     curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
                     sleep 2
                     curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
-                    # Reset bytes tracking after restart
-                    stall_since=$(printf '%s' "${stall_since}" | grep -v "^${alias}=")
-                    prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${alias}=")
+                    rm -f "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
                     echo "[GO2RTC_HEALTH] ${alias}: restart triggered (pileup cleared)" >&2
                     alive_aliases="${alive_aliases} ${alias}"
                 else
-                    # Producer is alive — check for bytes stall (wedged stream)
-                    key="${alias}"
-                    prev_b=$(printf '%s' "${prev_bytes}" | grep "^${key}=" | cut -d= -f2)
-                    if [ -z "${prev_b}" ]; then
-                        prev_b=0
+                    # Producer is alive — check for bytes stall via Python
+                    # escalation state machine.  The helper tracks per-alias
+                    # stall/restart_count state and returns an action:
+                    _stall_err_file="${_STATE_DIR}/stall_err_$$.tmp"
+                    # Run the helper ONCE: stdout → action, stderr → log lines.
+                    _stall_action=$(PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "
+import json, sys
+from go2rtc_sidecar_helpers import check_bytes_stall
+try:
+    state = json.load(open('${_stall_state_file}'))
+except Exception:
+    state = {}
+try:
+    q = json.load(open('${_quarantine_file}'))
+    state['quarantined_until'] = q.get('quarantined_until', 0)
+    state['quarantine_count'] = q.get('quarantine_count', 0)
+except Exception:
+    pass
+new_state, action, log = check_bytes_stall('${alias}', ${current_bytes}, ${now}, state)
+# Split: volatile state → stall_state, quarantine → quarantine file
+volatile = {k: v for k, v in new_state.items() if k not in ('quarantined_until', 'quarantine_count')}
+json.dump(volatile, open('${_stall_state_file}', 'w'), separators=(',', ':'))
+q_state = {'quarantined_until': new_state.get('quarantined_until', 0), 'quarantine_count': new_state.get('quarantine_count', 0)}
+json.dump(q_state, open('${_quarantine_file}', 'w'), separators=(',', ':'))
+if log:
+    print(log, file=sys.stderr)
+print(action)
+" 2>"${_stall_err_file}")
+                    # Emit any log lines to the sidecar's stderr
+                    [ -s "${_stall_err_file}" ] && cat "${_stall_err_file}" >&2
+                    rm -f "${_stall_err_file}" 2>/dev/null
+
+                    if [ "${_stall_action}" = "restart_alias" ]; then
+                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        sleep 2
+                        curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                        echo "[GO2RTC_HEALTH] ${alias}: alias restart triggered" >&2
+                    elif [ "${_stall_action}" = "restart_process" ]; then
+                        echo "[GO2RTC_HEALTH] ${alias}: escalating to full go2rtc process restart" >&2
+                        # Quarantine ALL aliases at max_restarts BEFORE killing go2rtc,
+                        # so quarantine files are written even if the add-on restarts.
+                        for _peer_state_file in "${_STATE_DIR}"/stall_state_*.json; do
+                            [ -f "${_peer_state_file}" ] || continue
+                            _peer_alias=$(basename "${_peer_state_file}" | sed 's/stall_state_//; s/\.json//')
+                            [ "${_peer_alias}" = "${alias}" ] && continue
+                            _peer_q_file="${_QUARANTINE_DIR}/quarantine_${_peer_alias}.json"
+                            _peer_q=$(PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "
+import json
+from go2rtc_sidecar_helpers import quarantine_peer
+try:
+    state = json.load(open('${_peer_state_file}'))
+except Exception:
+    exit(0)
+try:
+    state.update(json.load(open('${_peer_q_file}')))
+except Exception:
+    pass
+q = quarantine_peer(state, ${now})
+if q:
+    json.dump(q, open('${_peer_q_file}', 'w'), separators=(',', ':'))
+    print(f\"[GO2RTC_HEALTH] ${_peer_alias}: quarantined alongside process restart ({q['quarantined_until'] - ${now}}s)\", file=__import__('sys').stderr)
+" 2>&1)
+                            [ -n "${_peer_q}" ] && echo "${_peer_q}" >&2
+                        done
+                        kill "${GO2RTC_PID}" 2>/dev/null || true
+                        wait "${GO2RTC_PID}" 2>/dev/null || true
+                        start_go2rtc_process
+                        sleep 5
+                        preload_go2rtc_aliases
+                        # Clear volatile stall state (prev_bytes/stall_since/restart_count)
+                        # but preserve quarantine files so dead aliases stay quarantined
+                        rm -f "${_STATE_DIR}"/stall_state_*.json "${_STATE_DIR}"/dead_* "${_STATE_DIR}"/stall_* "${_STATE_DIR}"/bytes_* 2>/dev/null
+                        echo "[GO2RTC_HEALTH] go2rtc process restarted (stall escalation)" >&2
+                        # Signal outer loop to skip RTSP wedge probe this cycle
+                        _process_restarted=1
                     fi
-                    if [ "${current_bytes}" -le "${prev_b}" ] 2>/dev/null; then
-                        # Bytes didn't increase — stream is wedged
-                        stall_last=$(printf '%s' "${stall_since}" | grep "^${key}=" | cut -d= -f2)
-                        if [ -z "${stall_last}" ]; then
-                            stall_last=0
-                        fi
-                        if [ "${stall_last}" = "0" ]; then
-                            echo "[GO2RTC_HEALTH] ${alias}: bytes stalled at ${current_bytes}, monitoring" >&2
-                            stall_since="${stall_since}${key}=${now}\n"
-                        elif [ $((now - stall_last)) -gt 30 ]; then
-                            echo "[GO2RTC_HEALTH] ${alias}: bytes stalled for >30s (bytes=${current_bytes}), forcing restart" >&2
-                            curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
-                            sleep 2
-                            curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
-                            stall_since=$(printf '%s' "${stall_since}" | grep -v "^${key}=")
-                            prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
-                            echo "[GO2RTC_HEALTH] ${alias}: restart triggered (bytes stall cleared)" >&2
-                        fi
-                    else
-                        # Bytes are increasing — stream is healthy
-                        was_stalled=$(printf '%s' "${stall_since}" | grep "^${alias}=" | cut -d= -f2)
-                        if [ -n "${was_stalled}" ] && [ "${was_stalled}" != "0" ]; then
-                            echo "[GO2RTC_HEALTH] ${alias}: bytes flowing again after $((now - was_stalled))s stall" >&2
-                        fi
-                        stall_since=$(printf '%s' "${stall_since}" | grep -v "^${alias}=")
-                    fi
-                    # Update prev_bytes for next check
-                    prev_bytes=$(printf '%s' "${prev_bytes}" | grep -v "^${key}=")
-                    prev_bytes="${prev_bytes}${key}=${current_bytes}\n"
+
                     # Clear dead timer — stream is alive
-                    was_dead=$(printf '%s' "${dead_since}" | grep "^${alias}=" | cut -d= -f2)
-                    if [ -n "${was_dead}" ] && [ "${was_dead}" != "0" ]; then
-                        echo "[GO2RTC_HEALTH] ${alias}: recovered after $((now - was_dead))s" >&2
+                    if [ -f "${_dead_file}" ]; then
+                        was_dead=$(cat "${_dead_file}" 2>/dev/null | tr -cd '0-9')
+                        [ -z "${was_dead}" ] && was_dead=0
+                        if [ "${was_dead}" != "0" ]; then
+                            echo "[GO2RTC_HEALTH] ${alias}: recovered after $((now - was_dead))s" >&2
+                        fi
+                        rm -f "${_dead_file}" 2>/dev/null
                     fi
-                    dead_since=$(printf '%s' "${dead_since}" | grep -v "^${alias}=")
                     alive_aliases="${alive_aliases} ${alias}"
                 fi
             done
@@ -334,7 +377,11 @@ except Exception:
             # RTSP wedge detection: probe ALL alive aliases. Only declare a wedge
             # if DESCRIBE fails for every single one of them (a single camera
             # dropping should NOT trigger a full go2rtc restart).
-            if [ -n "${alive_aliases}" ]; then
+            # Skip if we just restarted the go2rtc process for stall escalation —
+            # all streams were recreated and need time to settle.
+            if [ "${_process_restarted}" = "1" ]; then
+                wedge_since=0
+            elif [ -n "${alive_aliases}" ]; then
                 any_describe_ok=0
                 for alias in ${alive_aliases}; do
                     if rtsp_describe_ok "${alias}"; then
@@ -363,6 +410,315 @@ except Exception:
                     fi
                 fi
             fi
+        done
+    )&
+}
+
+# ── Helper: extract camera IP from go2rtc producer URL ─────────────
+_extract_cam_ip() {
+    # Extract the IP address from a wyze:// URL in the go2rtc streams API.
+    # Usage: _extract_cam_ip <alias> <streams_json>
+    printf '%s' "$2" | python3 -c "
+import json, sys, re
+try:
+    data = json.load(sys.stdin)
+    s = data.get('$1', {})
+    p = s.get('producers') or []
+    if p:
+        url = p[0].get('source', '') or p[0].get('url', '')
+        m = re.search(r'wyze://(\d+\.\d+\.\d+\.\d+)', url)
+        if m:
+            print(m.group(1))
+except Exception:
+    pass
+" 2>/dev/null
+}
+
+# ── Helper 1: Proactive TUTK session refresh ──────────────────────
+# Wyze TUTK/DTLS sessions degrade after a few hours of continuous use.
+# Instead of waiting for a bytes stall + 135s reactive outage, restart
+# each healthy alias on a planned schedule to get a fresh TUTK session.
+# Skips quarantined aliases.  Tracks last-refresh time per alias.
+start_go2rtc_session_refresh_loop() {
+    _REFRESH_INTERVAL="${GO2RTC_SESSION_REFRESH_INTERVAL:-7200}"  # 2 hours
+    _REFRESH_STATE_DIR=/tmp/go2rtc_session_refresh
+    mkdir -p "${_REFRESH_STATE_DIR}"
+    echo "[GO2RTC_REFRESH] session refresh loop started (interval=${_REFRESH_INTERVAL}s)" >&2
+    (
+        while :; do
+            sleep 300  # check every 5 minutes
+            if [ -z "${GO2RTC_API_BASE}" ]; then
+                continue
+            fi
+            streams_json=$(curl -sf "${GO2RTC_API_BASE}/api/streams" 2>/dev/null || echo "")
+            if [ -z "${streams_json}" ]; then
+                continue
+            fi
+            now=$(date +%s)
+            aliases=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    for name in sorted(data.keys()):
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+            for alias in ${aliases}; do
+                [ -n "${alias}" ] || continue
+                # Skip quarantined aliases
+                _q_file="${_QUARANTINE_DIR:-/config/go2rtc_quarantine}/quarantine_${alias}.json"
+                if [ -f "${_q_file}" ]; then
+                    _q_until=$(python3 -c "import json; print(json.load(open('${_q_file}')).get('quarantined_until', 0))" 2>/dev/null || echo 0)
+                    if [ "${_q_until}" -gt "${now}" ] 2>/dev/null; then
+                        continue
+                    fi
+                fi
+                # Check if this alias has an active producer
+                _has_producer=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    s = data.get('${alias}', {})
+    p = s.get('producers') or []
+    print(1 if p else 0)
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+                [ "${_has_producer}" = "1" ] || continue
+                # Check last refresh time
+                _refresh_file="${_REFRESH_STATE_DIR}/last_refresh_${alias}"
+                _last_refresh=$(cat "${_refresh_file}" 2>/dev/null | tr -cd '0-9')
+                [ -z "${_last_refresh}" ] && _last_refresh=0
+                _age=$((now - _last_refresh))
+                if [ "${_age}" -lt "${_REFRESH_INTERVAL}" ]; then
+                    continue
+                fi
+                # Refresh: restart alias + preload
+                echo "[GO2RTC_REFRESH] ${alias}: proactive TUTK session refresh (age=${_age}s)" >&2
+                curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                sleep 2
+                curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                echo "${now}" > "${_refresh_file}"
+                echo "[GO2RTC_REFRESH] ${alias}: session refreshed" >&2
+            done
+        done
+    ) &
+}
+
+# ── Helper 2: WiFi degradation early warning ──────────────────────
+# Ping each Wyze camera IP every 60s.  If latency spikes >3x baseline
+# or packet loss >5% for 2 consecutive samples, proactively restart
+# the alias before the TUTK session dies from packet reordering.
+start_wifi_health_monitor() {
+    _WIFI_STATE_DIR=/tmp/go2rtc_wifi_health
+    mkdir -p "${_WIFI_STATE_DIR}"
+    if ! command -v ping >/dev/null 2>&1; then
+        echo "[GO2RTC_WIFI] ping not available in container, WiFi monitor disabled" >&2
+        return 0
+    fi
+    echo "[GO2RTC_WIFI] WiFi health monitor started (60s interval)" >&2
+    (
+        while :; do
+            sleep 60
+            if [ -z "${GO2RTC_API_BASE}" ]; then
+                continue
+            fi
+            streams_json=$(curl -sf "${GO2RTC_API_BASE}/api/streams" 2>/dev/null || echo "")
+            if [ -z "${streams_json}" ]; then
+                continue
+            fi
+            now=$(date +%s)
+            aliases=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    for name in sorted(data.keys()):
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+            for alias in ${aliases}; do
+                [ -n "${alias}" ] || continue
+                # Skip quarantined aliases
+                _q_file="${_QUARANTINE_DIR:-/config/go2rtc_quarantine}/quarantine_${alias}.json"
+                if [ -f "${_q_file}" ]; then
+                    _q_until=$(python3 -c "import json; print(json.load(open('${_q_file}')).get('quarantined_until', 0))" 2>/dev/null || echo 0)
+                    if [ "${_q_until}" -gt "${now}" ] 2>/dev/null; then
+                        continue
+                    fi
+                fi
+                # Extract camera IP from go2rtc producer URL
+                cam_ip=$(_extract_cam_ip "${alias}" "${streams_json}")
+                [ -z "${cam_ip}" ] && continue
+                # Ping 5 packets, parse avg latency and loss
+                ping_result=$(ping -c 5 -W 2 "${cam_ip}" 2>/dev/null || echo "")
+                _loss=$(echo "${ping_result}" | grep "packet loss" | grep -o '[0-9]*%' | head -1 | tr -d '%')
+                _avg=$(echo "${ping_result}" | grep "rtt min" | grep -o '[0-9.]*/[0-9.]*/[0-9.]*' | cut -d'/' -f2)
+                [ -z "${_loss}" ] && _loss=100
+                [ -z "${_avg}" ] && _avg=999
+                # Track baseline latency (rolling, first 5 samples establish baseline)
+                _baseline_file="${_WIFI_STATE_DIR}/baseline_${alias}"
+                _degraded_file="${_WIFI_STATE_DIR}/degraded_${alias}"
+                _baseline=$(cat "${_baseline_file}" 2>/dev/null | tr -cd '0-9.')
+                [ -z "${_baseline}" ] && _baseline=0
+                # If avg is 999 (unreachable), treat as 100% loss
+                if [ "${_avg}" = "999" ]; then
+                    _loss=100
+                fi
+                # Establish baseline after 5 samples (use first non-degraded sample)
+                _sample_count_file="${_WIFI_STATE_DIR}/samples_${alias}"
+                _sample_count=$(cat "${_sample_count_file}" 2>/dev/null | tr -cd '0-9')
+                [ -z "${_sample_count}" ] && _sample_count=0
+                _sample_count=$((_sample_count + 1))
+                echo "${_sample_count}" > "${_sample_count_file}"
+                if [ "${_sample_count}" -le 5 ] && [ "${_loss}" -eq 0 ] && [ "${_avg}" != "999" ]; then
+                    if [ "${_baseline}" = "0" ]; then
+                        echo "${_avg}" > "${_baseline_file}"
+                    else
+                        # Rolling average for baseline
+                        _new_baseline=$(python3 -c "print(round((${_baseline} * ${_sample_count} + ${_avg}) / (${_sample_count} + 1), 1))" 2>/dev/null || echo "${_avg}")
+                        echo "${_new_baseline}" > "${_baseline_file}"
+                    fi
+                    rm -f "${_degraded_file}" 2>/dev/null
+                    continue
+                fi
+                [ "${_baseline}" = "0" ] && _baseline="${_avg}"
+                # Check for degradation: latency >3x baseline OR loss >5%
+                _degraded=0
+                _threshold=$(python3 -c "print(round(${_baseline} * 3, 1))" 2>/dev/null || echo 999)
+                if [ "${_loss}" -gt 5 ] 2>/dev/null; then
+                    _degraded=1
+                fi
+                if [ "${_avg}" != "999" ] && [ "${_avg}" != "0" ]; then
+                    _is_high=$(python3 -c "print(1 if ${_avg} > ${_threshold} else 0)" 2>/dev/null || echo 0)
+                    [ "${_is_high}" = "1" ] && _degraded=1
+                fi
+                if [ "${_degraded}" = "1" ]; then
+                    if [ ! -f "${_degraded_file}" ]; then
+                        echo "${now}" > "${_degraded_file}"
+                        echo "[GO2RTC_WIFI] ${alias}: WiFi degradation detected (ip=${cam_ip} avg=${_avg}ms loss=${_loss}% baseline=${_baseline}ms)" >&2
+                        continue
+                    fi
+                    # Second consecutive degraded sample → proactive restart
+                    _first_degraded=$(cat "${_degraded_file}" 2>/dev/null | tr -cd '0-9')
+                    [ -z "${_first_degraded}" ] && _first_degraded=${now}
+                    if [ $((now - _first_degraded)) -ge 60 ]; then
+                        echo "[GO2RTC_WIFI] ${alias}: WiFi degraded for >60s, proactive alias restart (ip=${cam_ip} avg=${_avg}ms loss=${_loss}%)" >&2
+                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        sleep 2
+                        curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                        rm -f "${_degraded_file}" 2>/dev/null
+                        echo "[GO2RTC_WIFI] ${alias}: proactive restart triggered" >&2
+                    fi
+                else
+                    # WiFi healthy — clear degradation state
+                    if [ -f "${_degraded_file}" ]; then
+                        echo "[GO2RTC_WIFI] ${alias}: WiFi recovered (avg=${_avg}ms loss=${_loss}%)" >&2
+                        rm -f "${_degraded_file}" 2>/dev/null
+                    fi
+                fi
+            done
+        done
+    ) &
+}
+
+# ── Helper 4: Snapshot freshness canary ───────────────────────────
+# Every 5 minutes, fetch a frame.jpeg snapshot from go2rtc for each
+# healthy alias.  If the snapshot is <5KB or has the same SHA-256 hash
+# for 2 consecutive checks, the stream is silently stalled (bytes may
+# be flowing but video frames aren't decoding).  Trigger an alias restart.
+start_snapshot_canary() {
+    _CANARY_STATE_DIR=/tmp/go2rtc_snapshot_canary
+    mkdir -p "${_CANARY_STATE_DIR}"
+    echo "[GO2RTC_CANARY] snapshot freshness canary started (300s interval)" >&2
+    (
+        while :; do
+            sleep 300  # check every 5 minutes
+            if [ -z "${GO2RTC_API_BASE}" ]; then
+                continue
+            fi
+            streams_json=$(curl -sf "${GO2RTC_API_BASE}/api/streams" 2>/dev/null || echo "")
+            if [ -z "${streams_json}" ]; then
+                continue
+            fi
+            now=$(date +%s)
+            aliases=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    for name in sorted(data.keys()):
+        print(name)
+except Exception:
+    pass
+" 2>/dev/null || echo "")
+            for alias in ${aliases}; do
+                [ -n "${alias}" ] || continue
+                # Skip quarantined aliases
+                _q_file="${_QUARANTINE_DIR:-/config/go2rtc_quarantine}/quarantine_${alias}.json"
+                if [ -f "${_q_file}" ]; then
+                    _q_until=$(python3 -c "import json; print(json.load(open('${_q_file}')).get('quarantined_until', 0))" 2>/dev/null || echo 0)
+                    if [ "${_q_until}" -gt "${now}" ] 2>/dev/null; then
+                        continue
+                    fi
+                fi
+                # Check if this alias has an active producer
+                _has_producer=$(printf '%s' "${streams_json}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    s = data.get('${alias}', {})
+    p = s.get('producers') or []
+    print(1 if p else 0)
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)
+                [ "${_has_producer}" = "1" ] || continue
+                # Fetch snapshot from go2rtc frame.jpeg
+                _snap_file="${_CANARY_STATE_DIR}/snap_${alias}.jpg"
+                _http_code=$(curl -s -o "${_snap_file}" -w "%{http_code}" "${GO2RTC_API_BASE}/api/frame.jpeg?src=${alias}" 2>/dev/null || echo "000")
+                if [ "${_http_code}" != "200" ]; then
+                    echo "[GO2RTC_CANARY] ${alias}: snapshot fetch failed (HTTP ${_http_code})" >&2
+                    continue
+                fi
+                _snap_size=$(wc -c < "${_snap_file}" 2>/dev/null | tr -cd '0-9')
+                [ -z "${_snap_size}" ] && _snap_size=0
+                if [ "${_snap_size}" -lt 5000 ]; then
+                    echo "[GO2RTC_CANARY] ${alias}: snapshot too small (${_snap_size}B), possible silent stall" >&2
+                    # Track consecutive small snapshots
+                    _small_file="${_CANARY_STATE_DIR}/small_${alias}"
+                    _small_count=$(cat "${_small_file}" 2>/dev/null | tr -cd '0-9')
+                    [ -z "${_small_count}" ] && _small_count=0
+                    _small_count=$((_small_count + 1))
+                    echo "${_small_count}" > "${_small_file}"
+                    if [ "${_small_count}" -ge 2 ]; then
+                        echo "[GO2RTC_CANARY] ${alias}: 2 consecutive small snapshots, triggering alias restart" >&2
+                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        sleep 2
+                        curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                        rm -f "${_small_file}" 2>/dev/null
+                        echo "[GO2RTC_CANARY] ${alias}: canary restart triggered" >&2
+                    fi
+                    rm -f "${_snap_file}" 2>/dev/null
+                    continue
+                fi
+                # Snapshot is valid size — check hash for staleness
+                _snap_hash=$(sha256sum "${_snap_file}" 2>/dev/null | cut -d' ' -f1)
+                _hash_file="${_CANARY_STATE_DIR}/hash_${alias}"
+                _prev_hash=$(cat "${_hash_file}" 2>/dev/null | tr -cd 'a-f0-9')
+                echo "${_snap_hash}" > "${_hash_file}"
+                rm -f "${_snap_file}" 2>/dev/null
+                # Clear small-snapshot counter
+                rm -f "${_CANARY_STATE_DIR}/small_${alias}" 2>/dev/null
+                if [ -n "${_prev_hash}" ] && [ "${_snap_hash}" = "${_prev_hash}" ]; then
+                    echo "[GO2RTC_CANARY] ${alias}: snapshot hash unchanged (stale frame), triggering alias restart" >&2
+                    curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                    sleep 2
+                    curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
+                    # Don't clear hash file — next check will compare against this hash
+                    echo "[GO2RTC_CANARY] ${alias}: canary restart triggered (stale frame)" >&2
+                fi
+            done
         done
     ) &
 }
@@ -478,6 +834,9 @@ generate_initial_config(
             preload_go2rtc_aliases
             start_go2rtc_preload_refresh_loop
             start_go2rtc_health_monitor
+            start_go2rtc_session_refresh_loop
+            start_wifi_health_monitor
+            start_snapshot_canary
             curl -sf -X OPTIONS "${GO2RTC_API_BASE}/api/streams" 2>/dev/null | PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import list_active_producers_verbose; list_active_producers_verbose()" >&2 || echo "[GO2RTC] WARNING: could not confirm active producer aliases yet" >&2
             exit 0
         fi
@@ -524,6 +883,9 @@ generate_initial_config(
         preload_go2rtc_aliases
         start_go2rtc_preload_refresh_loop
         start_go2rtc_health_monitor
+        start_go2rtc_session_refresh_loop
+        start_wifi_health_monitor
+        start_snapshot_canary
         curl -sf -X OPTIONS "${GO2RTC_API_BASE}/api/streams" 2>/dev/null | PYTHONPATH="${HELPERS_PYTHONPATH}" python3 -c "from go2rtc_sidecar_helpers import list_active_producers_verbose; list_active_producers_verbose()" >&2 || echo "[GO2RTC] WARNING: could not confirm active producer aliases yet" >&2
     ) &
 }

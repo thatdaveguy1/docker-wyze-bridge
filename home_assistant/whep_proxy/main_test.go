@@ -108,22 +108,22 @@ func TestCreateAndSendOfferRejectsMissingPeerConnection(t *testing.T) {
 }
 
 func TestUpstreamVideoOnlyMatchesConfiguredStreams(t *testing.T) {
-	t.Setenv("WHEP_UPSTREAM_VIDEO_ONLY_STREAMS", "south-yard, south-yard-sub\thamster")
+	t.Setenv("WHEP_UPSTREAM_VIDEO_ONLY_STREAMS", "south-yard, south-yard-sub\tside-yard")
 
-	for _, streamID := range []string{"south-yard", "south-yard-sub", "hamster"} {
+	for _, streamID := range []string{"south-yard", "south-yard-sub", "side-yard"} {
 		if !upstreamVideoOnly(streamID) {
 			t.Fatalf("expected %s to be video-only", streamID)
 		}
 	}
-	if upstreamVideoOnly("deck-sub") {
-		t.Fatal("did not expect deck-sub to be video-only")
+	if upstreamVideoOnly("cam-b") {
+		t.Fatal("did not expect cam-b to be video-only")
 	}
 }
 
 func TestUpstreamVideoOnlySupportsWildcard(t *testing.T) {
 	t.Setenv("WHEP_UPSTREAM_VIDEO_ONLY_STREAMS", "*")
 
-	if !upstreamVideoOnly("deck-sub") {
+	if !upstreamVideoOnly("cam-b") {
 		t.Fatal("expected wildcard to match any stream")
 	}
 }
@@ -180,7 +180,7 @@ func TestRecoveredStreamKeepsReadyStatusDuringReconnectWindow(t *testing.T) {
 	defer peerConnection.Close()
 
 	stream := &WebRTCStream{
-		streamID:          "deck-sub",
+		streamID:          "cam-b",
 		streamCreatedAt:   time.Now().Add(-10 * time.Minute),
 		recoveryStartedAt: time.Now(),
 	}
@@ -209,7 +209,7 @@ func TestRecoveredStreamKeepsReadyStatusDuringReconnectWindow(t *testing.T) {
 
 func TestRecoveredStreamExpiresAfterRecoveryWindow(t *testing.T) {
 	stream := &WebRTCStream{
-		streamID:          "deck-sub",
+		streamID:          "cam-b",
 		streamCreatedAt:   time.Now().Add(-10 * time.Minute),
 		recoveryStartedAt: time.Now().Add(-maxRecoveryAge - time.Second),
 	}
@@ -423,8 +423,8 @@ func TestKVSConfigURLFallsBackToBridgeAppPort(t *testing.T) {
 	t.Setenv("KVS_CONFIG_PORT", "")
 	t.Setenv("WB_APP_PORT", "55000")
 
-	got := kvsConfigURL("garage-sub")
-	want := "http://127.0.0.1:55000/kvs-config/garage-sub"
+	got := kvsConfigURL("cam-c")
+	want := "http://127.0.0.1:55000/kvs-config/cam-c"
 	if got != want {
 		t.Fatalf("expected %q, got %q", want, got)
 	}
@@ -444,24 +444,24 @@ func TestShouldLogTrackEndSuppressesEOF(t *testing.T) {
 }
 
 func TestWHEPTraceEnabledMatchesConfiguredStream(t *testing.T) {
-	t.Setenv("WHEP_TRACE_STREAM", "dog-run")
-	if !whepTraceEnabled("dog-run") {
+	t.Setenv("WHEP_TRACE_STREAM", "cam-a")
+	if !whepTraceEnabled("cam-a") {
 		t.Fatal("expected configured trace stream to be enabled")
 	}
-	if whepTraceEnabled("deck") {
+	if whepTraceEnabled("cam-patio") {
 		t.Fatal("expected non-configured stream to remain untraced")
 	}
-	if os.Getenv("WHEP_TRACE_STREAM") != "dog-run" {
+	if os.Getenv("WHEP_TRACE_STREAM") != "cam-a" {
 		t.Fatal("expected trace env to stay available during test")
 	}
 }
 
 func TestWHEPTraceDisabledWithoutConfiguredStream(t *testing.T) {
 	t.Setenv("WHEP_TRACE_STREAM", "")
-	if whepTraceEnabled("dog-run") {
+	if whepTraceEnabled("cam-a") {
 		t.Fatal("expected tracing to stay disabled without explicit opt-in")
 	}
-	if whepTraceEnabled("deck") {
+	if whepTraceEnabled("cam-patio") {
 		t.Fatal("expected other streams to remain untraced by default")
 	}
 }

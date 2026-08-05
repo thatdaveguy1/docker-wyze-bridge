@@ -268,6 +268,11 @@ def create_app():
             "source": config.IMG_PATH,
         }
 
+    @app.route("/api/snapshot-health")
+    @auth_required
+    def api_snapshot_health():
+        return wb.streams.snapshot_health()
+
     @app.route("/api/<string:cam_name>")
     @auth_required
     def api_cam(cam_name: str):

@@ -60,8 +60,7 @@ trees directly. After changing `app/` or `whep_proxy/`, run:
 | WHEP proxy | `whep_proxy/` (Go, package main) |
 | TUTK FFI | `app/wyzecam/tutk/` |
 
-See `docs/ARCHITECTURE.md` for the full module dependency graph and
-`CONTEXT.md` for domain terminology.
+See `docs/ARCHITECTURE.md` for the full module dependency graph.
 
 ## Testing
 
@@ -92,11 +91,6 @@ go test ./whep_proxy/... -v -count=1
 ### Build Check
 ```bash
 ./scripts/build.sh --check
-```
-
-### Master Local Gate
-```bash
-./scripts/run_master_local_gates.sh
 ```
 
 ## Code Style
@@ -133,4 +127,3 @@ EOF
 3. `./scripts/build.sh --check` passes
 4. No new debug `print()` statements in production code
 5. New modules have docstrings explaining their purpose
-6. `AGENTS.md` updated if new module boundary rules are established

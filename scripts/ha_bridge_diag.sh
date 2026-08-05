@@ -8,8 +8,8 @@ if [ -f "$SCRIPT_DIR/.ha_ssh.env" ]; then
   . "$SCRIPT_DIR/.ha_ssh.env"
 fi
 
-DEV_SLUG="${HA_DEV_ADDON_SLUG:-local_docker_wyze_bridge_local}"
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-0eb0428f_docker_wyze_bridge_v4}"
+DEV_SLUG="${HA_DEV_ADDON_SLUG:-wyze_bridge_local}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
 DEV_WEB_PORT="${HA_DEV_WEB_PORT:-55000}"
 TARGET="auto"
 STREAM=""
@@ -24,9 +24,9 @@ WHEP proxy and MediaMTX checks run inside the add-on namespace.
 
 Examples:
   scripts/ha_bridge_diag.sh
-  scripts/ha_bridge_diag.sh --stream dog-run
-  scripts/ha_bridge_diag.sh --target dev --stream north-yard
-  scripts/ha_bridge_diag.sh --target dev --stream north-yard --network
+  scripts/ha_bridge_diag.sh --stream camera-name
+  scripts/ha_bridge_diag.sh --target dev --stream camera-name
+  scripts/ha_bridge_diag.sh --target dev --stream camera-name --network
 EOF
 }
 

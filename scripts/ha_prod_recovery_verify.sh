@@ -3,7 +3,9 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
+BRIDGE_BASE="${HA_PROD_RECOVERY_BRIDGE_BASE:-http://192.0.2.10:5000}"
+FRIGATE_BASE="${HA_PROD_RECOVERY_FRIGATE_BASE:-http://frigate:5000}"
 LINES="${HA_PROD_RECOVERY_LOG_LINES:-120}"
 
 # Source shared library for validate_slug, section, mark_fail, redact_api_keys
@@ -20,6 +22,8 @@ not stop, start, rebuild, reboot, or edit anything.
 
 Environment:
   HA_PROD_ADDON_SLUG            default: $PROD_SLUG
+  HA_PROD_RECOVERY_BRIDGE_BASE  default: $BRIDGE_BASE
+  HA_PROD_RECOVERY_FRIGATE_BASE default: $FRIGATE_BASE
   HA_PROD_RECOVERY_LOG_LINES    default: $LINES
 EOF
 }
@@ -47,6 +51,8 @@ validate_lines() {
 }
 
 validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
+validate_base_url "HA_PROD_RECOVERY_BRIDGE_BASE" "$BRIDGE_BASE"
+validate_base_url "HA_PROD_RECOVERY_FRIGATE_BASE" "$FRIGATE_BASE"
 validate_lines
 
 {
@@ -55,6 +61,8 @@ validate_lines
 set -eu
 
 PROD_SLUG="$HA_VERIFY_PROD_SLUG"
+BRIDGE_BASE="$HA_VERIFY_BRIDGE_BASE"
+FRIGATE_BASE="$HA_VERIFY_FRIGATE_BASE"
 LINES="$HA_VERIFY_LINES"
 FAIL=0
 
@@ -62,7 +70,7 @@ FAIL=0
 redact() { redact_api_keys "$@"; }
 
 section "Production Health Gate"
-HEALTH=$(curl -fsS --max-time 8 http://172.30.32.1:5000/health 2>/dev/null || true)
+HEALTH=$(curl -fsS --max-time 8 "$BRIDGE_BASE/health" 2>/dev/null || true)
 printf '%s\n' "${HEALTH:-<empty>}" | redact
 
 if [ -z "$HEALTH" ]; then
@@ -104,7 +112,7 @@ if printf '%s\n' "$LOGS" | grep -Eiq '1 track \(G711\)|audio-only|video_ready=fa
 fi
 
 section "Frigate FPS Gate"
-STATS=$(curl -fsS --max-time 8 http://ccab4aaf-frigate:5000/api/stats 2>/dev/null || true)
+STATS=$(curl -fsS --max-time 8 "$FRIGATE_BASE/api/stats" 2>/dev/null || true)
 if [ -z "$STATS" ]; then
   echo "<empty>"
   mark_fail "Frigate stats did not respond"
@@ -128,4 +136,4 @@ fi
 
 exit "$FAIL"
 REMOTE
-} | "$SCRIPT_DIR/ha_ssh.sh" "HA_VERIFY_PROD_SLUG=$PROD_SLUG HA_VERIFY_LINES=$LINES sh -s"
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_VERIFY_PROD_SLUG=$PROD_SLUG HA_VERIFY_BRIDGE_BASE=$BRIDGE_BASE HA_VERIFY_FRIGATE_BASE=$FRIGATE_BASE HA_VERIFY_LINES=$LINES sh -s"

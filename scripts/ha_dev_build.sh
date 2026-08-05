@@ -6,7 +6,8 @@ set -eu
 # Use this when you need to test the local dev add-on against the live HA box
 # without leaving production and dev running at the same time. The script keeps
 # the flow simple: sync dev, copy prod options, stop one bridge, start the other,
-# wait for /health, and optionally stop/restart Frigate around the handoff.
+# wait for /health. Frigate stays running unless an operator explicitly opts
+# into a maintenance window with HA_ALLOW_FRIGATE_DOWNTIME=true.
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -24,9 +25,10 @@ fi
 [ -n "$CALLER_PROD_ADDON_SLUG" ] && HA_PROD_ADDON_SLUG=$CALLER_PROD_ADDON_SLUG
 [ -n "$CALLER_FRIGATE_ADDON_SLUG" ] && HA_FRIGATE_ADDON_SLUG=$CALLER_FRIGATE_ADDON_SLUG
 
-DEV_SLUG="${HA_DEV_ADDON_SLUG:-docker_wyze_bridge_dev}"
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-docker_wyze_bridge_v4}"
-FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-ccab4aaf_frigate}"
+DEV_SLUG="${HA_DEV_ADDON_SLUG:-wyze_bridge_dev}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
+FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-frigate}"
+ALLOW_FRIGATE_DOWNTIME="${HA_ALLOW_FRIGATE_DOWNTIME:-false}"
 PROD_INFO_FILE="$REPO_DIR/.orig_addon_info.json"
 DEV_WEB_PORT="${HA_DEV_WEB_PORT:-55000}"
 DEV_WHEP_PROXY_PORT="${HA_DEV_WHEP_PROXY_PORT:-18080}"
@@ -55,7 +57,7 @@ Commands:
   status              Show a concise prod/dev status summary
   capture-prod        Save current production add-on info to $PROD_INFO_FILE
   copy-prod-options   Copy production add-on settings into the dev add-on
-  swap-to-dev         Stop prod, sync/rebuild dev, start dev, and run a health smoke-check
+  swap-to-dev         Sync/rebuild dev, start dev, and run a health smoke-check
   smoke-check         Verify the active bridge responds on health/UI endpoints
   restore-prod        Stop dev and restart production
 
@@ -63,8 +65,17 @@ Environment overrides:
   HA_DEV_ADDON_SLUG   default: $DEV_SLUG
   HA_PROD_ADDON_SLUG  default: $PROD_SLUG
   HA_DEV_SD_ONLY      when set to true/false, overrides SD_ONLY only for the dev add-on
+  HA_ALLOW_FRIGATE_DOWNTIME  default: false; set true only for an approved Frigate maintenance window
 EOF
 }
+
+case "$ALLOW_FRIGATE_DOWNTIME" in
+  true|false) ;;
+  *)
+    echo "HA_ALLOW_FRIGATE_DOWNTIME must be true or false (default: false)." >&2
+    exit 1
+    ;;
+esac
 
 ha_apps() {
   "$SCRIPT_DIR/ha_ssh.sh" ha apps "$@"
@@ -517,7 +528,7 @@ def pick_host(options):
                 return parsed.hostname
         elif candidate.strip():
             return candidate.strip()
-    return "homeassistant.local"
+    return os.environ.get("HA_DEV_DOMAIN", "")
 
 
 host = pick_host(payload)
@@ -606,8 +617,18 @@ swap_to_dev() {
   install_dev
   copy_prod_options
   frigate_was_started=false
-  if stop_addon_for_cutover "$FRIGATE_SLUG"; then
-    frigate_was_started=true
+  if [ "$ALLOW_FRIGATE_DOWNTIME" = "true" ]; then
+    if stop_addon_for_cutover "$FRIGATE_SLUG"; then
+      frigate_was_started=true
+    fi
+  else
+    frigate_state=$(addon_field "$FRIGATE_SLUG" state 2>/dev/null || printf 'unavailable')
+    if [ "$frigate_state" != "started" ]; then
+      echo "Refusing bridge cutover: Frigate is not started (state=$frigate_state)." >&2
+      echo "Start Frigate first, or explicitly set HA_ALLOW_FRIGATE_DOWNTIME=true for an approved maintenance window." >&2
+      exit 1
+    fi
+    printf '%s\n' "Preserving Frigate during bridge cutover (state=started)."
   fi
   stop_addon_if_started "$DEV_SLUG"
   "$SCRIPT_DIR/deploy_ha_local_addon.sh" --target dev
@@ -641,8 +662,18 @@ swap_to_dev() {
 
 restore_prod() {
   frigate_was_started=false
-  if stop_addon_for_cutover "$FRIGATE_SLUG"; then
-    frigate_was_started=true
+  if [ "$ALLOW_FRIGATE_DOWNTIME" = "true" ]; then
+    if stop_addon_for_cutover "$FRIGATE_SLUG"; then
+      frigate_was_started=true
+    fi
+  else
+    frigate_state=$(addon_field "$FRIGATE_SLUG" state 2>/dev/null || printf 'unavailable')
+    if [ "$frigate_state" != "started" ]; then
+      echo "Refusing bridge restore: Frigate is not started (state=$frigate_state)." >&2
+      echo "Start Frigate first, or explicitly set HA_ALLOW_FRIGATE_DOWNTIME=true for an approved maintenance window." >&2
+      exit 1
+    fi
+    printf '%s\n' "Preserving Frigate during bridge restore (state=started)."
   fi
   stop_addon_if_started "$DEV_SLUG"
   ha_apps start "$PROD_SLUG" >/dev/null

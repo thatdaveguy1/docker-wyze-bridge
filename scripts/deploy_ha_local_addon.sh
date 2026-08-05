@@ -27,12 +27,17 @@ Optional values in `scripts/.ha_ssh.env`:
 - `HA_DEV_REMOTE_CONFIG_SLUG` to rewrite the synced add-on manifest slug for a pre-indexed local add-on slot
 - `HA_PROD_ADDON_ROOT` for the remote production add-on source path
 - `HA_PROD_ADDON_SLUG` for the Home Assistant production add-on slug
+
+Environment:
+- `HA_DEV_HOST_URL` base URL of the HA host (default: `$DEV_HOST`) used to
+  verify the deployed Web UI after a rebuild
 EOF
 }
 
 TARGET="dev"
 REBUILD="true"
 DEV_WEB_PORT="${HA_DEV_WEB_PORT:-55000}"
+DEV_HOST="${HA_DEV_HOST_URL:-http://192.0.2.10}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -70,7 +75,7 @@ addon_field() {
 
 addon_web_port() {
   slug="$1"
-  if [ "$slug" = "${HA_DEV_ADDON_SLUG:-local_docker_wyze_bridge_local}" ] || [ "$slug" = "${HA_DEV_ADDON_SLUG:-docker_wyze_bridge_dev}" ]; then
+  if [ "$slug" = "${HA_DEV_ADDON_SLUG:-}" ]; then
     printf '%s\n' "$DEV_WEB_PORT"
     return 0
   fi
@@ -107,7 +112,7 @@ copy_file() {
 
 sync_dev_tree() {
   REMOTE_ROOT="${HA_DEV_ADDON_ROOT:-/addons/local/wyze_bridge_dev}"
-  APP_SLUG="${HA_DEV_ADDON_SLUG:-docker_wyze_bridge_dev}"
+  APP_SLUG="${HA_DEV_ADDON_SLUG:-}"
   REMOTE_CONFIG_SLUG="${HA_DEV_REMOTE_CONFIG_SLUG:-}"
   BUILT_DEV_ROOT="$REPO_DIR/.build/ha_live_addon"
   "$SCRIPT_DIR/build.sh" ha_live_addon "$BUILT_DEV_ROOT" >/dev/null
@@ -132,7 +137,7 @@ EOF
 
 sync_prod_patch() {
   REMOTE_ROOT="${HA_PROD_ADDON_ROOT:-/addons/local/wyze_bridge}"
-  APP_SLUG="${HA_PROD_ADDON_SLUG:-docker_wyze_bridge_v4}"
+  APP_SLUG="${HA_PROD_ADDON_SLUG:-}"
   copy_file "home_assistant/config.yml" "$REMOTE_ROOT"
   copy_file "app/templates/index.html" "$REMOTE_ROOT/app/templates"
   copy_file "app/templates/base.html" "$REMOTE_ROOT/app/templates"
@@ -155,7 +160,7 @@ case "$TARGET" in
     sync_dev_tree
     ;;
   prod)
-    APP_SLUG="${HA_PROD_ADDON_SLUG:-docker_wyze_bridge_v4}"
+    APP_SLUG="${HA_PROD_ADDON_SLUG:-}"
     REMOTE_ROOT="${HA_PROD_ADDON_ROOT:-/addons/local/wyze_bridge}"
     PROD_REPOSITORY=$(addon_field "$APP_SLUG" repository 2>/dev/null || printf '')
     if [ "$PROD_REPOSITORY" != "local" ]; then
@@ -182,7 +187,7 @@ fi
 
 ha_apps rebuild "$APP_SLUG" --force
 WEB_PORT=$(addon_web_port "$APP_SLUG")
-TARGET_URL="http://172.30.32.1:${WEB_PORT}/static/site.js"
+TARGET_URL="${DEV_HOST}:${WEB_PORT}/static/site.js"
 
 set +e
 "$SCRIPT_DIR/ha_ssh.sh" curl -fsS "$TARGET_URL" | grep -q "copyToClipboard"

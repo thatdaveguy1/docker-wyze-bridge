@@ -725,17 +725,17 @@ class TestBridgeKVSStartupBehavior(unittest.TestCase):
 
         bridge = WyzeBridge.__new__(WyzeBridge)
         bridge.streams = FakeStreams()
-        camera = make_camera(model="HL_CAM3P", nickname="Hamster")
-        camera.name_uri = "hamster"
+        camera = make_camera(model="HL_CAM3P", nickname="Side Yard")
+        camera.name_uri = "side-yard"
 
         def native_info(_camera, substream=False):
             return {
                 "native_supported": True,
                 "native_selected": bool(substream),
-                "native_alias": "hamster-sd" if substream else "hamster",
+                "native_alias": "side-yard-sd" if substream else "side-yard",
                 "native_alias_ready": False,
                 "native_api_reachable": True,
-                "native_rtsp_url": "rtsp://127.0.0.1:19554/hamster-sd",
+                "native_rtsp_url": "rtsp://127.0.0.1:19554/side-yard-sd",
                 "snapshot_source": "go2rtc",
             }
 

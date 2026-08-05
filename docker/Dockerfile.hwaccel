@@ -7,7 +7,7 @@ FROM amd64/python:3.13-slim-bookworm AS base
 
 FROM golang:1.23 AS whep_builder
 
-COPY /home_assistant/whep_proxy/ /build/whep_proxy/
+COPY /whep_proxy/ /build/whep_proxy/
 WORKDIR /build/whep_proxy
 RUN go mod download
 RUN go build -o /build/whep_proxy/whep_proxy

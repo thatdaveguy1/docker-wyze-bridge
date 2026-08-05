@@ -497,6 +497,7 @@ def seed_go2rtc_aliases() -> None:
     seen = set()
     prepared = {}
     verbose_aliases = _alias_name_set("GO2RTC_WYZE_VERBOSE_ALIASES")
+    hd_recovery = {c.strip() for c in os.environ.get("GO2RTC_HD_RECOVERY_CAMERAS", "").split(",") if c.strip()}
     for cam in cams:
         name = cam.get("name", "")
         url = cam.get("url", "")
@@ -551,7 +552,7 @@ def seed_go2rtc_aliases() -> None:
             prepared[alias] = stream_url
             added += 1
 
-        if model == "HL_CAM4" and uri == "north-yard":
+        if model == "HL_CAM4" and uri in hd_recovery:
             recovery_alias = f"{uri}-v4-hd-recovery"
             recovery_source = prepared.get(f"{uri}-sd")
             if recovery_source and recovery_alias not in prepared:
@@ -560,7 +561,7 @@ def seed_go2rtc_aliases() -> None:
                     recovery_url = _with_verbose(recovery_url)
                 lines.append(f"  {recovery_alias}:")
                 lines.append(f"    - {recovery_url}")
-                _log(f"GO2RTC Prepared North Yard recovery stream: {recovery_alias} from {uri}-sd subtype=hd")
+                _log(f"GO2RTC Prepared HD recovery stream: {recovery_alias} from {uri}-sd subtype=hd")
                 prepared[recovery_alias] = recovery_url
                 seen.add(recovery_alias)
                 added += 1
@@ -585,6 +586,197 @@ def seed_go2rtc_aliases() -> None:
 
     Path(os.environ["GO2RTC_CONFIG"]).write_text("\n".join(lines) + "\n", encoding="utf-8")
     _log(f"GO2RTC Total aliases prepared in config: {added}")
+
+
+#
+# ---------------------------------------------------------------------------
+# Bytes-stall escalation state machine (pure function)
+# ---------------------------------------------------------------------------
+#
+# The go2rtc health monitor calls check_bytes_stall() once per alias per
+# 15-second cycle.  The caller owns state persistence (shell state files)
+# and passes the previous state in, receiving the new state + action out.
+#
+# State dict fields:
+#   prev_bytes:    last seen receiver byte count (int, -1 if never seen)
+#   stall_since:   epoch seconds when bytes first stopped increasing (0 = none)
+#   restart_count: consecutive alias restarts that failed to recover (int)
+#
+# Actions:
+#   "none"            — no action (healthy, first stall cycle, quarantined, or waiting)
+#   "restart_alias"   — caller should POST restart + PUT preload for this alias
+#   "restart_process" — caller should kill go2rtc and restart the full process
+#
+# After a process restart, the triggering alias is *quarantined* with
+# exponential backoff so a permanently dead camera can't keep flapping
+# the entire bridge.  While quarantined the helper returns "none" and
+# the shell skips all restart logic for that alias.
+STALL_MAX_RESTARTS = 3      # alias restarts before escalating to process restart
+STALL_ALIAS_TIMEOUT = 45    # seconds of zero byte growth before alias restart
+QUARANTINE_BASE = 300       # initial quarantine seconds after process restart
+QUARANTINE_MAX = 3600       # cap at 1 hour
+
+
+def _quarantine_duration(count: int) -> int:
+    """Exponential backoff: 300, 600, 1200, 2400, 3600, 3600, ..."""
+    return min(QUARANTINE_BASE * (2 ** count), QUARANTINE_MAX)
+
+
+def check_bytes_stall(
+    alias: str,
+    current_bytes: int,
+    now: int,
+    state: dict,
+    *,
+    max_restarts: int = STALL_MAX_RESTARTS,
+    alias_timeout: int = STALL_ALIAS_TIMEOUT,
+) -> tuple[dict, str, str | None]:
+    """Pure decision function for go2rtc bytes-stall escalation.
+
+    Returns (new_state, action, log_message).
+    The caller persists ``new_state`` and executes ``action``.
+    ``log_message`` is None when there's nothing to log.
+
+    State keys:
+        prev_bytes:       last bytes count seen (or -1 on first call)
+        stall_since:      timestamp when bytes first stopped increasing
+        restart_count:    consecutive alias restarts without recovery
+        quarantined_until: timestamp; while now < this, skip all checks
+        quarantine_count:  number of times this alias has been quarantined
+    """
+    prev_bytes = state.get("prev_bytes", -1)
+    stall_since = state.get("stall_since", 0)
+    restart_count = state.get("restart_count", 0)
+    quarantined_until = state.get("quarantined_until", 0)
+    quarantine_count = state.get("quarantine_count", 0)
+
+    # ── Quarantine check: skip all logic while quarantined ──────────
+    if quarantined_until and now < quarantined_until:
+        return (
+            {
+                "prev_bytes": current_bytes,
+                "stall_since": 0,
+                "restart_count": 0,
+                "quarantined_until": quarantined_until,
+                "quarantine_count": quarantine_count,
+            },
+            "none",
+            None,
+        )
+
+    # ── Recovery: bytes increasing ───────────────────────────────────
+    if current_bytes > prev_bytes:
+        log = None
+        if quarantined_until:
+            # First healthy sample after quarantine expired — log recovery
+            q_dur = now - quarantined_until + _quarantine_duration(quarantine_count - 1)
+            log = f"[GO2RTC_HEALTH] {alias}: recovered after quarantine ({q_dur}s)"
+        elif stall_since:
+            stall_dur = now - stall_since
+            if stall_dur > 30:
+                log = f"[GO2RTC_HEALTH] {alias}: bytes flowing again after {stall_dur}s stall"
+        return (
+            {
+                "prev_bytes": current_bytes,
+                "stall_since": 0,
+                "restart_count": 0,
+                "quarantined_until": 0,
+                "quarantine_count": 0,
+            },
+            "none",
+            log,
+        )
+
+    # ── Stall detection ──────────────────────────────────────────────
+    if not stall_since:
+        # First cycle of stall — record silently
+        return (
+            {
+                "prev_bytes": current_bytes,
+                "stall_since": now,
+                "restart_count": restart_count,
+                "quarantined_until": 0,
+                "quarantine_count": quarantine_count,
+            },
+            "none",
+            None,
+        )
+
+    stall_seconds = now - stall_since
+
+    if stall_seconds <= alias_timeout:
+        # Not yet timed out — keep waiting
+        return (
+            {
+                "prev_bytes": current_bytes,
+                "stall_since": stall_since,
+                "restart_count": restart_count,
+                "quarantined_until": 0,
+                "quarantine_count": quarantine_count,
+            },
+            "none",
+            None,
+        )
+
+    # ── Stall exceeded timeout — restart ─────────────────────────────
+    if restart_count < max_restarts:
+        new_count = restart_count + 1
+        log = f"[GO2RTC_HEALTH] {alias}: bytes stalled for >{alias_timeout}s (bytes={current_bytes}), forcing alias restart ({new_count}/{max_restarts})"
+        return (
+            {
+                "prev_bytes": current_bytes,
+                "stall_since": 0,
+                "restart_count": new_count,
+                "quarantined_until": 0,
+                "quarantine_count": quarantine_count,
+            },
+            "restart_alias",
+            log,
+        )
+
+    # ── Escalation: process restart + quarantine this alias ──────────
+    q_dur = _quarantine_duration(quarantine_count)
+    log = (
+        f"[GO2RTC_HEALTH] {alias}: {max_restarts} alias restarts failed to recover, "
+        f"escalating to process restart (quarantine {q_dur}s)"
+    )
+    return (
+        {
+            "prev_bytes": current_bytes,
+            "stall_since": 0,
+            "restart_count": 0,
+            "quarantined_until": now + q_dur,
+            "quarantine_count": quarantine_count + 1,
+        },
+        "restart_process",
+        log,
+    )
+
+
+def quarantine_peer(
+    state: dict,
+    now: int,
+    *,
+    max_restarts: int = STALL_MAX_RESTARTS,
+) -> dict | None:
+    """Quarantine a peer alias that was already at max_restarts when another
+    alias triggered a process restart.
+
+    Returns the new quarantine state dict if the alias should be quarantined,
+    or None if the alias was not at max_restarts (no action needed).
+
+    The backoff duration is based on the alias's existing quarantine_count,
+    so an alias that has been quarantined before gets a longer timeout.
+    """
+    restart_count = state.get("restart_count", 0)
+    if restart_count < max_restarts:
+        return None
+    quarantine_count = state.get("quarantine_count", 0)
+    q_dur = _quarantine_duration(quarantine_count)
+    return {
+        "quarantined_until": now + q_dur,
+        "quarantine_count": quarantine_count + 1,
+    }
 
 
 if __name__ == "__main__":

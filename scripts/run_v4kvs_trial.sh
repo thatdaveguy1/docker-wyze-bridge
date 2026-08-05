@@ -3,14 +3,16 @@ set -euo pipefail
 
 HA_BASE_URL="${HA_BASE_URL:-}"
 HA_TOKEN="${HA_TOKEN:-}"
-ADDON_CANDIDATES=(
-  "local_docker_wyze_bridge_v4kvs_trial"
-  "docker_wyze_bridge_v4kvs_trial"
-)
+ADDON_CANDIDATES=(${HA_V4KVS_ADDON_SLUGS:-})
 
 if [[ -z "$HA_BASE_URL" || -z "$HA_TOKEN" ]]; then
   echo "Missing required environment variables."
-  echo "Set HA_BASE_URL (e.g. http://homeassistant.local:8123) and HA_TOKEN (long-lived access token)."
+  echo "Set HA_BASE_URL (e.g. http://<your-ha-host>:8123) and HA_TOKEN (long-lived access token)."
+  exit 2
+fi
+
+if [[ ${#ADDON_CANDIDATES[@]} -eq 0 ]]; then
+  echo "Missing HA_V4KVS_ADDON_SLUGS (space-separated candidate add-on slugs)."
   exit 2
 fi
 

@@ -133,7 +133,7 @@ class ScryptedClient:
     def snapshot(self, device_id: str, timeout: float = 15.0) -> bytes:
         """Fetch a snapshot JPEG from Scrypted for *device_id*.
 
-        Uses the full endpoint per AGENTS.md rule:
+        Uses the full endpoint per project rule:
         /endpoint/@scrypted/snapshot/<device-id>/Camera
         """
         url = f"{self.host}/endpoint/@scrypted/snapshot/{device_id}/Camera"

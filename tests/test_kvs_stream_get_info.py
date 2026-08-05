@@ -35,6 +35,21 @@ fake_wyzecam_iotc.WyzeIOTC = object
 fake_wyzecam_iotc.WyzeIOTCSession = object
 sys.modules.setdefault("wyzecam.iotc", fake_wyzecam_iotc)
 
+fake_wyzecam_tutk_pkg = types.ModuleType("wyzecam.tutk")
+fake_wyzecam_tutk = types.ModuleType("wyzecam.tutk.tutk")
+for _name, _value in {
+    "FRAME_SIZE_2K": 3,
+    "FRAME_SIZE_1080P": 0,
+    "FRAME_SIZE_360P": 1,
+    "FRAME_SIZE_DOORBELL_HD": 6,
+    "FRAME_SIZE_DOORBELL_SD": 7,
+}.items():
+    setattr(fake_wyzecam_tutk, _name, _value)
+fake_wyzecam_tutk.TutkError = Exception
+fake_wyzecam_tutk_pkg.tutk = fake_wyzecam_tutk
+sys.modules["wyzecam.tutk"] = fake_wyzecam_tutk_pkg
+sys.modules["wyzecam.tutk.tutk"] = fake_wyzecam_tutk
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / ".ha_live_addon" / "app"))
 
 if not hasattr(sys.modules.get("wyzebridge.wyze_stream"), "StreamStatus"):
@@ -149,7 +164,7 @@ class TestKVSStreamGetInfo(unittest.TestCase):
         self.assertEqual(info["talkback_source"], "go2rtc")
 
     @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
-    def test_sd_only_bridge_feed_does_not_report_native_snapshot_source(self, _mock_reachable):
+    def test_sd_only_kvs_feed_reports_selected_native_sd_alias(self, _mock_reachable):
         user = SimpleNamespace()
         camera = make_camera()
         camera.product_model = "HL_CAM4"
@@ -176,7 +191,42 @@ class TestKVSStreamGetInfo(unittest.TestCase):
             )
             info = stream.get_info()
 
+        self.assertTrue(info["native_selected"])
+        self.assertEqual(info["native_alias"], "garage-sd")
+        self.assertTrue(info["native_rtsp_url"].endswith("/garage-sd"))
+        self.assertEqual(info["snapshot_source"], "go2rtc")
+        self.assertFalse(info["talkback_supported"])
+
+    @patch.object(native_alias_module, "_go2rtc_api_reachable", return_value=True)
+    def test_sd_only_kvs_feed_falls_back_when_native_sd_is_not_selected(self, _mock_reachable):
+        user = SimpleNamespace()
+        camera = make_camera()
+        camera.product_model = "HL_BC"
+        camera.model_name = "Wyze Bulb Cam"
+
+        with (
+            patch("wyzebridge.wyze_stream.publish_discovery", create=True),
+            patch.dict("os.environ", {"SD_ONLY": "true"}, clear=False),
+        ):
+            stream = WyzeStream(
+                user,
+                DummyApi(),
+                camera,
+                SimpleNamespace(
+                    quality="sd30",
+                    audio=True,
+                    record=False,
+                    reconnect=True,
+                    substream=False,
+                    frame_size=1,
+                    bitrate=30,
+                    update_quality=lambda hq: None,
+                ),
+            )
+            info = stream.get_info()
+
         self.assertFalse(info["native_selected"])
+        self.assertEqual(info["native_alias"], "garage-sd")
         self.assertEqual(info["snapshot_source"], "rtsp")
         self.assertFalse(info["talkback_supported"])
 

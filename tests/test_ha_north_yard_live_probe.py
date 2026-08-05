@@ -39,6 +39,7 @@ class TestHANorthYardLiveProbe(unittest.TestCase):
         self.assertIn("Invalid HA_NORTH_YARD_CAMERA", result.stdout)
 
         env = os.environ.copy()
+        env["HA_NORTH_YARD_CAMERA"] = "cam-a"
         env["HA_PROD_ADDON_SLUG"] = "bad;touch-welp"
 
         result = subprocess.run(
@@ -56,6 +57,7 @@ class TestHANorthYardLiveProbe(unittest.TestCase):
 
     def test_rejects_unsafe_count_and_url_values_before_ssh(self):
         env = os.environ.copy()
+        env["HA_NORTH_YARD_CAMERA"] = "cam-a"
         env["HA_NORTH_YARD_PROBE_SAMPLES"] = "3;rm"
 
         result = subprocess.run(
@@ -72,7 +74,8 @@ class TestHANorthYardLiveProbe(unittest.TestCase):
         self.assertIn("Invalid HA_NORTH_YARD_PROBE_SAMPLES", result.stdout)
 
         env = os.environ.copy()
-        env["HA_NORTH_YARD_BRIDGE_BASE"] = "http://172.30.32.1:5000/path"
+        env["HA_NORTH_YARD_CAMERA"] = "cam-a"
+        env["HA_NORTH_YARD_BRIDGE_BASE"] = "http://192.0.2.10:5000/path"
 
         result = subprocess.run(
             [str(PROBE)],
@@ -122,8 +125,8 @@ class TestHANorthYardLiveProbe(unittest.TestCase):
         self.assertIn("/img/$CAMERA.jpg", script)
         self.assertIn("/api/frame.jpeg?src=$CAMERA", script)
         self.assertIn("/api/frame.jpeg?src=${CAMERA}-sd", script)
-        self.assertIn("http://172.30.32.1:11984", script)
-        self.assertIn("192.168.1.175 192.168.1.179 192.168.1.183 192.168.1.185", script)
+        self.assertIn('GO2RTC_BASE="${HA_NORTH_YARD_GO2RTC_BASE:-http://192.0.2.11:11984}"', script)
+        self.assertIn('IPS="${HA_NORTH_YARD_PROBE_IPS:-}"', script)
         self.assertIn("GO2RTC_LAN_IP_OVERRIDES", script)
         self.assertIn("GO2RTC_FORCE_LAN_IP_OVERRIDES", script)
         self.assertIn("ip neigh show", script)

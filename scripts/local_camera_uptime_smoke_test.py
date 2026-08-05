@@ -37,8 +37,13 @@ DEFAULT_HEARTBEAT_SECONDS = 30
 DEFAULT_RTSP_SAMPLE_SECONDS = 8
 DEFAULT_RTSP_TIMEOUT_US = 3_000_000
 DEFAULT_RTSP_TRANSPORT = "tcp"
-DEFAULT_WYZE_BRIDGE_HOST = "192.168.1.244"
+DEFAULT_WYZE_BRIDGE_HOST = os.environ.get("WYZE_BRIDGE_HOST", "")
 DEFAULT_WYZE_BRIDGE_API_PORT = 5000
+
+
+def _camera_ip(env_name: str, example: str) -> str:
+    """Return the per-camera LAN IP from env, falling back to a TEST-NET example."""
+    return os.environ.get(env_name, example)
 
 
 @dataclass(frozen=True)
@@ -73,18 +78,16 @@ class CameraState:
 
 
 REOLINK_CAMERAS: tuple[CameraTarget, ...] = (
-    CameraTarget("reolink", "south_driveway", "south-driveway-cx", "192.168.1.228"),
-    CameraTarget("reolink", "north_driveway", "reolink-northdriveway-e1", "192.168.1.235"),
-    CameraTarget("reolink", "doorbell", "reolink-doorbell", "192.168.1.69"),
+    CameraTarget("reolink", "doorbell", "reolink-doorbell", _camera_ip("REOLINK_DOORBELL_IP", "192.0.2.69")),
 )
 
 WYZE_CAMERAS: tuple[CameraTarget, ...] = (
-    CameraTarget("wyze", "garage", "wyze-v4-garage", "192.168.1.141", bridge_camera="garage"),
-    CameraTarget("wyze", "deck", "wyze-deck-v4", "192.168.1.74", bridge_camera="deck"),
-    CameraTarget("wyze", "back_yard", "wyze-backyard-v3", "192.168.1.195", bridge_camera="back-yard"),
-    CameraTarget("wyze", "north_yard", "wyze-northyard-v4", "192.168.1.179", bridge_camera="north-yard"),
-    CameraTarget("wyze", "south_yard", "wyze-southyard-bulb", "192.168.1.193", bridge_camera="south-yard"),
-    CameraTarget("wyze", "hamster", "wyze-hamster-v4", "192.168.1.80", bridge_camera="hamster"),
+    CameraTarget("wyze", "garage", "wyze-v4-garage", _camera_ip("WYZE_GARAGE_IP", "192.0.2.141"), bridge_camera="garage"),
+    CameraTarget("wyze", "patio", "wyze-patio-v4", _camera_ip("WYZE_PATIO_IP", "192.0.2.74"), bridge_camera="patio"),
+    CameraTarget("wyze", "back_yard", "wyze-backyard-v3", _camera_ip("WYZE_BACK_YARD_IP", "192.0.2.195"), bridge_camera="back-yard"),
+    CameraTarget("wyze", "north_yard", "wyze-northyard-v4", _camera_ip("WYZE_NORTH_YARD_IP", "192.0.2.179"), bridge_camera="north-yard"),
+    CameraTarget("wyze", "south_yard", "wyze-southyard-bulb", _camera_ip("WYZE_SOUTH_YARD_IP", "192.0.2.193"), bridge_camera="south-yard"),
+    CameraTarget("wyze", "side_yard", "wyze-side-yard-v4", _camera_ip("WYZE_SIDE_YARD_IP", "192.0.2.80"), bridge_camera="side-yard-sd"),
 )
 
 

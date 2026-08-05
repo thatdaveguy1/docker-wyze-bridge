@@ -57,7 +57,7 @@ class TestHAPhase2ProdStartupSoak(unittest.TestCase):
 
     def test_rejects_pathful_bridge_urls_before_ssh(self):
         env = os.environ.copy()
-        env["HA_PHASE2_BRIDGE_BASE"] = "http://172.30.32.1:5000/api?api=secret"
+        env["HA_PHASE2_BRIDGE_BASE"] = "http://192.0.2.10:5000/api?api=secret"
 
         result = subprocess.run(
             [str(SOAK)],

@@ -23,7 +23,7 @@ class TestHAPhase3ProdSdOnlyProbe(unittest.TestCase):
 
     def test_rejects_unsafe_slug_before_ssh(self):
         env = os.environ.copy()
-        env["HA_PROD_ADDON_SLUG"] = "local_docker_wyze_bridge_v4;reboot"
+        env["HA_PROD_ADDON_SLUG"] = "wyze_bridge_v4;reboot"
 
         result = subprocess.run(
             [str(PROBE)],
@@ -40,7 +40,7 @@ class TestHAPhase3ProdSdOnlyProbe(unittest.TestCase):
 
     def test_rejects_unsafe_bridge_base_before_ssh(self):
         env = os.environ.copy()
-        env["HA_PHASE3_BRIDGE_BASE"] = "http://172.30.32.1:5000/path?api=secret"
+        env["HA_PHASE3_BRIDGE_BASE"] = "http://192.0.2.10:5000/path?api=secret"
 
         result = subprocess.run(
             [str(PROBE)],

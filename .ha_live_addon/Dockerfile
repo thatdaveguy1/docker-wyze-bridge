@@ -26,6 +26,7 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 ARG BUILD_VERSION
+RUN date -u +%Y%m%d%H%M%S > /tmp/build_timestamp && echo cache_bust_cred_fallback_20260705
 COPY /app/ /build/app/
 
 RUN chmod +x /build/app/run
@@ -70,9 +71,10 @@ ARG GITHUB_SHA
 ARG BUILD_DATE=
 ARG BUILD_VERSION
 
+RUN echo cache_bust_runtime_ping_20260704
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
+    apt-get install -y --no-install-recommends curl ca-certificates iputils-ping; \
     update-ca-certificates; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \

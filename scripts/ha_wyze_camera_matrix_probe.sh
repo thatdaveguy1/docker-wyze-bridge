@@ -7,12 +7,12 @@ TMP_DIR="$ROOT_DIR/tmp"
 STAMP=$(date +%Y%m%d_%H%M%S)
 OUT="$TMP_DIR/ha_wyze_camera_matrix_probe_${STAMP}.txt"
 
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
 CAMERAS="${HA_WYZE_CAMERAS:-}"
 SAMPLES="${HA_WYZE_MATRIX_SAMPLES:-3}"
 INTERVAL="${HA_WYZE_MATRIX_INTERVAL_SECONDS:-10}"
-BRIDGE_BASE="${HA_WYZE_BRIDGE_BASE:-http://172.30.32.1:5000}"
-GO2RTC_BASE="${HA_WYZE_GO2RTC_BASE:-http://172.30.32.1:11984}"
+BRIDGE_BASE="${HA_WYZE_BRIDGE_BASE:-http://192.0.2.10:5000}"
+GO2RTC_BASE="${HA_WYZE_GO2RTC_BASE:-http://192.0.2.10:11984}"
 
 # Source shared library for validate_slug, validate_base_url, section, mark_fail,
 # redact_api_keys, derive_bridge_token

@@ -21,13 +21,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ffmpeg_helpers import build_ffmpeg_rtsp_cmd
 
-# Camera display name -> RTSP URL (the path Scrypted/HomeKit actually uses)
+# Camera display name -> RTSP URL (the path Scrypted/HomeKit actually uses).
+# Override the go2rtc host/port with WYZE_RTSP_HOST / WYZE_RTSP_PORT.
+WYZE_RTSP_HOST = os.environ.get("WYZE_RTSP_HOST", "192.0.2.10")
+WYZE_RTSP_PORT = os.environ.get("WYZE_RTSP_PORT", "8554")
 CAMERAS = [
-    ("North Yard",  "rtsp://192.168.1.244:8554/north_yard_sd"),
-    ("Garage",      "rtsp://192.168.1.244:8554/garage_sd"),
-    ("Deck",        "rtsp://192.168.1.244:8554/deck_sd"),
-    ("South Yard",  "rtsp://192.168.1.244:8554/south_yard_sd"),
-    ("Hamster",     "rtsp://192.168.1.244:8554/hamster_sd"),
+    ("North Yard",  f"rtsp://{WYZE_RTSP_HOST}:{WYZE_RTSP_PORT}/north_yard_sd"),
+    ("Garage",      f"rtsp://{WYZE_RTSP_HOST}:{WYZE_RTSP_PORT}/garage_sd"),
+    ("Patio",       f"rtsp://{WYZE_RTSP_HOST}:{WYZE_RTSP_PORT}/cam_patio_sd"),
+    ("South Yard",  f"rtsp://{WYZE_RTSP_HOST}:{WYZE_RTSP_PORT}/south_yard_sd"),
+    ("Side Yard",   f"rtsp://{WYZE_RTSP_HOST}:{WYZE_RTSP_PORT}/side_yard_sd"),
 ]
 
 TEST_MINUTES = 10

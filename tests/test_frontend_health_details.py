@@ -61,10 +61,10 @@ class TestFrontendHealthDetails(unittest.TestCase):
     def test_health_details_returns_stream_specific_diagnostics(self):
         client = self.create_client()
 
-        response = client.get("/health/details?stream=dog-run")
+        response = client.get("/health/details?stream=cam-a")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()["stream"], "dog-run")
+        self.assertEqual(response.get_json()["stream"], "cam-a")
         self.assertTrue(response.get_json()["whep_proxy"]["reachable"])
         self.assertTrue(response.get_json()["mediamtx"]["reachable"])
 
@@ -78,7 +78,7 @@ class TestFrontendHealthDetails(unittest.TestCase):
         }
 
         with patch.object(frontend, "network_snapshot", return_value=network):
-            response = client.get("/health/details?stream=dog-run&network=1")
+            response = client.get("/health/details?stream=cam-a&network=1")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["network"], network)

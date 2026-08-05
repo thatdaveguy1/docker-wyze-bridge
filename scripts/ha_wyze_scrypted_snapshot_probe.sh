@@ -8,8 +8,8 @@ STAMP=$(date +%Y%m%d_%H%M%S)
 OUT="$TMP_DIR/ha_wyze_scrypted_snapshot_probe_${STAMP}.txt"
 SCRYPTED_CONFIG_PATH="/homeassistant/.storage/core.config_entries"
 
-SCRYPTED_SLUG="${HA_SCRYPTED_ADDON_SLUG:-09e60fb6_scrypted}"
-DEVICES="${HA_WYZE_SCRYPTED_DEVICES:-cam-a:10001 cam-b:10002 cam-c:10003 cam-d:10004 cam-e:10005}"
+SCRYPTED_SLUG="${HA_SCRYPTED_ADDON_SLUG:-scrypted}"
+DEVICES="${HA_WYZE_SCRYPTED_DEVICES:-}"
 SAMPLES="${HA_WYZE_SCRYPTED_SAMPLES:-3}"
 INTERVAL="${HA_WYZE_SCRYPTED_INTERVAL_SECONDS:-10}"
 
@@ -27,7 +27,7 @@ hashes over time.
 
 Environment:
   HA_SCRYPTED_ADDON_SLUG             default: $SCRYPTED_SLUG
-  HA_WYZE_SCRYPTED_DEVICES           default: $DEVICES
+  HA_WYZE_SCRYPTED_DEVICES           required, space-separated 'name:id' pairs
   HA_WYZE_SCRYPTED_SAMPLES           default: $SAMPLES
   HA_WYZE_SCRYPTED_INTERVAL_SECONDS  default: $INTERVAL
 EOF
@@ -45,6 +45,11 @@ case "${1:-}" in
     exit 1
     ;;
 esac
+
+if [ -z "$DEVICES" ]; then
+  echo "HA_WYZE_SCRYPTED_DEVICES is required: set it to space-separated 'name:id' Scrypted snapshot device pairs." >&2
+  exit 1
+fi
 
 validate_number() {
   name="$1"

@@ -20,9 +20,9 @@ SPEC.loader.exec_module(MODULE)
 
 class TestLocalCameraUptimeSmokeTest(unittest.TestCase):
     def test_build_reolink_rtsp_url_uses_substream_path(self):
-        url = MODULE.build_reolink_rtsp_url("user", "p@ss word", "192.168.1.228")
+        url = MODULE.build_reolink_rtsp_url("user", "p@ss word", "192.0.2.228")
 
-        self.assertTrue(url.startswith("rtsp://user:p%40ss%20word@192.168.1.228:554/"))
+        self.assertTrue(url.startswith("rtsp://user:p%40ss%20word@192.0.2.228:554/"))
         self.assertTrue(url.endswith("/h264Preview_01_sub"))
 
     def test_validate_args_derives_wyze_api_key_from_email(self):
@@ -98,7 +98,7 @@ class TestLocalCameraUptimeSmokeTest(unittest.TestCase):
                 rtsp_timeout_us=3_000_000,
                 reolink_username="demo",
                 reolink_password="secret",
-                wyze_bridge_host="192.168.1.244",
+                wyze_bridge_host="192.0.2.244",
                 wyze_bridge_api_port=5000,
                 wyze_api_key="bridge-key",
                 wyze_email=None,

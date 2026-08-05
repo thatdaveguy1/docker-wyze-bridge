@@ -213,7 +213,7 @@ class TestBridgeSubstreamSupport(unittest.TestCase):
         self.assertTrue(stream.uses_kvs_source)
 
     def test_hl_cam3p_kvs_substream_prefers_tutk_path(self):
-        camera = make_camera("HL_CAM3P", "Hamster")
+        camera = make_camera("HL_CAM3P", "Side Yard")
         camera.firmware_ver = "4.58.11.1234"
 
         with patch.object(self.wyze_stream_module, "publish_discovery"):

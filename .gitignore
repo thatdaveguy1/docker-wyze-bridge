@@ -57,3 +57,17 @@ utm-vm/
 .home_assistant_OLD/
 docs/maintainer/
 tasks.json
+
+# Host-only automation, agent session logs, and build residue (public release hygiene)
+node_modules/
+package-lock.json
+**/.ha_ssh.env
+.pi/
+tasks/
+implementation.md
+CONTEXT.md
+docs/runbooks/
+ha_camera_watchdog_update.py
+scripts/fix_scrypted_snapshots.js
+scripts/scrypted_*.js
+scripts/govee_h5054_leak_monitor.py

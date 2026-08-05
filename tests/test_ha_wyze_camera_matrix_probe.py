@@ -39,7 +39,7 @@ class TestHAWyzeCameraMatrixProbe(unittest.TestCase):
         self.assertIn("Invalid camera name", result.stdout)
 
         env = os.environ.copy()
-        env["HA_WYZE_BRIDGE_BASE"] = "http://172.30.32.1:5000/path?api=secret"
+        env["HA_WYZE_BRIDGE_BASE"] = "http://192.0.2.10:5000/path?api=secret"
 
         result = subprocess.run(
             [str(PROBE)],

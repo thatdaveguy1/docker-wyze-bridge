@@ -322,7 +322,7 @@ class TestWebUIPreviewStreams(unittest.TestCase):
             ):
                 data = web_ui.format_streams(
                     {
-                        "dog-run": {
+                        "cam-a": {
                             "enabled": True,
                             "connected": False,
                             "rtsp_fw_enabled": False,
@@ -330,7 +330,7 @@ class TestWebUIPreviewStreams(unittest.TestCase):
                             "webrtc": False,
                         }
                     }
-                )["dog-run"]
+                )["cam-a"]
 
         streams = {item["id"]: item for item in data["streams"]}
         self.assertTrue(streams["rtsp"]["available"])

@@ -458,6 +458,90 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                         "go2rtc sidecar should not let a stale override replace a current private helper IP unless explicitly forced",
                     )
 
+    def test_go2rtc_sidecar_quarantine_survives_process_restart(self):
+        """Quarantine state must persist across go2rtc process restarts.
+
+        The shell stores quarantine (quarantined_until/quarantine_count) in a
+        separate JSON file from volatile stall state.  Process-restart cleanup
+        must NOT delete quarantine files, otherwise dead aliases flap forever.
+        """
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        for helper_path in helper_files:
+            text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                # Quarantine file declared separately from stall state
+                self.assertIn("_quarantine_file", text)
+                self.assertIn('quarantine_${alias}.json', text)
+                # Python helper call merges quarantine from separate file
+                self.assertIn("quarantined_until", text)
+                self.assertIn("quarantine_count", text)
+                # Process-restart cleanup must NOT delete quarantine files
+                # The glob rm should only target stall_state_*, dead_*, stall_*, bytes_*
+                # Verify quarantine_ is NOT in the rm glob on process restart
+                self.assertNotIn(
+                    'quarantine_*',
+                    text,
+                    "Process-restart cleanup must not delete quarantine files",
+                )
+                # Verify the rm glob explicitly preserves quarantine by only
+                # targeting volatile state files
+                self.assertRegex(
+                    text,
+                    r'rm -f .*stall_state_\*\.json.*dead_\*.*stall_\*.*bytes_\*',
+                    "Process-restart cleanup should only clear volatile state",
+                )
+
+    def test_go2rtc_sidecar_has_proactive_helpers(self):
+        """The sidecar must include proactive helpers for stream stability:
+        TUTK session refresh, WiFi degradation monitor, and snapshot canary.
+        All three must be wired into both startup paths.
+        """
+        helper_files = [
+            ROOT / "app" / "go2rtc_sidecar.sh",
+            ROOT / "home_assistant" / "app" / "go2rtc_sidecar.sh",
+            ROOT / ".ha_live_addon" / "app" / "go2rtc_sidecar.sh",
+        ]
+
+        required_functions = [
+            "start_go2rtc_session_refresh_loop",
+            "start_wifi_health_monitor",
+            "start_snapshot_canary",
+        ]
+
+        for helper_path in helper_files:
+            text = helper_path.read_text()
+            with self.subTest(helper=str(helper_path.relative_to(ROOT))):
+                # All three functions must be defined
+                for func in required_functions:
+                    self.assertIn(
+                        f"{func}()",
+                        text,
+                        f"Missing proactive helper: {func}",
+                    )
+                # All three must be called in both startup paths
+                # (extra-streams path and Wyze-API-discovery path)
+                for func in required_functions:
+                    call_count = text.count(f"    {func}\n") + text.count(f"        {func}\n")
+                    self.assertGreaterEqual(
+                        call_count,
+                        2,
+                        f"{func} must be called in both startup paths (found {call_count})",
+                    )
+                # Session refresh must skip quarantined aliases
+                self.assertIn("GO2RTC_REFRESH", text)
+                # WiFi monitor must ping camera IPs
+                self.assertIn("GO2RTC_WIFI", text)
+                self.assertIn("ping -c", text)
+                # Snapshot canary must check frame.jpeg and hash
+                self.assertIn("GO2RTC_CANARY", text)
+                self.assertIn("frame.jpeg", text)
+                self.assertIn("sha256sum", text)
+
     def test_root_dockerfiles_download_go2rtc_binary(self):
         dockerfiles = [
             ROOT / "docker" / "Dockerfile",
@@ -512,7 +596,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
         )
         self.assertEqual(dev_slug.group(1).strip(), "docker_wyze_bridge_dev")
         self.assertEqual(dev_name.group(1).strip(), "Docker Wyze Bridge (Dev Build)")
-        self.assertRegex(dev_version.group(1).strip(), r"^4\.\d+\.\d+-dev$")
+        self.assertRegex(dev_version.group(1).strip(), r"^\d+\.\d+\.\d+-dev$")
 
     def test_local_dev_addon_yaml_and_yml_manifests_match(self):
         dev_yml = (ROOT / ".ha_live_addon" / "config.yml").read_text()

@@ -3,9 +3,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+
+# North Yard LAN probe targets used by the evidence matcher. These are
+# env-only (no host-specific defaults) so the public repo leaks no LAN IPs or
+# MAC addresses; set NY_LAN_IP / NY_OVERRIDE_IP / NY_CAMERA_MAC when probing a
+# specific camera layout. With no env values set, north-yard reachability clues
+# are simply not produced.
+NORTH_YARD_LAN_IP = os.environ.get("NY_LAN_IP", "")
+NORTH_YARD_OVERRIDE_IP = os.environ.get("NY_OVERRIDE_IP", "")
+NORTH_YARD_MAC = os.environ.get("NY_CAMERA_MAC", "")
 
 
 @dataclass
@@ -186,13 +197,19 @@ def north_yard_failure_evidence(*proofs: ProofArtifact) -> list[str]:
                 clues.append(f"{proof.path}: north-yard go2rtc SD frame route returned no bytes")
         if "go2rtc_lan_ip_overrides" in text:
             clues.append(f"{proof.path}: north-yard LAN override is configured")
-        if "ip=192.168.1.183 ping=down" in text or "192.168.1.183\tunreachable" in text:
-            clues.append(f"{proof.path}: configured north-yard IP 192.168.1.183 is unreachable")
-        if "ip=192.168.1.183 ping=up" in text or "192.168.1.183\treachable" in text:
-            clues.append(f"{proof.path}: configured/current north-yard IP 192.168.1.183 is reachable")
-        if "ip=192.168.1.185 ping=down" in text or "192.168.1.185\tunreachable" in text:
-            clues.append(f"{proof.path}: override north-yard IP 192.168.1.185 is unreachable")
-        if "80:48:2c:31:c9:e7" in text.lower() or "80482c31c9e7" in text.lower():
+        if NORTH_YARD_LAN_IP and (
+            f"ip={NORTH_YARD_LAN_IP} ping=down" in text or f"{NORTH_YARD_LAN_IP}\tunreachable" in text
+        ):
+            clues.append(f"{proof.path}: configured north-yard IP {NORTH_YARD_LAN_IP} is unreachable")
+        if NORTH_YARD_LAN_IP and (
+            f"ip={NORTH_YARD_LAN_IP} ping=up" in text or f"{NORTH_YARD_LAN_IP}\treachable" in text
+        ):
+            clues.append(f"{proof.path}: configured/current north-yard IP {NORTH_YARD_LAN_IP} is reachable")
+        if NORTH_YARD_OVERRIDE_IP and (
+            f"ip={NORTH_YARD_OVERRIDE_IP} ping=down" in text or f"{NORTH_YARD_OVERRIDE_IP}\tunreachable" in text
+        ):
+            clues.append(f"{proof.path}: override north-yard IP {NORTH_YARD_OVERRIDE_IP} is unreachable")
+        if NORTH_YARD_MAC and (NORTH_YARD_MAC in text.lower() or NORTH_YARD_MAC.replace(":", "") in text.lower()):
             if "Neighbor Entries" in text and "neigh=<none>" in text:
                 clues.append(f"{proof.path}: north-yard MAC was not found in HA neighbor table")
     return clues
@@ -417,8 +434,8 @@ def phase1(root: Path) -> PhaseStatus:
             remaining_bits.append("North Yard snapshot source must move off stale Wyze API cache or prove freshness")
         if any("is unreachable" in clue for clue in north_yard_clues):
             remaining_bits.append("North Yard LAN override/reachability must match the current camera path")
-        if any("192.168.1.183 is reachable" in clue for clue in north_yard_clues) and any(
-            "192.168.1.185 is unreachable" in clue for clue in north_yard_clues
+        if any(f"{NORTH_YARD_LAN_IP} is reachable" in clue for clue in north_yard_clues) and any(
+            f"{NORTH_YARD_OVERRIDE_IP} is unreachable" in clue for clue in north_yard_clues
         ):
             remaining_bits.append(
                 "stale North Yard LAN override must stop replacing the reachable helper/current IP"

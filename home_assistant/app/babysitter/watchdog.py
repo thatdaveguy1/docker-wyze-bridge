@@ -1,10 +1,11 @@
 """Core watchdog module for the Reolink camera babysitter.
 
-Monitors 3 Reolink cameras (doorbell, south_driveway, north_driveway)
-integrated through Scrypted → Frigate → HomeKit. Detects camera wedges
-and reboots them via the ONVIF SystemReboot command.
+Monitors 1 Reolink camera (doorbell) integrated through Scrypted → Frigate →
+HomeKit. Detects camera wedges and reboots them via the ONVIF SystemReboot
+command. (south_driveway and north_driveway were unplugged 2026-06-27 and
+removed from monitoring 2026-06-29.)
 
-Convergence rules (see AGENTS.md plan):
+Convergence rules (see project plan):
 
 * **Video-down** (triggers reboot):
   1. TCP/RTSP reachability TRUE (wifi-up guard)

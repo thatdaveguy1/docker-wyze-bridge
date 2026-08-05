@@ -7,14 +7,16 @@ STREAMS="${HA_WHEP_SOAK_STREAMS:-}"
 DURATION="${HA_WHEP_SOAK_SECONDS:-3600}"
 INTERVAL="${HA_WHEP_SOAK_INTERVAL_SECONDS:-30}"
 LOG_LINES="${HA_WHEP_SOAK_LOG_LINES:-160}"
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
+BRIDGE_BASE="${HA_WHEP_BRIDGE_BASE:-http://192.0.2.10:5000}"
+FRIGATE_BASE="${HA_WHEP_FRIGATE_BASE:-http://frigate:5000}"
 
 # Source shared library for validate_slug, section, mark_fail, redact_api_keys
 . "$SCRIPT_DIR/ha_bridge_probe.sh"
 
 usage() {
   cat <<EOF
-Usage: HA_WHEP_SOAK_STREAMS="deck-sub garage-sub south-yard" scripts/ha_phase4_whep_soak.sh
+Usage: HA_WHEP_SOAK_STREAMS="cam-a cam-b" scripts/ha_phase4_whep_soak.sh
 
 Runs the read-only Phase 4 live WHEP soak from the Home Assistant host. The
 default duration is one hour. The script fails if production health is not
@@ -28,6 +30,8 @@ Environment:
   HA_WHEP_SOAK_INTERVAL_SECONDS   default: $INTERVAL
   HA_WHEP_SOAK_LOG_LINES          default: $LOG_LINES
   HA_PROD_ADDON_SLUG              default: $PROD_SLUG
+  HA_WHEP_BRIDGE_BASE             default: $BRIDGE_BASE
+  HA_WHEP_FRIGATE_BASE            default: $FRIGATE_BASE
 EOF
 }
 
@@ -74,6 +78,8 @@ validate_number "HA_WHEP_SOAK_SECONDS" "$DURATION"
 validate_number "HA_WHEP_SOAK_INTERVAL_SECONDS" "$INTERVAL"
 validate_number "HA_WHEP_SOAK_LOG_LINES" "$LOG_LINES"
 validate_slug "HA_PROD_ADDON_SLUG" "$PROD_SLUG"
+validate_base_url "HA_WHEP_BRIDGE_BASE" "$BRIDGE_BASE"
+validate_base_url "HA_WHEP_FRIGATE_BASE" "$FRIGATE_BASE"
 
 {
   cat "$SCRIPT_DIR/ha_bridge_probe.sh"
@@ -85,13 +91,15 @@ DURATION="$HA_WHEP_DURATION"
 INTERVAL="$HA_WHEP_INTERVAL"
 LOG_LINES="$HA_WHEP_LOG_LINES"
 PROD_SLUG="$HA_WHEP_PROD_SLUG"
+BRIDGE_BASE="$HA_WHEP_BRIDGE_BASE"
+FRIGATE_BASE="$HA_WHEP_FRIGATE_BASE"
 FAIL=0
 
 # redact is defined by ha_bridge_probe.sh as redact_api_keys
 redact() { redact_api_keys "$@"; }
 
 check_health_ready() {
-  health=$(curl -fsS --max-time 8 http://172.30.32.1:5000/health 2>/dev/null || true)
+  health=$(curl -fsS --max-time 8 "$BRIDGE_BASE/health" 2>/dev/null || true)
   printf 'health=%s\n' "${health:-<empty>}" | redact
   if [ -z "$health" ]; then
     mark_fail "production /health did not respond"
@@ -104,7 +112,7 @@ check_health_ready() {
 
 check_stream() {
   stream="$1"
-  details=$(curl -fsS --max-time 8 "http://172.30.32.1:5000/health/details?stream=$stream" 2>/dev/null || true)
+  details=$(curl -fsS --max-time 8 "$BRIDGE_BASE/health/details?stream=$stream" 2>/dev/null || true)
   if [ -z "$details" ]; then
     mark_fail "$stream health/details did not respond"
     return
@@ -127,7 +135,7 @@ check_stream() {
 }
 
 check_frigate() {
-  stats=$(curl -fsS --max-time 8 http://ccab4aaf-frigate:5000/api/stats 2>/dev/null || true)
+  stats=$(curl -fsS --max-time 8 "$FRIGATE_BASE/api/stats" 2>/dev/null || true)
   if [ -z "$stats" ]; then
     mark_fail "Frigate stats did not respond"
     return
@@ -192,4 +200,4 @@ fi
 
 exit "$FAIL"
 REMOTE
-} | "$SCRIPT_DIR/ha_ssh.sh" "HA_WHEP_STREAMS='$STREAM_LIST' HA_WHEP_DURATION=$DURATION HA_WHEP_INTERVAL=$INTERVAL HA_WHEP_LOG_LINES=$LOG_LINES HA_WHEP_PROD_SLUG=$PROD_SLUG sh -s"
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_WHEP_STREAMS='$STREAM_LIST' HA_WHEP_DURATION=$DURATION HA_WHEP_INTERVAL=$INTERVAL HA_WHEP_LOG_LINES=$LOG_LINES HA_WHEP_PROD_SLUG=$PROD_SLUG HA_WHEP_BRIDGE_BASE=$BRIDGE_BASE HA_WHEP_FRIGATE_BASE=$FRIGATE_BASE sh -s"

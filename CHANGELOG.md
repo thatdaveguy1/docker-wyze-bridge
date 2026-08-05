@@ -45,16 +45,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added — Documentation
 - `docs/ARCHITECTURE.md` — module dependency map and design decisions
-- `CONTEXT.md` — contributor onboarding context and project history
 - `CONTRIBUTING.md` — build/test workflow and code style guide
 
 ### Added — Camera probe scripts
 - `scripts/wyze_cam_smoke_test.py` — Wyze camera RTSP smoke test (Python, 19KB)
 - `scripts/wyze_cam_smoke_test.sh` — Shell wrapper for quick RTSP probing
 - `scripts/local_camera_smoke_test.py` — Local camera uptime smoke test
-- `scripts/ha_backyard_snapshot_repair.sh` — Back Yard snapshot cache repair helper
-- `scripts/ffmpeg_helpers.py` — Shared ffmpeg/ffprobe command-building library (per AGENTS.md rule)
-- `scripts/ha_bridge_probe.sh` — Shared HA bridge probe shell functions (per AGENTS.md rule)
+- `scripts/ha_backyard_snapshot_repair.sh` — camera snapshot cache repair helper
+- `scripts/ffmpeg_helpers.py` — Shared ffmpeg/ffprobe command-building library
+- `scripts/ha_bridge_probe.sh` — Shared HA bridge probe shell functions
 
 ### Added — Tests
 - `tests/test_wyze_cam_smoke_test.py`
@@ -100,7 +99,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `pyproject.toml` added with ruff, mypy, and pytest configuration
 - Debug `print()` statements replaced with `logging` calls
 - `except Exception` clauses audited and documented
-- `docs/ARCHITECTURE.md` and `CONTEXT.md` added for contributor onboarding
+- `docs/ARCHITECTURE.md` added for contributor onboarding
 - `CONTRIBUTING.md` added with build/test workflow
 
 ### Fixed
@@ -114,7 +113,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Native SD-only Home Assistant cameras no longer seed a competing fake HD `go2rtc` alias when per-camera feed config explicitly disables HD
 - When a selected native alias goes stale, the bridge now forces one fresh native preload before giving up on the native snapshot path
-- North Yard `HL_CAM4` snapshots get one extra hidden HD recovery lane before dropping to RTSP fallback
+- `HL_CAM4` snapshots get one extra hidden HD recovery lane before dropping to RTSP fallback
 - Native snapshot diagnostics now expose producer and go2rtc consumer counters; empty `frame.jpeg` responses with active producers fail fast
 
 ## [4.3.2] - 2026-05-10

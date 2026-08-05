@@ -208,7 +208,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             "receiver_children": 0,
             "wedged": False,
         }
-        camera = SimpleNamespace(name_uri="hamster", product_model="HL_CAM3P", is_gwell=False)
+        camera = SimpleNamespace(name_uri="side-yard", product_model="HL_CAM3P", is_gwell=False)
 
         info = native_alias_module.native_stream_info(camera, substream=True)
 
@@ -218,7 +218,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertEqual(info["snapshot_source"], "go2rtc")
         self.assertNotIn("failed readiness check", info["native_reason"])
         self.assertFalse(info["talkback_supported"])  # substream — talkback always off
-        mock_alias_status.assert_called_once_with("hamster-sd")
+        mock_alias_status.assert_called_once_with("side-yard-sd")
 
     @patch.object(native_alias_module, "_native_alias_status")
     @patch.object(native_alias_module, "_go2rtc_api_reachable")
@@ -525,6 +525,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
 
     @patch.object(snapshot_module, "preload_native_stream")
     @patch.object(snapshot_module, "write_native_snapshot")
+    @patch.dict(os.environ, {"GO2RTC_HD_RECOVERY_CAMERAS": "north-yard"}, clear=False)
     def test_stream_manager_tries_north_yard_hd_recovery_alias_after_sd_failure(
         self, mock_write_native_snapshot, mock_preload
     ):
@@ -588,10 +589,10 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         manager = StreamManager(api)
         mock_get_snapshot.return_value = {"ok": False, "source": "rtsp"}
 
-        result = manager.refresh_preview("hamster")
+        result = manager.refresh_preview("side-yard")
 
         self.assertEqual(result, {"ok": True, "source": "api"})
-        api.save_thumbnail.assert_called_once_with("hamster", "")
+        api.save_thumbnail.assert_called_once_with("side-yard", "")
 
     @patch.object(stream_manager_module, "publish_topic")
     @patch.object(StreamManager, "refresh_preview", return_value={"ok": True, "source": "go2rtc"})
@@ -611,15 +612,15 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     def test_get_rtsp_snap_rejects_decode_errors_and_keeps_existing_preview(self, _mock_cmd):
         manager = StreamManager(DummyApi())
         stream = SimpleNamespace(start=Mock())
-        manager.streams["garage-sub"] = stream
+        manager.streams["cam-a"] = stream
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            final_path = os.path.join(temp_dir, "garage-sub.jpg")
+            final_path = os.path.join(temp_dir, "cam-a.jpg")
             with open(final_path, "wb") as handle:
                 handle.write(b"existing-preview")
 
             fake_popen = FakeSnapshotPopen(
-                ["ffmpeg", "-y", os.path.join(temp_dir, "garage-sub.jpg.tmp")],
+                ["ffmpeg", "-y", os.path.join(temp_dir, "cam-a.jpg.tmp")],
                 stderr_output=b"[h264 @ 0x1] error while decoding MB 47 19, bytestream -15\n",
             )
 
@@ -627,7 +628,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
                 patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
-                result = manager.get_rtsp_snap("garage-sub")
+                result = manager.get_rtsp_snap("cam-a")
 
             self.assertFalse(result)
             with open(final_path, "rb") as handle:
@@ -639,13 +640,13 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     def test_get_rtsp_snap_replaces_preview_without_decode_errors(self, _mock_cmd):
         manager = StreamManager(DummyApi())
         stream = SimpleNamespace(start=Mock())
-        manager.streams["deck-sub"] = stream
+        manager.streams["cam-b"] = stream
         fresh_preview = valid_jpeg_bytes((180, 48, 48))
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            final_path = os.path.join(temp_dir, "deck-sub.jpg")
+            final_path = os.path.join(temp_dir, "cam-b.jpg")
             fake_popen = FakeSnapshotPopen(
-                ["ffmpeg", "-y", os.path.join(temp_dir, "deck-sub.jpg.tmp")],
+                ["ffmpeg", "-y", os.path.join(temp_dir, "cam-b.jpg.tmp")],
                 stderr_output=b"",
                 image_bytes=fresh_preview,
             )
@@ -654,29 +655,29 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
                 patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
-                result = manager.get_rtsp_snap("deck-sub")
+                result = manager.get_rtsp_snap("cam-b")
 
             self.assertTrue(result)
             with open(final_path, "rb") as handle:
                 self.assertEqual(handle.read(), fresh_preview)
             registry_path = os.path.join(temp_dir, ".snapshot_hashes.json")
             with open(registry_path, encoding="utf-8") as handle:
-                self.assertIn("deck-sub", handle.read())
+                self.assertIn("cam-b", handle.read())
 
     @patch.object(snapshot_module, "rtsp_snap_cmd", return_value=["ffmpeg", "-y", "unused.jpg"])
     def test_get_rtsp_snap_rejects_unchanged_preview_as_stale(self, _mock_cmd):
         manager = StreamManager(DummyApi())
         stream = SimpleNamespace(start=Mock())
-        manager.streams["deck-sub"] = stream
+        manager.streams["cam-b"] = stream
         stale_preview = valid_jpeg_bytes((72, 96, 168))
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            final_path = os.path.join(temp_dir, "deck-sub.jpg")
+            final_path = os.path.join(temp_dir, "cam-b.jpg")
             with open(final_path, "wb") as handle:
                 handle.write(stale_preview)
 
             fake_popen = FakeSnapshotPopen(
-                ["ffmpeg", "-y", os.path.join(temp_dir, "deck-sub.jpg.tmp")],
+                ["ffmpeg", "-y", os.path.join(temp_dir, "cam-b.jpg.tmp")],
                 stderr_output=b"",
                 image_bytes=stale_preview,
             )
@@ -685,7 +686,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
                 patch.object(snapshot_module, "Popen", return_value=fake_popen),
             ):
-                result = manager.get_rtsp_snap("deck-sub")
+                result = manager.get_rtsp_snap("cam-b")
 
             self.assertFalse(result)
             with open(final_path, "rb") as handle:
@@ -694,7 +695,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
     def test_get_rtsp_snap_retries_without_frame_skip_after_timeout(self):
         manager = StreamManager(DummyApi())
         stream = SimpleNamespace(start=Mock())
-        manager.streams["garage-sub"] = stream
+        manager.streams["cam-a"] = stream
         fallback_preview = valid_jpeg_bytes((120, 84, 44))
 
         def snap_cmd(cam_name, interval=False, skip_early_frames=True):
@@ -717,13 +718,13 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
             )
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            final_path = os.path.join(temp_dir, "garage-sub.jpg")
+            final_path = os.path.join(temp_dir, "cam-a.jpg")
             with (
                 patch.object(snapshot_module, "IMG_PATH", temp_dir + os.sep),
                 patch.object(snapshot_module, "rtsp_snap_cmd", side_effect=snap_cmd) as mock_cmd,
                 patch.object(snapshot_module, "Popen", side_effect=fake_popen),
             ):
-                result = manager.get_rtsp_snap("garage-sub")
+                result = manager.get_rtsp_snap("cam-a")
 
             self.assertTrue(result)
             with open(final_path, "rb") as handle:
@@ -732,8 +733,8 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         self.assertEqual(
             mock_cmd.call_args_list,
             [
-                call("garage-sub", skip_early_frames=True),
-                call("garage-sub", skip_early_frames=False),
+                call("cam-a", skip_early_frames=True),
+                call("cam-a", skip_early_frames=False),
             ],
         )
         self.assertIn("-vf", created[0])
@@ -745,7 +746,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            final_path = pathlib.Path(temp_dir) / "deck-sub.jpg"
+            final_path = pathlib.Path(temp_dir) / "cam-b.jpg"
             final_path.write_bytes(stale_preview)
 
             with (
@@ -753,7 +754,7 @@ class TestGo2RtcSnapshotAndDiagnostics(unittest.TestCase):
                 patch.object(native_alias_module.requests, "get", return_value=response),
                 patch.object(native_alias_module.time, "sleep"),
             ):
-                result = native_alias_module.write_native_snapshot("deck-sd", "deck-sub", timeout=0.01)
+                result = native_alias_module.write_native_snapshot("cam-patio-sd", "cam-b", timeout=0.01)
 
             self.assertFalse(result)
             self.assertEqual(final_path.read_bytes(), stale_preview)

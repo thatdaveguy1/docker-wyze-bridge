@@ -45,7 +45,7 @@ class FakeWyzeAccount:
 
 @dataclass
 class FakeWyzeCamera:
-    name_uri: str = "dog-run"
+    name_uri: str = "cam-a"
 
 
 class FakeWyzeAPIError(Exception):

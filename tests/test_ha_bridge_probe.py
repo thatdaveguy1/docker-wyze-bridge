@@ -60,7 +60,7 @@ class TestHaBridgeProbeLibrary(unittest.TestCase):
 
     def test_validate_slug_accepts_clean_value(self):
         result = subprocess.run(
-            ["sh", "-c", '. "%s"; validate_slug "TEST" "local_docker_wyze_bridge_v4"; echo OK' % str(LIBRARY)],
+            ["sh", "-c", '. "%s"; validate_slug "TEST" "wyze_bridge_v4"; echo OK' % str(LIBRARY)],
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -72,7 +72,7 @@ class TestHaBridgeProbeLibrary(unittest.TestCase):
 
     def test_validate_base_url_rejects_path(self):
         result = subprocess.run(
-            ["sh", "-c", '. "%s"; validate_base_url "TEST" "http://172.30.32.1:5000/path?api=secret"' % str(LIBRARY)],
+            ["sh", "-c", '. "%s"; validate_base_url "TEST" "http://192.0.2.10:5000/path?api=secret"' % str(LIBRARY)],
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,
@@ -84,7 +84,7 @@ class TestHaBridgeProbeLibrary(unittest.TestCase):
 
     def test_validate_base_url_accepts_clean_url(self):
         result = subprocess.run(
-            ["sh", "-c", '. "%s"; validate_base_url "TEST" "http://172.30.32.1:5000"; echo OK' % str(LIBRARY)],
+            ["sh", "-c", '. "%s"; validate_base_url "TEST" "http://192.0.2.10:5000"; echo OK' % str(LIBRARY)],
             cwd=ROOT,
             text=True,
             stdout=subprocess.PIPE,

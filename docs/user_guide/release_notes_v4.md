@@ -73,7 +73,7 @@ The short version:
 - The bundled `whep_proxy` now treats `/kvs-config/<camera>` `404 camera [x] not found` as a terminal refresh failure instead of reconnecting forever.
 - WHEP startup sessions are only reused while they are fresh or once media is actually flowing, so stale `upstream_state="new"` sessions with no audio/video are replaced instead of wedging future readers.
 - Matching Go coverage now locks in the terminal-refresh and stale-session rules in both Home Assistant WHEP proxy trees.
-- On the live Home Assistant validation host, `deck-sub`, `garage-sub`, `south-yard-sub`, and `hamster` all returned to connected audio/video state, and the final bridge/Scrypted/Frigate log sweep cleared the old `400 Bad Request` / `503` churn.
+- On the live Home Assistant validation host, affected bridge-managed substreams all returned to connected audio/video state, and the final bridge/Scrypted/Frigate log sweep cleared the old `400 Bad Request` / `503` churn.
 
 ## 4.2.7 Patch Release
 
@@ -82,7 +82,7 @@ The short version:
 - Home Assistant `HL_CAM3P` SD-only setups now prefer the validated native `go2rtc` `-sd` alias instead of exposing a misleading or broken bridge-managed `-sub` path.
 - The native alias refresh helper now keeps native-only feeds even when they are intentionally absent from the bridge's live published stream catalog.
 - Ordinary V3-class substreams stay on the established bridge WebRTC/KVS path instead of being broadly rerouted through the TUTK fallback.
-- On the live Home Assistant validation host, the V3 Pro `-sd` alias became readable again at `640x360` on `:19554`, and the Frigate `hamster` camera was cut over to that feed.
+- On the live Home Assistant validation host, the V3 Pro `-sd` alias became readable again at `640x360` on `:19554`, and Frigate was cut over to that feed.
 
 ## 4.2.6 Patch Release
 
@@ -93,7 +93,7 @@ The short version:
 - `webrtc.js` now refreshes signaling from the root-relative `/signaling/<camera>` path instead of resolving a broken nested `/webrtc/signaling/...` URL.
 - The native `go2rtc` sidecar now waits for the authenticated bridge `/api` surface before it trusts bridge state.
 - Native alias prep now follows the bridge's live published camera catalog, so filtered cameras and unsupported `HL_BC` HD feeds are skipped instead of being prepared just because the helper returned a URL.
-- On the live Home Assistant validation host, the styled ingress page came back and the sidecar kept only the expected aliases: `deck-sd`, `garage-sd`, `hamster-sd`, `north-yard`, and `south-yard-sd`.
+- On the live Home Assistant validation host, the styled ingress page came back and the sidecar kept only the expected active native aliases.
 
 ## 4.2.5 Patch Release
 
@@ -101,8 +101,8 @@ The short version:
 
 - Preserved `go2rtc_wyze.yaml` aliases are now refreshed from the current `/api/wyze` helper output at startup instead of being frozen just because the config file already contains seeded aliases.
 - The runtime images now include `curl`, which the sidecar refresh helper needs in the running add-on to talk to its own local `go2rtc` API.
-- On the live Home Assistant validation host, this rewrote North Yard from the stale `192.168.1.176` helper URL to the current `192.168.1.185` helper URL.
-- After that refresh, both `north-yard` and `north-yard-sd` became active native producers again on `:19554`.
+- On the live Home Assistant validation host, this rewrote preserved aliases from the stale helper URL to the current helper URL.
+- After that refresh, both the main and `-sd` native aliases became active native producers again on `:19554`.
 
 ## 4.2.4 Patch Release
 
@@ -110,7 +110,7 @@ The short version:
 
 - Explicit Home Assistant `CAM_OPTIONS` `HD` and `SD` booleans now override stale saved per-camera feed settings in `/config/wyze_camera_settings.json`.
 - Native-selected SD feeds no longer create a competing bridge-managed `-sub` path.
-- This specifically removes the stray `north-yard-sub` bridge startup path when `NORTH YARD` is configured with `SD=false`.
+- This specifically removes the stray `-sub` bridge startup path for an SD-native camera configured with `SD=false`.
 - Focused regression coverage now locks in both the precedence rule and the bridge-substream skip for native SD feeds.
 
 ## 4.2.2 Patch Release

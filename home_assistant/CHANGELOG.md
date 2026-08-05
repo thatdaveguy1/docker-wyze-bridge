@@ -1,5 +1,22 @@
 # What's Changed
 
+## What's Changed in v5.0.0
+
+Major release focused on native snapshot health tracking, proactive stream recovery, and code-quality remediation.
+
+### Major Changes
+
+- Track per-camera snapshot health internally via `SnapshotHealthTracker` (`app/wyzebridge/snapshot_health.py`), recording consecutive snapshot failures, stale-hash duration (frozen-frame detection), and per-camera state transitions (`online` → `snapshot_down` → `stale_snapshot`).
+- Restart streams proactively on sustained failure: `refresh_preview()` restarts a stream after 3+ consecutive failures with a 60s cooldown, and once more when a snapshot hash is unchanged for 10+ minutes.
+- Add the authenticated `/api/snapshot-health` endpoint exposing per-camera snapshot health state, consecutive failure count, last success time, and stale status, and integrate it into `/health/details` under the `snapshot_health` key.
+- Publish snapshot-health state changes to `wyzebridge/<cam>/snapshot_health` (retained) so Home Assistant can monitor snapshot health without the babysitter.
+- Reduce the babysitter to Reolink-only ONVIF reboot monitoring; DWB now handles Wyze snapshot health natively.
+- Fix the go2rtc snapshot keyframe-consumer leak by passing `&cache=10s` to the `frame.jpeg` endpoint, so repeated snapshot requests reuse a cached JPEG instead of leaking consumers that caused `Snapshot timed out` errors and restart loops.
+- Split the WHEP proxy upstream into 3 themed files — `upstream.go`, `upstream_sdp.go`, `upstream_websocket.go` — in `package main` for direct test access.
+- Apply code-quality remediation across the codebase: bare `except Exception` replaced with typed exceptions, debug `print()` replaced with `logging`, ruff formatting, and tightened mypy; 5,643 lines of dead code removed.
+- Clean up go2rtc sidecar helpers, extract sunrise/sunset scheduling to `snapshot_schedule.py`, delete the unused `stream.py` Protocol stub, simplify `wyze_stream.py`, and refactor the TUTK FFI modules.
+- Add tooling (`.pre-commit-config.yaml`, `pyproject.toml`, `quality.yml` CI), camera smoke-test probe scripts, and new tests.
+
 ## What's Changed in v4.3.5
 
 Patch release focused on native SD alias durability for Home Assistant.
@@ -68,7 +85,7 @@ Release focused on Home Assistant snapshot reliability and native `go2rtc` follo
 
 ## What's Changed in v4.2.9
 
-Patch release fixing a startup race that caused native-only cameras (`north-yard`, `hamster`) to appear offline in HomeKit via Scrypted after every bridge restart.
+Patch release fixing a startup race that caused native-only cameras to appear offline in HomeKit via Scrypted after every bridge restart.
 
 ### Major Changes
 
@@ -86,7 +103,7 @@ Patch release focused on Home Assistant WHEP proxy stability for bridge-managed 
 - Treat `/kvs-config/<camera>` `404 camera [x] not found` as terminal inside the bundled `whep_proxy` reconnect loop so removed or unpublished streams stop churning forever.
 - Only reuse WHEP upstream sessions that already have media or are still within a short startup window; stale `upstream_state="new"` sessions with no audio/video are replaced cleanly.
 - Add focused Go coverage for terminal refresh-config errors and stale-session reuse rules in both the production and dev WHEP proxy trees.
-- Validate live on the Home Assistant box that `deck-sub`, `garage-sub`, `south-yard-sub`, and `hamster` all probe cleanly again and that recent bridge/Scrypted/Frigate logs stay clear of the old `400 Bad Request` / `503` errors.
+- Validate live on the Home Assistant box that affected bridge-managed substreams all probe cleanly again and that recent bridge/Scrypted/Frigate logs stay clear of the old `400 Bad Request` / `503` errors.
 
 ## What's Changed in v4.2.7
 
@@ -97,7 +114,7 @@ Patch release focused on Home Assistant V3 Pro SD-feed correctness.
 - Keep Home Assistant `HL_CAM3P` SD-only setups on the validated native `go2rtc` `-sd` alias instead of a misleading or broken bridge-managed `-sub` path.
 - Narrow the special TUTK substream routing so ordinary V3-class substreams stay on the established bridge WebRTC/KVS path.
 - Fix the native alias refresh helper so native-only feeds are not dropped just because the bridge's live published `/api` catalog no longer contains a matching bridge stream entry.
-- Validate live on the Home Assistant box that `hamster-sd` returns `640x360` on `:19554` and that Frigate can record from that feed after cutover.
+- Validate live on the Home Assistant box that the V3 Pro `-sd` alias returns `640x360` on `:19554` and that Frigate can record from that feed after cutover.
 
 ## What's Changed in v4.2.6
 
@@ -109,7 +126,7 @@ Patch release focused on the last Home Assistant ingress asset-path gap and on k
 - Add focused frontend regression coverage for ingress-prefixed JavaScript asset URLs and for the root-relative signaling refresh path used by `webrtc.js`.
 - Make the native `go2rtc` sidecar wait for the authenticated bridge `/api` surface instead of trusting `/health` alone.
 - Filter native alias prep against the bridge's live published camera catalog so disabled or filtered cameras and unsupported `HL_BC` HD feeds are skipped instead of being seeded just because `/api/wyze` returned a helper URL.
-- Validate live on the Home Assistant box that the ingress page loads styled again and that the sidecar keeps only the expected active aliases (`deck-sd`, `garage-sd`, `hamster-sd`, `north-yard`, and `south-yard-sd`).
+- Validate live on the Home Assistant box that the ingress page loads styled again and that the sidecar keeps only the expected active native aliases.
 
 ## What's Changed in v4.2.5
 
@@ -119,7 +136,7 @@ Patch release focused on refreshing preserved native Wyze aliases on Home Assist
 
 - Refresh preserved `go2rtc_wyze.yaml` Wyze aliases after startup instead of returning early just because seeded aliases already exist.
 - Install `curl` in the runtime images so the sidecar refresh helper can actually reach the local `go2rtc` API from the running add-on.
-- Validate in the Home Assistant dev add-on that North Yard aliases are rewritten from the stale `192.168.1.176` helper URL to the live `192.168.1.185` helper URL and that `rtsp://...:19554/north-yard(-sd)` becomes readable again.
+- Validate in the Home Assistant dev add-on that preserved aliases are rewritten from the stale helper URL to the live helper URL and that the native `:19554` alias becomes readable again.
 
 ## What's Changed in v4.2.4
 
@@ -130,7 +147,7 @@ Patch release focused on Home Assistant feed-selection correctness for native-se
 - Let explicit Home Assistant `CAM_OPTIONS` `HD` and `SD` booleans override stale saved per-camera feed settings in `/config/wyze_camera_settings.json`.
 - Stop creating a competing bridge-managed `-sub` path when the SD feed is native-selected.
 - Add focused regression coverage for env-over-saved precedence and for skipping bridge substream creation when SD is routed through the native sidecar.
-- Validate live in the Home Assistant dev add-on that `north-yard-sub` is no longer created when `NORTH YARD` is configured with `SD=false`.
+- Validate live in the Home Assistant dev add-on that no stray `-sub` bridge stream is created when an SD-native camera is configured with `SD=false`.
 
 ## What's Changed in v4.2.2
 

@@ -16,15 +16,22 @@ from wyzebridge.ffmpeg import rtsp_snap_cmd, wait_for_purges
 from wyzebridge.logging import logger
 from wyzebridge.mqtt import update_preview
 from wyzebridge.native_alias import (
-    RECOVERY_ALIASES,
     native_alias,
     preload_native_stream,
+    recovery_aliases,
     write_native_snapshot,
 )
 from wyzebridge.preview_validation import (
+    preview_content_hash,
     preview_file_is_image,
     preview_payload_matches_existing,
     record_preview_hash,
+)
+from wyzebridge.snapshot_health import (
+    STATE_ONLINE,
+    STATE_SNAPSHOT_DOWN,
+    STATE_STALE_SNAPSHOT,
+    SnapshotHealthTracker,
 )
 
 
@@ -90,6 +97,7 @@ class SnapshotManager:
         "native_preloads",
         "last_snap",
         "monitor_snapshots_thread",
+        "health",
     )
 
     def __init__(
@@ -109,6 +117,7 @@ class SnapshotManager:
         self.native_preloads: set[str] = set()
         self.last_snap: float = 0
         self.monitor_snapshots_thread: Thread | None = None
+        self.health: SnapshotHealthTracker = SnapshotHealthTracker()
 
     # --- Snapshot monitoring ---
 
@@ -269,7 +278,7 @@ class SnapshotManager:
             alternate_alias = native_alias(cam_name, substream=True)
             if alternate_alias not in aliases:
                 aliases.append(alternate_alias)
-            aliases.extend(a for a in RECOVERY_ALIASES.get(cam_name, []) if a not in aliases)
+            aliases.extend(a for a in recovery_aliases(cam_name) if a not in aliases)
             return any(write_native_snapshot(alias, cam_name, warn_on_failure=False) for alias in aliases)
         info = stream.get_info()
         if require_selected and not info.get("native_selected"):
@@ -284,7 +293,7 @@ class SnapshotManager:
             alternate_alias = native_alias(cam_name, substream=True)
             if (not skip_primary_alias or alternate_alias != alias) and alternate_alias not in aliases:
                 aliases.append(alternate_alias)
-            aliases.extend(a for a in RECOVERY_ALIASES.get(cam_name, []) if a not in aliases)
+            aliases.extend(a for a in recovery_aliases(cam_name) if a not in aliases)
         for candidate_alias in aliases:
             warn_on_failure = require_selected and candidate_alias == alias
             for attempt in range(2):
@@ -317,10 +326,42 @@ class SnapshotManager:
             and stream_info.get("native_alias")
         )
         if self._go2rtc_snapshot(cam_name, require_selected=True):
+            self._record_snapshot_success(cam_name)
             return {"ok": True, "source": "go2rtc"}
         if self._go2rtc_snapshot(cam_name, skip_primary_alias=selected_alias_attempted):
+            self._record_snapshot_success(cam_name)
             return {"ok": True, "source": "go2rtc"}
-        return {"ok": self.get_rtsp_snap(cam_name), "source": "rtsp"}
+        rtsp_ok = self.get_rtsp_snap(cam_name)
+        if rtsp_ok:
+            self._record_snapshot_success(cam_name)
+        else:
+            self._record_snapshot_failure(cam_name)
+        return {"ok": rtsp_ok, "source": "rtsp"}
+
+    def _record_snapshot_success(self, cam_name: str) -> None:
+        """Record a successful snapshot and publish MQTT if state changed."""
+        payload_hash = ""
+        with contextlib.suppress(OSError):
+            img_path = f"{IMG_PATH}{cam_name}.{IMG_TYPE}"
+            with open(img_path, "rb") as handle:
+                payload_hash = preview_content_hash(handle.read())
+        prev_state = self.health.get(cam_name).state
+        new_state = self.health.record_success(cam_name, payload_hash)
+        if new_state != prev_state:
+            self._publish_health(cam_name, new_state)
+
+    def _record_snapshot_failure(self, cam_name: str) -> None:
+        """Record a failed snapshot and publish MQTT if state changed."""
+        prev_state = self.health.get(cam_name).state
+        new_state = self.health.record_failure(cam_name)
+        if new_state != prev_state:
+            self._publish_health(cam_name, new_state)
+
+    def _publish_health(self, cam_name: str, state: str) -> None:
+        """Publish snapshot health state change to MQTT."""
+        logger.info(f"[SNAPSHOT_HEALTH] {cam_name}: {state}")
+        with contextlib.suppress(Exception):
+            publish_topic(f"{cam_name}/snapshot_health", state, retain=True)
 
     def _restart_stream_for_snapshot(self, cam_name: str) -> bool:
         if not (stream := self.streams.get(cam_name)):
@@ -336,12 +377,34 @@ class SnapshotManager:
     def refresh_preview(self, cam_name: str) -> dict:
         snapshot = self.get_snapshot(cam_name)
         if snapshot["ok"]:
+            # Snapshot succeeded — check if the frame is stale (frozen).
+            # If the tracker says we should restart for freshness, do so.
+            if self.health.should_restart(cam_name):
+                logger.info(f"♻️ [{cam_name}] Restarting stream for stale snapshot")
+                if self._restart_stream_for_snapshot(cam_name):
+                    self.health.mark_restarted(cam_name)
+                    snapshot = self.get_snapshot(cam_name)
+                    if snapshot["ok"]:
+                        return snapshot | {"restarted": True}
             return snapshot
-        if self._restart_stream_for_snapshot(cam_name):
+        # Snapshot failed — check the health tracker for restart decision.
+        # On sustained failure (snapshot_down), the tracker enforces a cooldown
+        # to prevent restart loops. On first failures, we still try one restart.
+        if self.health.should_restart(cam_name):
+            if self._restart_stream_for_snapshot(cam_name):
+                self.health.mark_restarted(cam_name)
+                snapshot = self.get_snapshot(cam_name)
+                if snapshot["ok"]:
+                    return snapshot | {"restarted": True}
+        elif self._restart_stream_for_snapshot(cam_name):
             snapshot = self.get_snapshot(cam_name)
             if snapshot["ok"]:
                 return snapshot | {"restarted": True}
         return {"ok": self.api.save_thumbnail(cam_name, ""), "source": "api"}
+
+    def snapshot_health(self) -> dict[str, dict]:
+        """Return per-camera snapshot health for the /api/snapshot-health endpoint."""
+        return self.health.all_health()
 
     def stop_subprocess(self, cam: str):
         ffmpeg = self.rtsp_snapshots.get(cam)

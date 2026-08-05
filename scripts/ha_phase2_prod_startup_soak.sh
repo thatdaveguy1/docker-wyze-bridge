@@ -6,8 +6,8 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DURATION="${HA_PHASE2_STARTUP_SECONDS:-60}"
 INTERVAL="${HA_PHASE2_STARTUP_INTERVAL_SECONDS:-2}"
 LOG_LINES="${HA_PHASE2_STARTUP_LOG_LINES:-160}"
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
-BRIDGE_BASE="${HA_PHASE2_BRIDGE_BASE:-http://172.30.32.1:5000}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
+BRIDGE_BASE="${HA_PHASE2_BRIDGE_BASE:-http://192.0.2.10:5000}"
 
 # Source shared library for validate_slug, validate_base_url, section, mark_fail,
 # redact_api_keys, derive_bridge_token, bool_true

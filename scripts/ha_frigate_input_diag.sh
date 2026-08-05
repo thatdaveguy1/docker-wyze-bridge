@@ -4,8 +4,9 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 CAMERAS="${HA_FRIGATE_DIAG_CAMERAS:-}"
-FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-ccab4aaf_frigate}"
-SCRYPTED_SLUG="${HA_SCRYPTED_ADDON_SLUG:-09e60fb6_scrypted}"
+FRIGATE_SLUG="${HA_FRIGATE_ADDON_SLUG:-frigate}"
+SCRYPTED_SLUG="${HA_SCRYPTED_ADDON_SLUG:-scrypted}"
+FRIGATE_BASE="${HA_FRIGATE_DIAG_BASE_URL:-http://frigate:5000}"
 LINES="${HA_FRIGATE_DIAG_LOG_LINES:-160}"
 
 # Source shared library for validate_slug, section, redact_api_keys
@@ -13,18 +14,20 @@ LINES="${HA_FRIGATE_DIAG_LOG_LINES:-160}"
 
 usage() {
   cat <<EOF
-Usage: HA_FRIGATE_DIAG_CAMERAS="south_driveway" scripts/ha_frigate_input_diag.sh
+Usage: HA_FRIGATE_DIAG_CAMERAS="camera-name" scripts/ha_frigate_input_diag.sh
 
 Runs a read-only Home Assistant diagnostic for Frigate/Scrypted RTSP input
 health. It prints current Frigate FPS, the named cameras' configured input
 paths, Frigate ffprobe results for those exact paths, recent Frigate/Scrypted
-log clues, and sanitized add-on state. It does not stop, start, rebuild,
-restart, reboot, or edit anything.
+log clues, and sanitized add-on state. If HA_FRIGATE_DIAG_CAMERAS is omitted,
+it derives the camera list from live Frigate config or stats. It does not
+stop, start, rebuild, restart, reboot, or edit anything.
 
 Environment:
-  HA_FRIGATE_DIAG_CAMERAS    required, space/comma-separated Frigate camera names
+  HA_FRIGATE_DIAG_CAMERAS    optional, space/comma-separated Frigate camera names
   HA_FRIGATE_ADDON_SLUG      default: $FRIGATE_SLUG
   HA_SCRYPTED_ADDON_SLUG     default: $SCRYPTED_SLUG
+  HA_FRIGATE_DIAG_BASE_URL   default: $FRIGATE_BASE
   HA_FRIGATE_DIAG_LOG_LINES  default: $LINES
 EOF
 }
@@ -53,23 +56,22 @@ validate_number() {
   esac
 }
 
-CAMERA_LIST=$(printf '%s' "$CAMERAS" | tr ',' ' ' | xargs)
-if [ -z "$CAMERA_LIST" ]; then
-  echo "Missing HA_FRIGATE_DIAG_CAMERAS. Name the Frigate camera(s) to diagnose." >&2
-  exit 1
+CAMERA_LIST=""
+if [ -n "$CAMERAS" ]; then
+  CAMERA_LIST=$(printf '%s' "$CAMERAS" | tr ',' ' ' | xargs)
+  for camera in $CAMERA_LIST; do
+    case "$camera" in
+      ""|*[!A-Za-z0-9_.-]*)
+        echo "Invalid camera name '$camera': only letters, numbers, '.', '_' and '-' are allowed." >&2
+        exit 1
+        ;;
+    esac
+  done
 fi
-
-for camera in $CAMERA_LIST; do
-  case "$camera" in
-    ""|*[!A-Za-z0-9_.-]*)
-      echo "Invalid camera name '$camera': only letters, numbers, '.', '_' and '-' are allowed." >&2
-      exit 1
-      ;;
-  esac
-done
 
 validate_slug "HA_FRIGATE_ADDON_SLUG" "$FRIGATE_SLUG"
 validate_slug "HA_SCRYPTED_ADDON_SLUG" "$SCRYPTED_SLUG"
+validate_base_url "HA_FRIGATE_DIAG_BASE_URL" "$FRIGATE_BASE"
 validate_number "HA_FRIGATE_DIAG_LOG_LINES" "$LINES"
 
 {
@@ -80,6 +82,7 @@ set -eu
 CAMERAS="$HA_FRIGATE_DIAG_CAMERAS"
 FRIGATE_SLUG="$HA_FRIGATE_DIAG_SLUG"
 SCRYPTED_SLUG="$HA_SCRYPTED_DIAG_SLUG"
+FRIGATE_BASE="$HA_FRIGATE_DIAG_BASE"
 LINES="$HA_FRIGATE_DIAG_LINES"
 
 # redact extends the shared library's redact_api_keys with rtsp:// credential redaction
@@ -91,13 +94,40 @@ urlencode() {
   jq -rn --arg v "$1" '$v|@uri'
 }
 
+derive_cameras_from_json() {
+  printf '%s\n' "$1" \
+    | jq -r '.cameras | keys[]?' 2>/dev/null \
+    | paste -sd' ' - 2>/dev/null || true
+}
+
 section "Frigate/Scrypted Input Diagnostic"
+if [ -n "$CAMERAS" ]; then
+  CAMERA_SOURCE=explicit
+else
+  CONFIG=$(curl -fsS --max-time 8 ${FRIGATE_BASE}/api/config 2>/dev/null || true)
+  STATS=$(curl -fsS --max-time 8 ${FRIGATE_BASE}/api/stats 2>/dev/null || true)
+  CAMERAS=$(derive_cameras_from_json "$CONFIG")
+  CAMERA_SOURCE=live_config
+  if [ -z "$CAMERAS" ]; then
+    CAMERAS=$(derive_cameras_from_json "$STATS")
+    CAMERA_SOURCE=live_stats
+  fi
+fi
+
+if [ -z "$CAMERAS" ]; then
+  echo "Unable to derive Frigate cameras from live config or stats." >&2
+  exit 1
+fi
+
+echo "camera_source=$CAMERA_SOURCE"
 echo "cameras=$CAMERAS"
 echo "frigate_slug=$FRIGATE_SLUG"
 echo "scrypted_slug=$SCRYPTED_SLUG"
 
 section "Current Frigate Stats"
-STATS=$(curl -fsS --max-time 8 http://ccab4aaf-frigate:5000/api/stats 2>/dev/null || true)
+if [ -z "${STATS:-}" ]; then
+  STATS=$(curl -fsS --max-time 8 ${FRIGATE_BASE}/api/stats 2>/dev/null || true)
+fi
 if [ -z "$STATS" ]; then
   echo "<empty>"
 else
@@ -106,7 +136,9 @@ else
     | redact
 fi
 
-CONFIG=$(curl -fsS --max-time 8 http://ccab4aaf-frigate:5000/api/config 2>/dev/null || true)
+if [ -z "${CONFIG:-}" ]; then
+  CONFIG=$(curl -fsS --max-time 8 ${FRIGATE_BASE}/api/config 2>/dev/null || true)
+fi
 
 for camera in $CAMERAS; do
   section "Camera $camera Config Inputs"
@@ -127,7 +159,7 @@ for camera in $CAMERAS; do
     for path in $paths; do
       printf 'path=%s\n' "$path" | redact
       encoded=$(urlencode "$path")
-      body=$(curl -fsS --max-time 20 "http://ccab4aaf-frigate:5000/api/ffprobe?paths=$encoded" 2>/dev/null || true)
+      body=$(curl -fsS --max-time 20 "${FRIGATE_BASE}/api/ffprobe?paths=$encoded" 2>/dev/null || true)
       if [ -z "$body" ]; then
         echo "ffprobe=<empty>"
       else
@@ -156,4 +188,4 @@ for slug in "$FRIGATE_SLUG" "$SCRYPTED_SLUG"; do
     | redact || true
 done
 REMOTE
-} | "$SCRIPT_DIR/ha_ssh.sh" "HA_FRIGATE_DIAG_CAMERAS='$CAMERA_LIST' HA_FRIGATE_DIAG_SLUG=$FRIGATE_SLUG HA_SCRYPTED_DIAG_SLUG=$SCRYPTED_SLUG HA_FRIGATE_DIAG_LINES=$LINES sh -s"
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_FRIGATE_DIAG_CAMERAS='$CAMERA_LIST' HA_FRIGATE_DIAG_SLUG=$FRIGATE_SLUG HA_SCRYPTED_DIAG_SLUG=$SCRYPTED_SLUG HA_FRIGATE_DIAG_BASE=$FRIGATE_BASE HA_FRIGATE_DIAG_LINES=$LINES sh -s"

@@ -140,7 +140,7 @@ configuration:
     description: Optional. Publish camera state, events, and motion updates to MQTT. Default is off unless your setup enables it.
   MQTT_HOST:
     name: MQTT broker address
-    description: Optional. MQTT server address such as 192.168.1.10:1883. Leave blank to use Home Assistant's MQTT service when available.
+    description: Optional. MQTT server address such as 192.0.2.10:1883. Leave blank to use Home Assistant's MQTT service when available.
   MQTT_AUTH:
     name: MQTT username and password
     description: Optional. Login for your MQTT broker in the format user:password.

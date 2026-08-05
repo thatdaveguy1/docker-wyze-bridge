@@ -64,7 +64,12 @@ class WyzeBridge(Thread):
 
     def health_details(self, stream_name: str | None = None):
         stream_info = self.streams.get_info(stream_name) if stream_name else None
-        return self.health() | collect_bridge_diagnostics(stream_name, stream_info)
+        details = self.health() | collect_bridge_diagnostics(stream_name, stream_info)
+        snapshot_health = self.streams.snapshot_health()
+        if stream_name:
+            snapshot_health[stream_name] = self.streams.snapshot_health_for(stream_name)
+        details["snapshot_health"] = snapshot_health
+        return details
 
     def run(self, fresh_data: bool = False) -> None:
         self._initialize(fresh_data)

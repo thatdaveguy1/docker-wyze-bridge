@@ -33,11 +33,9 @@ from ffmpeg_helpers import (
 )
 
 
-DEFAULT_CAMERA_ORDER = ["south_driveway", "north_driveway", "doorbell"]
+DEFAULT_CAMERA_ORDER = ["doorbell"]
 DEFAULT_CAMERA_IPS = {
-    "south_driveway": "192.168.1.228",
-    "north_driveway": "192.168.1.235",
-    "doorbell": "192.168.1.69",
+    "doorbell": os.environ.get("REOLINK_DOORBELL_IP", "192.0.2.69"),
 }
 DEFAULT_RTSP_PATH = "h264Preview_01_main"
 PROGRESS_WINDOW_SECONDS = 10.0
@@ -83,7 +81,7 @@ def parse_args() -> argparse.Namespace:
         "--camera",
         action="append",
         dest="cameras",
-        help="Camera label to probe. Repeat to limit the run to a subset. Defaults to south_driveway, north_driveway, and doorbell.",
+        help="Camera label to probe. Repeat to limit the run to a subset. Defaults to doorbell.",
     )
     parser.add_argument(
         "--camera-url",

@@ -50,7 +50,8 @@ IMG_PATH: str = _runtime_dir(
 LATITUDE: float = float(getenv("LATITUDE", "0"))
 LONGITUDE: float = float(getenv("LONGITUDE", "0"))
 SNAPSHOT_CAMERAS: list[str] = [cam.strip() for cam in getenv("SNAPSHOT_CAMERAS", "").split(",") if cam.strip()]
-SNAPSHOT_TYPE, SNAPSHOT_INT = split_int_str(env_bool("SNAPSHOT"), min=15, default=180)
+_SNAPSHOT_RAW = env_bool("SNAPSHOT", style="original")
+SNAPSHOT_TYPE, SNAPSHOT_INT = split_int_str(_SNAPSHOT_RAW, min=10, default=10 if _SNAPSHOT_RAW.upper().startswith("API") else 180)
 SNAPSHOT_FORMAT: str = env_bool("SNAPSHOT_FORMAT", style="original").strip("/")
 IMG_TYPE: str = env_bool("IMG_TYPE", "jpg", style="original")
 

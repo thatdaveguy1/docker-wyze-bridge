@@ -10,7 +10,7 @@ FROM --platform=linux/arm/v7 golang:1.23 AS whep_builder_arm
 FROM --platform=linux/arm64 golang:1.23 AS whep_builder_arm64
 
 FROM whep_builder_${TARGETARCH} AS whep_builder
-COPY /home_assistant/whep_proxy/ /build/whep_proxy/
+COPY /whep_proxy/ /build/whep_proxy/
 WORKDIR /build/whep_proxy
 RUN go mod download
 RUN go build -o /build/whep_proxy/whep_proxy

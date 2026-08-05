@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -9,6 +10,24 @@ STATUS = ROOT / "scripts" / "master_goal_status.py"
 
 
 class TestMasterGoalStatus(unittest.TestCase):
+    def setUp(self) -> None:
+        # master_goal_status.py only matches north-yard reachability evidence
+        # against env-configured IPs (no host defaults). Pin them for tests.
+        self._ny_env = {
+            "NY_LAN_IP": "192.0.2.183",
+            "NY_OVERRIDE_IP": "192.0.2.185",
+            "NY_CAMERA_MAC": "80:48:2c:31:c9:e7",
+        }
+        self._saved_env = {key: os.environ.get(key) for key in self._ny_env}
+        os.environ.update(self._ny_env)
+
+    def tearDown(self) -> None:
+        for key, value in self._saved_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
     def make_root(self) -> Path:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -24,7 +43,7 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "samples": 61,
                     "all_samples_ok": True,
                     "all_cameras_changed": True,
-                    "per_cam": {"deck-sub": {"failures": 0}},
+                    "per_cam": {"cam-a": {"failures": 0}},
                 }
             ),
             encoding="utf-8",
@@ -449,8 +468,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         (proof_dir / "north_yard_lan_sweep_20260519_104441.txt").write_text(
             "\n".join(
                 [
-                    "ip=192.168.1.183 ping=down neigh=<none>",
-                    "ip=192.168.1.185 ping=down neigh=<none>",
+                    "ip=192.0.2.183 ping=down neigh=<none>",
+                    "ip=192.0.2.185 ping=down neigh=<none>",
                 ]
             ),
             encoding="utf-8",
@@ -473,8 +492,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertIn("north-yard forced snapshot timed out", evidence)
         self.assertIn("north-yard cached image hash did not change", evidence)
         self.assertIn("north-yard snapshot registry source is wyze-api", evidence)
-        self.assertIn("configured north-yard IP 192.168.1.183 is unreachable", evidence)
-        self.assertIn("override north-yard IP 192.168.1.185 is unreachable", evidence)
+        self.assertIn("configured north-yard IP 192.0.2.183 is unreachable", evidence)
+        self.assertIn("override north-yard IP 192.0.2.185 is unreachable", evidence)
 
     def test_phase1_blocker_reads_current_north_yard_reprobe_artifact(self):
         root = self.make_root()
@@ -493,8 +512,8 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "route=/snapshot/north-yard.jpg code=000 bytes=0 mime=<none> sha256=<none>",
                     "route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc",
                     "route=/img/north-yard.jpg code=200 bytes=128283 mime=unknown sha256=abc",
-                    "192.168.1.183\tunreachable",
-                    "192.168.1.185\tunreachable",
+                    "192.0.2.183\tunreachable",
+                    "192.0.2.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -517,8 +536,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertIn("north-yard forced snapshot timed out", evidence)
         self.assertIn("north-yard cached image hash did not change", evidence)
         self.assertIn("north-yard snapshot registry source is wyze-api", evidence)
-        self.assertIn("configured north-yard IP 192.168.1.183 is unreachable", evidence)
-        self.assertIn("override north-yard IP 192.168.1.185 is unreachable", evidence)
+        self.assertIn("configured north-yard IP 192.0.2.183 is unreachable", evidence)
+        self.assertIn("override north-yard IP 192.0.2.185 is unreachable", evidence)
 
     def test_phase1_current_reprobe_supersedes_older_lan_sweep(self):
         root = self.make_root()
@@ -540,8 +559,8 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard code=000000 bytes=0 mime=<none> sha256=<none>",
                     "url=http://127.0.0.1:11984/api/frame.jpeg?src=north-yard-sd code=000000 bytes=0 mime=<none> sha256=<none>",
                     "## LAN Reachability",
-                    "192.168.1.183\treachable",
-                    "192.168.1.185\tunreachable",
+                    "192.0.2.183\treachable",
+                    "192.0.2.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -549,8 +568,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         (proof_dir / "north_yard_lan_sweep_20260519_104441.txt").write_text(
             "\n".join(
                 [
-                    "ip=192.168.1.183 ping=down neigh=<none>",
-                    "ip=192.168.1.185 ping=down neigh=<none>",
+                    "ip=192.0.2.183 ping=down neigh=<none>",
+                    "ip=192.0.2.185 ping=down neigh=<none>",
                 ]
             ),
             encoding="utf-8",
@@ -573,9 +592,9 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertIn("north-yard forced snapshot timed out", evidence)
         self.assertIn("north-yard go2rtc main frame route returned no bytes", evidence)
         self.assertIn("north-yard go2rtc SD frame route returned no bytes", evidence)
-        self.assertNotIn("configured north-yard IP 192.168.1.183 is unreachable", evidence)
-        self.assertIn("configured/current north-yard IP 192.168.1.183 is reachable", evidence)
-        self.assertIn("override north-yard IP 192.168.1.185 is unreachable", evidence)
+        self.assertNotIn("configured north-yard IP 192.0.2.183 is unreachable", evidence)
+        self.assertIn("configured/current north-yard IP 192.0.2.183 is reachable", evidence)
+        self.assertIn("override north-yard IP 192.0.2.185 is unreachable", evidence)
         self.assertIn(
             "North Yard authenticated snapshot must stop timing out",
             phase1["remaining"],
@@ -614,8 +633,8 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "route=/snapshot/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb",
                     "route=/img/north-yard.jpg code=200 bytes=36741 mime=unknown sha256=bbb",
                     "## LAN Reachability",
-                    "192.168.1.183\treachable",
-                    "192.168.1.185\tunreachable",
+                    "192.0.2.183\treachable",
+                    "192.0.2.185\tunreachable",
                 ]
             ),
             encoding="utf-8",
@@ -640,8 +659,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertNotIn("north-yard snapshot registry source is wyze-api", evidence)
         self.assertNotIn("north-yard go2rtc main frame route returned no bytes", evidence)
         self.assertNotIn("north-yard go2rtc SD frame route returned no bytes", evidence)
-        self.assertIn("configured/current north-yard IP 192.168.1.183 is reachable", evidence)
-        self.assertIn("override north-yard IP 192.168.1.185 is unreachable", evidence)
+        self.assertIn("configured/current north-yard IP 192.0.2.183 is reachable", evidence)
+        self.assertIn("override north-yard IP 192.0.2.185 is unreachable", evidence)
 
     def test_frigate_strict_monitor_failure_blocks_phase4_until_full_soak_passes(self):
         root = self.make_root()
@@ -739,14 +758,14 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "north_driveway\t10.1\t10.1\t0.0\t1202\t898",
                     "",
                     "## Camera north_driveway FFprobe",
-                    "path=rtsp://192.168.1.244:44095/a3ea1612e8a0a713",
+                    "path=rtsp://192.0.2.244:44095/a3ea1612e8a0a713",
                     '[{"return_code":0,"stderr":[],"stdout":{"streams":[]}}]',
-                    "path=rtsp://192.168.1.244:44095/ac3d9badc30004af",
+                    "path=rtsp://192.0.2.244:44095/ac3d9badc30004af",
                     '[{"return_code":0,"stderr":[],"stdout":{"streams":[]}}]',
                     "",
                     "## Recent Scrypted RTSP Logs",
                     "[North Driveway E1 Pro] response headers RTSP/1.0 200 OK",
-                    "RTP-Info: url=rtsp://192.168.1.244:44095/ac3d9badc30004af/track1",
+                    "RTP-Info: url=rtsp://192.0.2.244:44095/ac3d9badc30004af/track1",
                 ]
             ),
             encoding="utf-8",
@@ -792,15 +811,15 @@ class TestMasterGoalStatus(unittest.TestCase):
             "\n".join(
                 [
                     'health={"mtx_alive": true, "wyze_authed": true, "active_streams": 5}',
-                    '{"stream":"deck-sub","whep_reachable":true,"whep_status":200,"upstream_state":"new","video_ready":false,"audio_ready":false,"audio_packets_seen":0,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
-                    "FAIL: deck-sub WHEP proxy must be reachable with video_ready=true and has_ever_had_media=true",
-                    "FAIL: deck-sub WHEP upstream_state must not stay new",
+                    '{"stream":"cam-a","whep_reachable":true,"whep_status":200,"upstream_state":"new","video_ready":false,"audio_ready":false,"audio_packets_seen":0,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
+                    "FAIL: cam-a WHEP proxy must be reachable with video_ready=true and has_ever_had_media=true",
+                    "FAIL: cam-a WHEP upstream_state must not stay new",
                     "south_driveway\t10.0\t10.0\t0.0",
                     "north_driveway\t10.0\t10.0\t0.0",
                     "doorbell\t10.1\t10.1\t0.0",
                     "",
                     "## Sample 17 elapsed=484s",
-                    '{"stream":"deck-sub","whep_reachable":true,"whep_status":200,"upstream_state":"connected","video_ready":true,"audio_ready":true,"audio_packets_seen":460,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
+                    '{"stream":"cam-a","whep_reachable":true,"whep_status":200,"upstream_state":"connected","video_ready":true,"audio_ready":true,"audio_packets_seen":460,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
                 ]
             ),
             encoding="utf-8",
@@ -822,10 +841,10 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)
         self.assertIn(
-            "deck-sub WHEP proxy must be reachable with video_ready=true",
+            "cam-a WHEP proxy must be reachable with video_ready=true",
             evidence,
         )
-        self.assertIn("deck-sub WHEP upstream_state must not stay new", evidence)
+        self.assertIn("cam-a WHEP upstream_state must not stay new", evidence)
 
     def test_phase4_soak_endpoint_outage_marks_live_soak_failed(self):
         root = self.make_root()
@@ -836,7 +855,7 @@ class TestMasterGoalStatus(unittest.TestCase):
                 [
                     "## Sample 101 elapsed=3086s",
                     'health={"mtx_alive": true, "wyze_authed": true, "active_streams": 5}',
-                    '{"stream":"deck-sub","whep_reachable":true,"whep_status":200,"upstream_state":"connected","video_ready":true,"audio_ready":true,"audio_packets_seen":82614,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
+                    '{"stream":"cam-a","whep_reachable":true,"whep_status":200,"upstream_state":"connected","video_ready":true,"audio_ready":true,"audio_packets_seen":82614,"has_ever_had_media":true,"mediamtx_reachable":true,"mediamtx_status":200}',
                     "south_driveway\t10.1\t10.1\t0.0",
                     "north_driveway\t10.1\t10.1\t0.0",
                     "doorbell\t10.0\t10.0\t0.0",
@@ -845,7 +864,7 @@ class TestMasterGoalStatus(unittest.TestCase):
                     "health=<empty>",
                     "FAIL: production /health did not respond",
                     "FAIL: back-yard-sub health/details did not respond",
-                    "FAIL: deck-sub health/details did not respond",
+                    "FAIL: cam-a health/details did not respond",
                     "FAIL: Frigate stats did not respond",
                 ]
             ),
@@ -868,7 +887,7 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertEqual(phase4["status"], "blocked")
         self.assertIn("live WHEP soak failed", evidence)
         self.assertIn("production /health did not respond", evidence)
-        self.assertIn("deck-sub health/details did not respond", evidence)
+        self.assertIn("cam-a health/details did not respond", evidence)
         self.assertIn("Frigate stats did not respond", evidence)
 
     def test_phase3_prod_failure_surfaces_exact_sd_only_blockers(self):
@@ -879,9 +898,9 @@ class TestMasterGoalStatus(unittest.TestCase):
                 [
                     "sd_only_option=false",
                     '{"camera":"back-yard","status_code":"200","sd_only":null,"enabled_feeds":["sd"],"hd_supported":true,"hd_enabled":false}',
-                    '{"camera":"hamster","status_code":"200","sd_only":null,"enabled_feeds":["hd"],"hd_supported":true,"hd_enabled":true}',
+                    '{"camera":"side-yard","status_code":"200","sd_only":null,"enabled_feeds":["hd"],"hd_supported":true,"hd_enabled":true}',
                     '{"camera":"north-yard","status_code":"200","sd_only":null,"enabled_feeds":["hd","sd"],"hd_supported":true,"hd_enabled":true}',
-                    '{"details_status":"200","aliases":"back-yard-sd deck-sd hamster north-yard north-yard-sd","only_sd_aliases":false,"no_main_aliases":false}',
+                    '{"details_status":"200","aliases":"back-yard-sd cam-patio-sd side-yard north-yard north-yard-sd","only_sd_aliases":false,"no_main_aliases":false}',
                     "FAIL: production Phase 3 SD_ONLY proof failed.",
                 ]
             ),
@@ -904,20 +923,20 @@ class TestMasterGoalStatus(unittest.TestCase):
         self.assertEqual(phase3["status"], "blocked")
         self.assertIn("production Supervisor option SD_ONLY is not true", evidence)
         self.assertIn(
-            "production stream-config sd_only is not true for back-yard, hamster, north-yard",
+            "production stream-config sd_only is not true for back-yard, north-yard, side-yard",
             evidence,
         )
         self.assertIn(
-            "production cameras without exactly one enabled SD feed: hamster=['hd'], north-yard=['hd', 'sd']",
+            "production cameras without exactly one enabled SD feed: side-yard=['hd'], north-yard=['hd', 'sd']",
             evidence,
         )
         self.assertIn(
-            "production still reports HD supported for back-yard, hamster, north-yard",
+            "production still reports HD supported for back-yard, north-yard, side-yard",
             evidence,
         )
-        self.assertIn("production still has HD enabled for hamster, north-yard", evidence)
+        self.assertIn("production still has HD enabled for north-yard, side-yard", evidence)
         self.assertIn(
-            "production go2rtc still exposes non-SD aliases hamster, north-yard",
+            "production go2rtc still exposes non-SD aliases north-yard, side-yard",
             evidence,
         )
         self.assertIn(
@@ -1012,8 +1031,8 @@ class TestMasterGoalStatus(unittest.TestCase):
         (proof_dir / "phase4_whep_soak_20260519_180043.txt").write_text(
             "\n".join(
                 [
-                    "FAIL: deck-sub WHEP proxy must be reachable with video_ready=true and has_ever_had_media=true",
-                    "FAIL: deck-sub WHEP upstream_state must not stay new",
+                    "FAIL: cam-a WHEP proxy must be reachable with video_ready=true and has_ever_had_media=true",
+                    "FAIL: cam-a WHEP upstream_state must not stay new",
                     "FAIL: Phase 4 WHEP soak failed.",
                 ]
             ),

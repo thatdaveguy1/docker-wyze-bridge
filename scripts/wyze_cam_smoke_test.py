@@ -15,14 +15,14 @@ from typing import Any, Callable
 from urllib import error, parse, request
 
 
-DEFAULT_BRIDGE_BASE = os.environ.get("WYZE_BRIDGE_BASE", "http://192.168.1.244:5000")
-DEFAULT_GO2RTC_BASE = os.environ.get("WYZE_GO2RTC_BASE", "http://192.168.1.244:1984")
+DEFAULT_BRIDGE_BASE = os.environ.get("WYZE_BRIDGE_BASE", "http://192.0.2.10:5000")
+DEFAULT_GO2RTC_BASE = os.environ.get("WYZE_GO2RTC_BASE", "http://192.0.2.10:1984")
 DEFAULT_CAMERA_ALIASES = {
     "north-yard": "north-yard-sd",
     "garage": "garage-sd",
-    "deck": "deck-sd",
+    "patio": "cam-patio-sd",
     "south-yard": "south-yard-sd",
-    "hamster": "hamster-sd",
+    "side-yard": "side-yard-sd",
 }
 
 

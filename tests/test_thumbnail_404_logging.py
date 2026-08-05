@@ -45,13 +45,13 @@ class TestThumbnail404Logging(unittest.TestCase):
             patch.object(wyze_api_module.logger, "warning") as warning,
             patch.object(wyze_api_module.logger, "error") as err,
         ):
-            result = api.save_thumbnail("hamster", "")
+            result = api.save_thumbnail("side-yard", "")
 
         self.assertFalse(result)
         warning.assert_called_once()
         err.assert_not_called()
         warning_message = warning.call_args.args[0]
-        self.assertIn("Thumbnail unavailable for hamster", warning_message)
+        self.assertIn("Thumbnail unavailable for side-yard", warning_message)
         self.assertIn("https://example.test/thumb.jpg", warning_message)
         self.assertNotIn("X-Amz-Date=1", warning_message)
         self.assertNotIn("404 Client Error", warning_message)
@@ -63,7 +63,7 @@ class TestThumbnail404Logging(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            save_path = pathlib.Path(temp_dir) / "hamster.jpg"
+            save_path = pathlib.Path(temp_dir) / "side-yard.jpg"
             save_path.write_bytes(valid_image)
 
             with (
@@ -72,7 +72,7 @@ class TestThumbnail404Logging(unittest.TestCase):
                 patch.object(wyze_api_module, "url_timestamp", return_value=0),
                 patch.object(wyze_api_module, "get", return_value=response),
             ):
-                result = api.save_thumbnail("hamster", "")
+                result = api.save_thumbnail("side-yard", "")
 
             self.assertFalse(result)
             self.assertEqual(save_path.read_bytes(), valid_image)
@@ -105,7 +105,7 @@ class TestThumbnail404Logging(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            save_path = pathlib.Path(temp_dir) / "hamster.jpg"
+            save_path = pathlib.Path(temp_dir) / "side-yard.jpg"
             save_path.write_text("<!doctype html><html>stale login</html>", encoding="utf-8")
 
             with (
@@ -114,7 +114,7 @@ class TestThumbnail404Logging(unittest.TestCase):
                 patch.object(wyze_api_module, "url_timestamp", return_value=0),
                 patch.object(wyze_api_module, "get", return_value=response),
             ):
-                result = api.save_thumbnail("hamster", "")
+                result = api.save_thumbnail("side-yard", "")
 
             self.assertTrue(result)
             self.assertEqual(save_path.read_bytes(), replacement)
@@ -147,7 +147,7 @@ class TestThumbnail404Logging(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            save_path = pathlib.Path(temp_dir) / "hamster.jpg"
+            save_path = pathlib.Path(temp_dir) / "side-yard.jpg"
             save_path.write_bytes(valid_image)
 
             with (
@@ -157,7 +157,7 @@ class TestThumbnail404Logging(unittest.TestCase):
                 patch.object(wyze_api_module, "time", return_value=1200),
                 patch.object(wyze_api_module, "get", return_value=response) as get,
             ):
-                result = api.save_thumbnail("hamster", "")
+                result = api.save_thumbnail("side-yard", "")
 
             self.assertFalse(result)
             get.assert_called_once()
@@ -170,7 +170,7 @@ class TestThumbnail404Logging(unittest.TestCase):
         response.raise_for_status = Mock()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            save_path = pathlib.Path(temp_dir) / "hamster.jpg"
+            save_path = pathlib.Path(temp_dir) / "side-yard.jpg"
             save_path.write_bytes(valid_image)
 
             with (
@@ -180,7 +180,7 @@ class TestThumbnail404Logging(unittest.TestCase):
                 patch.object(wyze_api_module, "time", return_value=1200),
                 patch.object(wyze_api_module, "get", return_value=response) as get,
             ):
-                result = api.save_thumbnail("hamster", "")
+                result = api.save_thumbnail("side-yard", "")
 
             self.assertFalse(result)
             get.assert_called_once()

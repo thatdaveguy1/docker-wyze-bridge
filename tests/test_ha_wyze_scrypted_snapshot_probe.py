@@ -23,7 +23,7 @@ class TestHAWyzeScryptedSnapshotProbe(unittest.TestCase):
 
     def test_rejects_unsafe_env_values_before_ssh(self):
         env = os.environ.copy()
-        env["HA_WYZE_SCRYPTED_DEVICES"] = "cam-c:10003 garage:12;reboot"
+        env["HA_WYZE_SCRYPTED_DEVICES"] = "south-yard:10001 garage:10002;reboot"
 
         result = subprocess.run(
             [str(PROBE)],

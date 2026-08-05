@@ -7,8 +7,9 @@ TMP_DIR="$ROOT_DIR/tmp"
 STAMP=$(date +%Y%m%d_%H%M%S)
 OUT="$TMP_DIR/phase3_prod_sd_only_${STAMP}.txt"
 
-PROD_SLUG="${HA_PROD_ADDON_SLUG:-local_docker_wyze_bridge_v4}"
-BRIDGE_BASE="${HA_PHASE3_BRIDGE_BASE:-http://172.30.32.1:5000}"
+PROD_SLUG="${HA_PROD_ADDON_SLUG:-wyze_bridge_v4}"
+BRIDGE_BASE="${HA_PHASE3_BRIDGE_BASE:-http://192.0.2.10:5000}"
+STREAM_NAME="${HA_PHASE3_STREAM_NAME:-}"
 
 # Source shared library for local validation functions
 . "$SCRIPT_DIR/ha_bridge_probe.sh"
@@ -25,6 +26,7 @@ restart, rebuild, update, POST, or edit anything.
 Environment:
   HA_PROD_ADDON_SLUG      default: $PROD_SLUG
   HA_PHASE3_BRIDGE_BASE   default: $BRIDGE_BASE
+  HA_PHASE3_STREAM_NAME   optional, go2rtc stream used for the alias proof (default: camera-name)
 EOF
 }
 
@@ -54,6 +56,7 @@ set -eu
 
 PROD_SLUG="$HA_PHASE3_PROD_SLUG"
 BRIDGE_BASE="$HA_PHASE3_BRIDGE_BASE"
+STREAM_NAME="$HA_PHASE3_STREAM_NAME"
 FAIL=0
 API_TOKEN=""
 
@@ -161,7 +164,7 @@ printf '{"camera_count":%s,"configs_found":%s,"all_sd_only":%s,"all_one_feed":%s
 
 section "go2rtc Alias Proof"
 details_file="/tmp/phase3-prod-details.json"
-details_code=$(fetch_bridge_json "/health/details?stream=south-yard" "$details_file")
+details_code=$(fetch_bridge_json "/health/details?stream=${STREAM_NAME:-camera-name}" "$details_file")
 aliases=$(jq -r '(.go2rtc.aliases // .go2rtc.streams // [])[]?' "$details_file" 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//')
 main_aliases=$(printf '%s\n' "$aliases" | tr ' ' '\n' | grep -Ev '(^$|-sd$)' || true)
 only_sd_aliases=true
@@ -182,7 +185,7 @@ fi
 
 exit "$FAIL"
 REMOTE
-} | "$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE3_PROD_SLUG=$PROD_SLUG HA_PHASE3_BRIDGE_BASE=$BRIDGE_BASE sh -s" > "$OUT"
+} | "$SCRIPT_DIR/ha_ssh.sh" "HA_PHASE3_PROD_SLUG=$PROD_SLUG HA_PHASE3_BRIDGE_BASE=$BRIDGE_BASE HA_PHASE3_STREAM_NAME='$STREAM_NAME' sh -s" > "$OUT"
 rc=$?
 set -e
 

@@ -22,21 +22,21 @@ class TestBridgeDiagnostics(unittest.TestCase):
         response = Mock()
         response.status_code = 200
         response.raise_for_status.return_value = None
-        response.json.return_value = {"name": "dog-run", "ready": True}
+        response.json.return_value = {"name": "cam-a", "ready": True}
         mock_get.return_value = response
 
-        result = mediamtx_probe("dog-run")
+        result = mediamtx_probe("cam-a")
 
-        mock_get.assert_called_once_with("http://127.0.0.1:59997/v3/paths/get/dog-run", timeout=1.5)
+        mock_get.assert_called_once_with("http://127.0.0.1:59997/v3/paths/get/cam-a", timeout=1.5)
         self.assertTrue(result["reachable"])
         self.assertTrue(result["enabled"])
         self.assertEqual(result["listener"], "http://127.0.0.1:59997")
-        self.assertEqual(result["data"], {"name": "dog-run", "ready": True})
+        self.assertEqual(result["data"], {"name": "cam-a", "ready": True})
 
     @patch.dict("os.environ", {}, clear=True)
     @patch.object(bridge_diagnostics_module.requests, "get")
     def test_mediamtx_probe_reports_disabled_api(self, mock_get):
-        result = mediamtx_probe("dog-run")
+        result = mediamtx_probe("cam-a")
 
         mock_get.assert_not_called()
         self.assertFalse(result["enabled"])
@@ -66,9 +66,9 @@ class TestBridgeDiagnostics(unittest.TestCase):
         response.json.return_value = {"upstream_alive": True}
         mock_get.return_value = response
 
-        result = whep_proxy_probe("dog-run")
+        result = whep_proxy_probe("cam-a")
 
-        mock_get.assert_called_once_with(f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}/status/dog-run", timeout=1.5)
+        mock_get.assert_called_once_with(f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}/status/cam-a", timeout=1.5)
         self.assertTrue(result["reachable"])
         self.assertEqual(result["listener"], f"http://127.0.0.1:{DEFAULT_WHEP_PROXY_PORT}")
         self.assertEqual(result["data"], {"upstream_alive": True})

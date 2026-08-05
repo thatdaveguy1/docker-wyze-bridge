@@ -76,7 +76,29 @@ if [ -f /data/options.json ] && [ -n "${SUPERVISOR_TOKEN:-}" ]; then
         fi
     done
 fi
+# Fallback: if Supervisor options are missing (stale schema cache), read
+# credentials from the persistent /config mount.
+if [ -z "${WYZE_EMAIL:-}" ] && [ -f /config/wyze_credentials.json ]; then
+    echo "[RUN] Loading Wyze credentials from /config fallback" >&2
+    for key in WYZE_EMAIL WYZE_PASSWORD API_ID API_KEY; do
+        val=$(python3 -c "import json; print(json.load(open('/config/wyze_credentials.json')).get('$key',''))" 2>/dev/null || echo "")
+        if [ -n "$val" ]; then
+            export "$key=$val"
+        fi
+    done
+fi
 
+# Overlay: if updated sidecar/helpers exist in the persistent /config mount,
+# copy them over the baked-in /app versions (workaround for Supervisor rebuild
+# cache not picking up source changes).
+if [ -f /config/go2rtc_sidecar.sh ]; then
+    echo "[RUN] Overlay: applying updated sidecar/helpers from /config" >&2
+    cp /config/go2rtc_sidecar.sh /app/go2rtc_sidecar.sh
+    chmod +x /app/go2rtc_sidecar.sh
+fi
+if [ -f /config/go2rtc_sidecar_helpers.py ]; then
+    cp /config/go2rtc_sidecar_helpers.py /app/wyzebridge/go2rtc_sidecar_helpers.py
+fi
 . /app/go2rtc_sidecar.sh
 start_go2rtc_sidecar
 

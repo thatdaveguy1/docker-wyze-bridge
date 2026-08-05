@@ -211,5 +211,11 @@ class StreamManager:
     def stop_subprocess(self, cam: str):
         return self._snapshots.stop_subprocess(cam)
 
+    def snapshot_health(self) -> dict[str, dict]:
+        return self._snapshots.snapshot_health()
+
+    def snapshot_health_for(self, cam_name: str) -> dict:
+        return self._snapshots.health.health_for(cam_name)
+
     def remove_from_rtsp_snapshots(self, cam: str):
         return self._snapshots.remove_from_rtsp_snapshots(cam)

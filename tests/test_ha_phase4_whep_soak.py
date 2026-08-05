@@ -36,7 +36,7 @@ class TestHAPhase4WhepSoak(unittest.TestCase):
 
     def test_rejects_unsafe_stream_names_before_ssh(self):
         env = os.environ.copy()
-        env["HA_WHEP_SOAK_STREAMS"] = "deck-sub bad;reboot"
+        env["HA_WHEP_SOAK_STREAMS"] = "cam-a bad;reboot"
 
         result = subprocess.run(
             [str(SOAK)],
@@ -53,7 +53,7 @@ class TestHAPhase4WhepSoak(unittest.TestCase):
 
     def test_rejects_unsafe_numeric_values_before_ssh(self):
         env = os.environ.copy()
-        env["HA_WHEP_SOAK_STREAMS"] = "deck-sub"
+        env["HA_WHEP_SOAK_STREAMS"] = "cam-a"
         env["HA_WHEP_SOAK_SECONDS"] = "60;rm"
 
         result = subprocess.run(

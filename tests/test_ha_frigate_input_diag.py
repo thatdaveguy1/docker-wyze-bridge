@@ -21,18 +21,16 @@ class TestHAFrigateInputDiag(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout)
 
-    def test_requires_named_cameras_before_ssh(self):
-        result = subprocess.run(
-            [str(DIAG)],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            check=False,
-        )
+    def test_omitted_cameras_derive_from_live_frigate_config(self):
+        script = DIAG.read_text()
 
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Missing HA_FRIGATE_DIAG_CAMERAS", result.stdout)
+        # Cameras are optional: when omitted the script derives them from live
+        # Frigate config/stats instead of exiting locally with a missing-camera
+        # error. The derive failure path is the new local guard.
+        self.assertNotIn("Missing HA_FRIGATE_DIAG_CAMERAS", script)
+        self.assertIn("derive_cameras_from_json", script)
+        self.assertIn("camera_source=$CAMERA_SOURCE", script)
+        self.assertIn("Unable to derive Frigate cameras from live config or stats", script)
 
     def test_rejects_unsafe_camera_names_before_ssh(self):
         env = os.environ.copy()

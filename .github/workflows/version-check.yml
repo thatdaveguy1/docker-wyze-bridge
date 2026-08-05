@@ -22,6 +22,10 @@ jobs:
           fi
           current_tag=$(cat ./app/.env | grep MTX_TAG | cut -d'=' -f2)
           sed -i "s/MTX_TAG=.*/MTX_TAG=${release_tag}/" ./app/.env
+          sed -i "s/MTX_TAG=.*/MTX_TAG=${release_tag}/" ./app/build.env
+          sed -i "s/MTX_TAG=.*/MTX_TAG=${release_tag}/" ./runtime_overlays/home_assistant/app/.env ./runtime_overlays/ha_live_addon/app/.env
+          ./scripts/build.sh --apply home_assistant
+          ./scripts/build.sh --apply ha_live_addon
           echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
           echo "current_tag=$current_tag" >> $GITHUB_OUTPUT
 
@@ -34,7 +38,7 @@ jobs:
           branch: mtx-version
           body: |
             This pull request updates MediaMTX to the latest version: [v${{ steps.media_mtx.outputs.release_tag }}](https://github.com/bluenviron/mediamtx/releases/tag/v${{ steps.media_mtx.outputs.release_tag }})
-          add-paths: app/.env
+          add-paths: app/.env app/build.env home_assistant/ .ha_live_addon/
           base: main
           delete-branch: true
 
@@ -54,6 +58,10 @@ jobs:
           fi
           current_tag=$(cat ./app/.env | grep APP_VERSION | cut -d'=' -f2)
           sed -i "s/APP_VERSION=.*/APP_VERSION=${release_tag}/" ./app/.env
+          sed -i "s/APP_VERSION=.*/APP_VERSION=${release_tag}/" ./app/build.env
+          sed -i "s/APP_VERSION=.*/APP_VERSION=${release_tag}/" ./runtime_overlays/home_assistant/app/.env ./runtime_overlays/ha_live_addon/app/.env
+          ./scripts/build.sh --apply home_assistant
+          ./scripts/build.sh --apply ha_live_addon
           echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
           echo "current_tag=$current_tag" >> $GITHUB_OUTPUT
 
@@ -66,6 +74,6 @@ jobs:
           branch: wyze-version
           body: |
             This pull request updates the Wyze iOS App version to the latest version: [v${{ steps.wyze_ios.outputs.release_tag }}](https://apps.apple.com/us/app/wyze-make-your-home-smarter/id1288415553)
-          add-paths: app/.env
+          add-paths: app/.env app/build.env home_assistant/ .ha_live_addon/
           base: main
           delete-branch: true

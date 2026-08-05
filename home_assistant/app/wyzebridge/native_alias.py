@@ -6,6 +6,7 @@ API/probe helpers; this module owns alias-specific logic. Talkback (two-way
 audio) lives in wyzebridge.native_talkback.
 """
 
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -38,9 +39,13 @@ _GO2RTC_API_REACHABLE_CACHE_TTL = 5.0
 _GO2RTC_API_REACHABLE_CACHE: dict[int, tuple[float, bool]] = {}
 
 # Per-camera recovery aliases tried when the primary and substream aliases fail.
-RECOVERY_ALIASES: dict[str, list[str]] = {
-    "north-yard": ["north-yard-v4-hd-recovery"],
-}
+# The HD recovery lane is opt-in via GO2RTC_HD_RECOVERY_CAMERAS (comma-separated
+# camera/uri names, default empty = feature off) so no household camera is baked in.
+def recovery_aliases(cam_name: str) -> list[str]:
+    cameras = {c.strip() for c in os.environ.get("GO2RTC_HD_RECOVERY_CAMERAS", "").split(",") if c.strip()}
+    if cam_name in cameras:
+        return [f"{cam_name}-v4-hd-recovery"]
+    return []
 
 _VALIDATED_NATIVE_MODELS = {
     "HL_CAM3P": {
@@ -276,10 +281,13 @@ def write_native_snapshot(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
     last_error = "no frame returned"
-    while time.monotonic() < deadline:
+    max_attempts = 3
+    attempts = 0
+    while time.monotonic() < deadline and attempts < max_attempts:
+        attempts += 1
         try:
             response = requests.get(
-                f"{go2rtc_api_base()}/api/frame.jpeg?src={quote(alias, safe='')}",
+                f"{go2rtc_api_base()}/api/frame.jpeg?src={quote(alias, safe='')}&cache=10s",
                 timeout=max(0.5, min(5.0, deadline - time.monotonic())),
             )
             if response.status_code == 503:
@@ -324,7 +332,8 @@ def write_native_snapshot(
             last_error = f"{type(ex).__name__}: {ex}"
             time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
     logger.debug(
-        f"[{cam_name}] Native snapshot from {alias} did not produce a fresh frame before fallback: {last_error}"
+        f"[{cam_name}] Native snapshot from {alias} did not produce a fresh frame "
+        f"after {attempts} attempt(s) before fallback: {last_error}"
     )
     return False
 

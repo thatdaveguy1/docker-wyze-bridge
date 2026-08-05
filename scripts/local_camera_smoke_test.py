@@ -54,13 +54,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-name", default="", help="Optional short label for the run.")
     parser.add_argument(
         "--bridge-base",
-        default=os.environ.get("WYZE_BRIDGE_BASE", "http://192.168.1.244:5000"),
-        help="Wyze bridge base URL. Defaults to WYZE_BRIDGE_BASE or the current local host value.",
+        default=os.environ.get("WYZE_BRIDGE_BASE", "http://192.0.2.10:5000"),
+        help="Wyze bridge base URL. Defaults to WYZE_BRIDGE_BASE or an example value.",
     )
     parser.add_argument(
         "--go2rtc-base",
-        default=os.environ.get("WYZE_GO2RTC_BASE", "http://192.168.1.244:1984"),
-        help="Wyze go2rtc base URL. Defaults to WYZE_GO2RTC_BASE or the current local host value.",
+        default=os.environ.get("WYZE_GO2RTC_BASE", "http://192.0.2.10:1984"),
+        help="Wyze go2rtc base URL. Defaults to WYZE_GO2RTC_BASE or an example value.",
     )
     parser.add_argument(
         "--bridge-api-key",
