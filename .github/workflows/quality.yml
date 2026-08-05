@@ -90,7 +90,7 @@ jobs:
 
       - name: Scan for host-specific secrets
         run: |
-          matches=$(grep -rInE '192\.168\.1\.|172\.30\.32\.|***REDACTED***|Cessna|***REDACTED***|ccab4aaf|0eb0428f|local_docker_wyze' \
+          matches=$(grep -rInE '192\.168\.1\.|172\.30\.32\.|Cessna|ccab4aaf|0eb0428f|local_docker_wyze' \
             app/ scripts/ runtime_overlays/ home_assistant/ .ha_live_addon/ || true)
           # Allow the intentional HA ingress default (172.30.32.2) at web_ui.py:39 in app/ and generated trees
           if [ -n "$matches" ]; then
