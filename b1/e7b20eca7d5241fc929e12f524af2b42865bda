@@ -1,0 +1,46 @@
+.github/workflows/docker-image.yml
+  h_6f6f58d5fb612d 114-181
+CHANGELOG.md
+  h_6f6f58d5fb612d 6-10
+README.md
+  h_6f6f58d5fb612d 18-21
+app/.env
+  h_6f6f58d5fb612d 1
+app/build.env
+  h_6f6f58d5fb612d 1
+docker/Dockerfile
+  h_6f6f58d5fb612d 70
+docker/Dockerfile.multiarch
+  h_6f6f58d5fb612d 90
+home_assistant/CHANGELOG.md
+  h_6f6f58d5fb612d 3-6
+home_assistant/Dockerfile
+  h_6f6f58d5fb612d 24-25,76
+home_assistant/app/.env
+  h_6f6f58d5fb612d 1
+home_assistant/app/build.env
+  h_6f6f58d5fb612d 1
+home_assistant/config.yml
+  h_6f6f58d5fb612d 5-6
+runtime_overlays/home_assistant/CHANGELOG.md
+  h_6f6f58d5fb612d 3-6
+runtime_overlays/home_assistant/Dockerfile
+  h_6f6f58d5fb612d 24-25,76
+runtime_overlays/home_assistant/app/.env
+  h_6f6f58d5fb612d 1
+runtime_overlays/home_assistant/app/build.env
+  h_6f6f58d5fb612d 1
+runtime_overlays/home_assistant/config.yml
+  h_6f6f58d5fb612d 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "b1e7b20eca7d5241fc929e12f524af2b42865bda",
+  "prompts": {},
+  "humans": {
+    "h_6f6f58d5fb612d": {
+      "author": "David Longman <dlongman@tokentradegames.com>"
+    }
+  }
+}
