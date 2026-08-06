@@ -1,5 +1,9 @@
 # What's Changed
 
+## What's Changed in v5.0.1
+
+Fix HA add-on store install: add `image:` so Supervisor pulls the prebuilt multiarch GHCR image instead of attempting a local build on the HA box (which failed with an unknown build error).
+
 ## What's Changed in v5.0.0
 
 Major release focused on native snapshot health tracking, proactive stream recovery, and code-quality remediation.

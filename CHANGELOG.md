@@ -3,6 +3,11 @@
 All notable changes to Docker Wyze Bridge are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.1] - 2026-08-06
+
+### Fixed
+- Fix HA add-on store install: add `image:` so Supervisor pulls the prebuilt multiarch GHCR image instead of attempting a local build on the HA box (which failed with an unknown build error).
+
 ## [5.0.0] - 2026-06-24
 
 ### Changed — WHEP proxy upstream split

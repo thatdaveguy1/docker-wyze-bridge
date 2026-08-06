@@ -15,6 +15,10 @@ Create local WebRTC, RTSP, RTMP, and HLS streams for Wyze cameras without custom
 - WebRTC/KVS-backed bridge path for modern Wyze models.
 - Native Home Assistant `go2rtc` RTSP sidecar on `:19554` for supported 5.0 workflows.
 
+## 5.0.1 Highlights
+
+- Fix HA add-on store install: the add-on now ships a prebuilt GHCR image (ghcr.io/thatdaveguy1/docker-wyze-bridge-ha) so Home Assistant Supervisor pulls it instead of building locally on your HA box.
+
 ## 5.0.0 Highlights
 
 - **Native snapshot health tracking**: DWB now tracks per-camera snapshot health internally via `SnapshotHealthTracker` in `app/wyzebridge/snapshot_health.py`. The tracker records consecutive snapshot failures, stale-hash duration (frozen frame detection), and per-camera state transitions (`online` → `snapshot_down` → `stale_snapshot`). This moves the babysitter's Wyze snapshot monitoring into DWB itself, making the babysitter a last line of defense for Reolink camera reboots only.

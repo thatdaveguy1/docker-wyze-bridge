@@ -21,6 +21,8 @@ RUN set -eux; \
         curl \
         gcc \
         libffi-dev \
+        libjpeg62-turbo-dev \
+        zlib1g-dev \
         tar; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*
@@ -71,7 +73,7 @@ ARG BUILD_VERSION
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends curl ca-certificates; \
+    apt-get install -y --no-install-recommends curl ca-certificates libjpeg62-turbo zlib1g; \
     update-ca-certificates; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
