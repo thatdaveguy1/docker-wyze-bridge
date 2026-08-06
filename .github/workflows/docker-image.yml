@@ -9,6 +9,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      addon_tag:
+        description: 'Custom tag for the add-on image (e.g. 5.0.1)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -153,6 +158,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=sha,format=long
+            type=raw,value=${{ inputs.addon_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.addon_tag != '' }}
 
       - name: Build and push HA add-on image
         uses: docker/build-push-action@v6
