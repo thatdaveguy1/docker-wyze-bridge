@@ -35,10 +35,11 @@ TARGETS = {
 IGNORED_NAMES = {".DS_Store", "__pycache__"}
 IGNORED_SUFFIXES = {".pyc", ".pyo"}
 IGNORED_PREFIXES = ("options_payload",)
+IGNORED_DIR_SUFFIXES = (".egg-info",)
 
 
 def ignored(rel: Path) -> bool:
-    if any(part in IGNORED_NAMES for part in rel.parts):
+    if any(part in IGNORED_NAMES or part.endswith(IGNORED_DIR_SUFFIXES) for part in rel.parts):
         return True
     if rel.suffix in IGNORED_SUFFIXES:
         return True
