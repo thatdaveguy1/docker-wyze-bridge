@@ -3,7 +3,8 @@ name = "docker-wyze-bridge"
 version = "5.0.0"
 description = "Local WebRTC/RTSP/RTMP/HLS bridge for Wyze cameras"
 readme = "README.md"
-license = {text = "MIT"}
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "Flask==3.1.*",
@@ -28,6 +29,10 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+
+[tool.setuptools.packages.find]
+where = ["app"]
+include = ["babysitter*", "wyzebridge*", "wyzecam*"]
 
 [tool.ruff]
 line-length = 120
