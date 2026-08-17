@@ -19,6 +19,18 @@ jobs:
         with:
           python-version: '3.13'
       - run: pip install 'ruff>=0.12'
+      - name: Fix concrete undefined MQTT publisher
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/wyzebridge/snapshot.py')
+          text = path.read_text()
+          old = 'from wyzebridge.mqtt import update_preview\n'
+          new = 'from wyzebridge.mqtt import publish_topic, update_preview\n'
+          if old not in text and new not in text:
+              raise SystemExit('snapshot MQTT import shape changed unexpectedly')
+          path.write_text(text.replace(old, new))
+          PY
       - name: Apply safe Ruff fixes and formatting
         run: |
           ruff check app/ tests/ --fix
