@@ -1,0 +1,56 @@
+name: RTSP fix and Desloppify audit
+
+on:
+  push:
+    branches: [fix/rtsp-egress-health]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate packaged sidecar shell syntax
+        run: |
+          set -eux
+          sh -n app/go2rtc_sidecar.sh
+          sh -n home_assistant/app/go2rtc_sidecar.sh
+          sh -n .ha_live_addon/app/go2rtc_sidecar.sh
+
+      - name: Install project and audit dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip install -r app/requirements.txt
+          python -m pip install --upgrade "desloppify[full]"
+
+      - name: Run Desloppify strict audit
+        shell: bash
+        run: |
+          set +e
+          echo "=== DESLOPPIFY VERSION ==="
+          desloppify --version || true
+          echo "=== DESLOPPIFY SCAN ==="
+          desloppify scan --path . --profile strict
+          scan_rc=$?
+          echo "DESLOPPIFY_SCAN_RC=${scan_rc}"
+          echo "=== DESLOPPIFY STATUS ==="
+          desloppify status || true
+          echo "=== DESLOPPIFY NEXT ==="
+          desloppify next || true
+          exit 0
+
+      - name: Build check
+        run: ./scripts/build.sh --check
+
+      - name: Python tests
+        run: python -m pytest tests/ --timeout=60 -q
