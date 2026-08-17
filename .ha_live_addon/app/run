@@ -89,19 +89,40 @@ if [ -z "${WYZE_EMAIL:-}" ] && [ -f /config/wyze_credentials.json ]; then
 fi
 
 # Overlay: if updated sidecar/helpers exist in the persistent /config mount,
-# copy them over the baked-in /app versions (workaround for Supervisor rebuild
-# cache not picking up source changes).
+# validate them before replacing baked-in files. A malformed persistent shell
+# overlay must never make an otherwise-good add-on fail during `. sidecar.sh`.
 if [ -f /config/go2rtc_sidecar.sh ]; then
-    echo "[RUN] Overlay: applying updated sidecar/helpers from /config" >&2
-    cp /config/go2rtc_sidecar.sh /app/go2rtc_sidecar.sh
-    chmod +x /app/go2rtc_sidecar.sh
+    if sh -n /config/go2rtc_sidecar.sh 2>/tmp/go2rtc_sidecar_overlay_syntax.log; then
+        echo "[RUN] Overlay: applying validated sidecar from /config" >&2
+        cp /config/go2rtc_sidecar.sh /app/go2rtc_sidecar.sh
+        chmod +x /app/go2rtc_sidecar.sh
+    else
+        echo "[RUN] WARNING: rejected invalid /config/go2rtc_sidecar.sh; using baked-in sidecar" >&2
+        cat /tmp/go2rtc_sidecar_overlay_syntax.log >&2 2>/dev/null || true
+    fi
 fi
 if [ -f /config/go2rtc_sidecar_helpers.py ]; then
-    cp /config/go2rtc_sidecar_helpers.py /app/wyzebridge/go2rtc_sidecar_helpers.py
+    if python3 -m py_compile /config/go2rtc_sidecar_helpers.py 2>/tmp/go2rtc_helpers_overlay_syntax.log; then
+        cp /config/go2rtc_sidecar_helpers.py /app/wyzebridge/go2rtc_sidecar_helpers.py
+    else
+        echo "[RUN] WARNING: rejected invalid /config/go2rtc_sidecar_helpers.py; using baked-in helpers" >&2
+        cat /tmp/go2rtc_helpers_overlay_syntax.log >&2 2>/dev/null || true
+    fi
 fi
+
+if ! sh -n /app/go2rtc_sidecar.sh; then
+    echo "[RUN] FATAL: baked-in go2rtc_sidecar.sh failed shell syntax validation" >&2
+    exit 1
+fi
+
 . /app/go2rtc_sidecar.sh
 start_go2rtc_sidecar
 
 export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
+
+# Producer bytes and an RTSP 200 response are not sufficient proof that a new
+# consumer can decode H.264. This watchdog validates RTSP SDP plus a decoded
+# JPEG frame and performs bounded alias/process recovery when that path fails.
+python3 -m wyzebridge.go2rtc_consumer_health &
 
 exec flask run --host=0.0.0.0 --port="${WB_APP_PORT:-5000}"
