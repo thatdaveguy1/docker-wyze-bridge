@@ -131,15 +131,6 @@ def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
     )
 
 
-def restart_alias(alias: str, api_base: str, timeout: float = 5.0) -> None:
-    """Recreate one go2rtc alias and immediately preload it."""
-    restart_url = f"{api_base}/api/streams?{urllib.parse.urlencode({'src': '', 'dst': alias})}"
-    _urlopen(urllib.request.Request(restart_url, method="POST"), timeout=timeout)
-    time.sleep(2)
-    preload_url = f"{api_base}/api/preload?{urllib.parse.urlencode({'src': alias})}"
-    _urlopen(urllib.request.Request(preload_url, method="PUT"), timeout=timeout)
-
-
 def restart_go2rtc_child() -> int:
     """Signal go2rtc child processes; the sidecar wrapper restarts them cleanly."""
     killed = 0
@@ -158,7 +149,7 @@ def restart_go2rtc_child() -> int:
 
 @dataclass
 class ConsumerHealthState:
-    """Bounded failure state for per-alias and shared-egress recovery."""
+    """Bounded failure state for individual aliases and shared RTSP egress."""
 
     failure_threshold: int = 2
     process_threshold: int = 3
@@ -166,13 +157,13 @@ class ConsumerHealthState:
     shared_failure_cycles: int = 0
 
     def record_cycle(self, results: dict[str, bool]) -> tuple[list[str], bool]:
-        """Return aliases to restart and whether the whole go2rtc child should restart."""
+        """Return aliases requiring recovery and whether all-stream failure escalated."""
         active = set(results)
         for alias in list(self.failures):
             if alias not in active:
                 self.failures.pop(alias, None)
 
-        restart_aliases: list[str] = []
+        failed_aliases: list[str] = []
         for alias, healthy in results.items():
             if healthy:
                 self.failures[alias] = 0
@@ -180,7 +171,7 @@ class ConsumerHealthState:
             count = self.failures.get(alias, 0) + 1
             self.failures[alias] = count
             if count >= self.failure_threshold:
-                restart_aliases.append(alias)
+                failed_aliases.append(alias)
                 self.failures[alias] = 0
 
         if results and not any(results.values()):
@@ -188,12 +179,12 @@ class ConsumerHealthState:
         else:
             self.shared_failure_cycles = 0
 
-        restart_process = self.shared_failure_cycles >= self.process_threshold
-        if restart_process:
+        shared_failure = self.shared_failure_cycles >= self.process_threshold
+        if shared_failure:
             self.shared_failure_cycles = 0
             for alias in results:
                 self.failures[alias] = 0
-        return restart_aliases, restart_process
+        return failed_aliases, shared_failure
 
 
 def run() -> None:
@@ -228,19 +219,16 @@ def run() -> None:
             if not results[alias]:
                 _log(f"{alias}: consumer probe failed ({details[alias]})")
 
-        aliases_to_restart, restart_process = state.record_cycle(results)
-        if restart_process:
+        failed_aliases, shared_failure = state.record_cycle(results)
+        if failed_aliases or shared_failure:
             killed = restart_go2rtc_child()
-            _log(f"all active consumer probes failed repeatedly; signalled go2rtc child count={killed}")
+            if shared_failure:
+                reason = "all active consumer probes failed repeatedly"
+            else:
+                reason = f"repeated consumer failure aliases={','.join(failed_aliases)}"
+            _log(f"{reason}; signalled go2rtc child count={killed}")
             time.sleep(max(interval, 5))
             continue
-
-        for alias in aliases_to_restart:
-            try:
-                _log(f"{alias}: repeated consumer failure; recreating alias")
-                restart_alias(alias, api_base)
-            except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
-                _log(f"{alias}: alias restart failed: {type(exc).__name__}")
 
         time.sleep(interval)
 
