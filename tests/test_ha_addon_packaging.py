@@ -476,7 +476,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
             with self.subTest(helper=str(helper_path.relative_to(ROOT))):
                 # Quarantine file declared separately from stall state
                 self.assertIn("_quarantine_file", text)
-                self.assertIn('quarantine_${alias}.json', text)
+                self.assertIn("quarantine_${alias}.json", text)
                 # Python helper call merges quarantine from separate file
                 self.assertIn("quarantined_until", text)
                 self.assertIn("quarantine_count", text)
@@ -484,7 +484,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                 # The glob rm should only target stall_state_*, dead_*, stall_*, bytes_*
                 # Verify quarantine_ is NOT in the rm glob on process restart
                 self.assertNotIn(
-                    'quarantine_*',
+                    "quarantine_*",
                     text,
                     "Process-restart cleanup must not delete quarantine files",
                 )
@@ -492,7 +492,7 @@ class TestHomeAssistantAddonPackaging(unittest.TestCase):
                 # targeting volatile state files
                 self.assertRegex(
                     text,
-                    r'rm -f .*stall_state_\*\.json.*dead_\*.*stall_\*.*bytes_\*',
+                    r"rm -f .*stall_state_\*\.json.*dead_\*.*stall_\*.*bytes_\*",
                     "Process-restart cleanup should only clear volatile state",
                 )
 

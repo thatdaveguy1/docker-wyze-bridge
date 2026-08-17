@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from babysitter.config import BabysitterConfig, CameraEntry  # noqa: E402
-from babysitter.state import BabysitterState, CameraState  # noqa: E402
+from babysitter.state import BabysitterState  # noqa: E402
 from babysitter.watchdog import (  # noqa: E402
     STATE_ONLINE,
     STATE_RECOVERING,
@@ -22,7 +22,6 @@ from babysitter.watchdog import (  # noqa: E402
     CameraStatus,
     Watchdog,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -65,12 +64,13 @@ def _make_config(
         recovery_wait=recovery_wait,
         interval=interval,
         cameras=[
-            CameraEntry(friendly_name="doorbell", scrypted_id="101",
-                        ip="192.168.1.71", frigate_name="doorbell"),
-            CameraEntry(friendly_name="south_driveway", scrypted_id="102",
-                        ip="192.168.1.72", frigate_name="south_driveway"),
-            CameraEntry(friendly_name="north_driveway", scrypted_id="103",
-                        ip="192.168.1.73", frigate_name="north_driveway"),
+            CameraEntry(friendly_name="doorbell", scrypted_id="101", ip="192.168.1.71", frigate_name="doorbell"),
+            CameraEntry(
+                friendly_name="south_driveway", scrypted_id="102", ip="192.168.1.72", frigate_name="south_driveway"
+            ),
+            CameraEntry(
+                friendly_name="north_driveway", scrypted_id="103", ip="192.168.1.73", frigate_name="north_driveway"
+            ),
         ],
         approved_cameras=approved if approved is not None else {"doorbell", "south_driveway", "north_driveway"},
         per_camera_dry_run=per_camera_dry_run or {},
@@ -100,28 +100,33 @@ class _BasePollTest(unittest.TestCase):
         self.addCleanup(self.tcp_patcher.stop)
 
         self.fps_patcher = patch.object(
-            self.wd.frigate, "camera_fps",
-            return_value={"camera_fps": 10.0, "process_fps": 10.0,
-                          "skipped_fps": 0.0, "detection_fps": 0.0},
+            self.wd.frigate,
+            "camera_fps",
+            return_value={"camera_fps": 10.0, "process_fps": 10.0, "skipped_fps": 0.0, "detection_fps": 0.0},
         )
         self.mock_fps = self.fps_patcher.start()
         self.addCleanup(self.fps_patcher.stop)
 
         self.snap_patcher = patch.object(
-            self.wd.scrypted, "snapshot", return_value=_make_jpeg(),
+            self.wd.scrypted,
+            "snapshot",
+            return_value=_make_jpeg(),
         )
         self.mock_snap = self.snap_patcher.start()
         self.addCleanup(self.snap_patcher.stop)
 
         self.rtsp_patcher = patch.object(
-            self.wd.frigate, "rtsp_inputs",
+            self.wd.frigate,
+            "rtsp_inputs",
             return_value={"doorbell": "rtsp://admin:REDACTED@192.168.1.71:554/stream"},
         )
         self.mock_rtsp = self.rtsp_patcher.start()
         self.addCleanup(self.rtsp_patcher.stop)
 
         self.ffprobe_patcher = patch.object(
-            self.wd.frigate, "ffprobe", return_value={"streams": []},
+            self.wd.frigate,
+            "ffprobe",
+            return_value={"streams": []},
         )
         self.mock_ffprobe = self.ffprobe_patcher.start()
         self.addCleanup(self.ffprobe_patcher.stop)
@@ -199,13 +204,17 @@ class TestPollStaleHash(_BasePollTest):
         self.config.snapshot_stale_window = 0
         self.wd = _make_watchdog(self.config, self.state)
         # Re-patch since we recreated the watchdog.
-        with patch("babysitter.watchdog.tcp_reachable", return_value=True), \
-             patch.object(self.wd.frigate, "camera_fps",
-                          return_value={"camera_fps": 10.0, "process_fps": 10.0,
-                                        "skipped_fps": 0.0, "detection_fps": 0.0}), \
-             patch.object(self.wd.scrypted, "snapshot", return_value=_make_jpeg(seed=1)), \
-             patch.object(self.wd.frigate, "rtsp_inputs", return_value={}), \
-             patch.object(self.wd.frigate, "ffprobe", return_value={"streams": []}):
+        with (
+            patch("babysitter.watchdog.tcp_reachable", return_value=True),
+            patch.object(
+                self.wd.frigate,
+                "camera_fps",
+                return_value={"camera_fps": 10.0, "process_fps": 10.0, "skipped_fps": 0.0, "detection_fps": 0.0},
+            ),
+            patch.object(self.wd.scrypted, "snapshot", return_value=_make_jpeg(seed=1)),
+            patch.object(self.wd.frigate, "rtsp_inputs", return_value={}),
+            patch.object(self.wd.frigate, "ffprobe", return_value={"streams": []}),
+        ):
             self.wd.poll_once()
             self.wd.poll_once()
             s = self.wd._last_status["doorbell"]
@@ -218,8 +227,7 @@ class TestPollVideoDownConvergence(_BasePollTest):
     def test_video_down_all_signals_met(self):
         # All 5 convergence signals: TCP ok, fps zero, skipped zero,
         # snapshot bad (3 samples), ffprobe no streams, duration > threshold.
-        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0,
-                                      "skipped_fps": 0.0, "detection_fps": 0.0}
+        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0}
         self.mock_snap.return_value = b""
         self.mock_ffprobe.return_value = {"streams": []}
         # Set fps_zero_since in the past to exceed threshold.
@@ -234,8 +242,7 @@ class TestPollVideoDownConvergence(_BasePollTest):
 
     def test_video_down_skipped_fps_disqualifies(self):
         # skipped_fps > 0 → decoder backlog, not a camera wedge.
-        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0,
-                                      "skipped_fps": 5.0, "detection_fps": 0.0}
+        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 5.0, "detection_fps": 0.0}
         self.mock_snap.return_value = b""
         cam = self.state.get_camera("doorbell")
         cam.fps_zero_since = time.time() - (self.config.video_down_threshold + 10)
@@ -246,8 +253,7 @@ class TestPollVideoDownConvergence(_BasePollTest):
 
     def test_video_down_ffprobe_stream_ok_is_recovering(self):
         # ffprobe says stream is fine → not video_down, recovering.
-        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0,
-                                      "skipped_fps": 0.0, "detection_fps": 0.0}
+        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0}
         self.mock_snap.return_value = b""
         self.mock_ffprobe.return_value = {"streams": [{"codec_type": "video"}]}
         cam = self.state.get_camera("doorbell")
@@ -259,8 +265,7 @@ class TestPollVideoDownConvergence(_BasePollTest):
 
     def test_video_down_threshold_not_met_is_recovering(self):
         # FPS zero but duration < threshold → recovering, not video_down.
-        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0,
-                                      "skipped_fps": 0.0, "detection_fps": 0.0}
+        self.mock_fps.return_value = {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0}
         self.mock_snap.return_value = b""
         cam = self.state.get_camera("doorbell")
         cam.fps_zero_since = time.time() - 10  # well under 120s threshold
@@ -284,9 +289,14 @@ class _BaseRecoverTest(unittest.TestCase):
         self.wd = _make_watchdog(self.config, self.state)
         # Seed a video_down status for "doorbell".
         self.wd._last_status["doorbell"] = CameraStatus(
-            name="doorbell", state=STATE_VIDEO_DOWN,
-            camera_fps=0.0, process_fps=0.0, skipped_fps=0.0,
-            snapshot_valid=False, tcp_reachable=True, cgi_reachable=True,
+            name="doorbell",
+            state=STATE_VIDEO_DOWN,
+            camera_fps=0.0,
+            process_fps=0.0,
+            skipped_fps=0.0,
+            snapshot_valid=False,
+            tcp_reachable=True,
+            cgi_reachable=True,
         )
 
     def _patch_reboot(self, return_value: bool = True) -> MagicMock:
@@ -419,11 +429,13 @@ class TestRecoveryWait(unittest.TestCase):
         wd = _make_watchdog(config, state)
         entry = config.cameras[0]
         # First two polls return 0, third returns > 0.
-        wd.frigate.camera_fps = MagicMock(side_effect=[
-            {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0},
-            {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0},
-            {"camera_fps": 5.0, "process_fps": 5.0, "skipped_fps": 0.0, "detection_fps": 0.0},
-        ])
+        wd.frigate.camera_fps = MagicMock(
+            side_effect=[
+                {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0},
+                {"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0},
+                {"camera_fps": 5.0, "process_fps": 5.0, "skipped_fps": 0.0, "detection_fps": 0.0},
+            ]
+        )
         waited = wd._wait_for_recovery("doorbell", entry)
         self.assertGreater(waited, 0)
 
@@ -434,8 +446,7 @@ class TestRecoveryWait(unittest.TestCase):
         wd = _make_watchdog(config, state)
         entry = config.cameras[0]
         wd.frigate.camera_fps = MagicMock(
-            return_value={"camera_fps": 0.0, "process_fps": 0.0,
-                          "skipped_fps": 0.0, "detection_fps": 0.0},
+            return_value={"camera_fps": 0.0, "process_fps": 0.0, "skipped_fps": 0.0, "detection_fps": 0.0},
         )
         # Force time to advance past the deadline.
         with patch("babysitter.watchdog.time.time", side_effect=[1000.0, 1000.0, 2000.0, 2000.0]):
@@ -455,9 +466,11 @@ class TestRunCycle(unittest.TestCase):
         wd = _make_watchdog(config, state)
         # Seed two cameras as video_down.
         wd._last_status["doorbell"] = CameraStatus(
-            name="doorbell", state=STATE_VIDEO_DOWN, tcp_reachable=True, cgi_reachable=True)
+            name="doorbell", state=STATE_VIDEO_DOWN, tcp_reachable=True, cgi_reachable=True
+        )
         wd._last_status["south_driveway"] = CameraStatus(
-            name="south_driveway", state=STATE_VIDEO_DOWN, tcp_reachable=True, cgi_reachable=True)
+            name="south_driveway", state=STATE_VIDEO_DOWN, tcp_reachable=True, cgi_reachable=True
+        )
 
         reboot_calls: list[str] = []
 
@@ -465,16 +478,19 @@ class TestRunCycle(unittest.TestCase):
             def _reboot():
                 reboot_calls.append(name)
                 return True
+
             return _reboot
 
         wd.onvif["doorbell"].reboot_with_retry = _make_reboot("doorbell")  # type: ignore[assignment]
         wd.onvif["south_driveway"].reboot_with_retry = _make_reboot("south_driveway")  # type: ignore[assignment]
 
         # Mock poll_once to return our seeded statuses.
-        with patch.object(wd, "poll_once", return_value=wd._last_status), \
-             patch.object(wd, "_wait_for_recovery", return_value=0.0), \
-             patch("babysitter.watchdog.tcp_reachable", return_value=True), \
-             patch("babysitter.state.save_state"):
+        with (
+            patch.object(wd, "poll_once", return_value=wd._last_status),
+            patch.object(wd, "_wait_for_recovery", return_value=0.0),
+            patch("babysitter.watchdog.tcp_reachable", return_value=True),
+            patch("babysitter.state.save_state"),
+        ):
             summary = wd.run_cycle()
 
         self.assertEqual(len(summary["actions"]), 2)
@@ -488,8 +504,7 @@ class TestRunCycle(unittest.TestCase):
         state = BabysitterState()
         wd = _make_watchdog(config, state)
         wd._last_status["doorbell"] = CameraStatus(name="doorbell", state=STATE_ONLINE)
-        with patch.object(wd, "poll_once", return_value=wd._last_status), \
-             patch("babysitter.state.save_state"):
+        with patch.object(wd, "poll_once", return_value=wd._last_status), patch("babysitter.state.save_state"):
             summary = wd.run_cycle()
         self.assertEqual(len(summary["actions"]), 0)
 
@@ -504,8 +519,7 @@ class TestMqttPublishing(unittest.TestCase):
         config = _make_config(mqtt_broker="mqtt.local")
         state = BabysitterState()
         wd = _make_watchdog(config, state)
-        with patch.object(wd.mqtt, "_client") as mock_client, \
-             patch.object(wd.mqtt, "_connect", return_value=True):
+        with patch.object(wd.mqtt, "_client") as mock_client, patch.object(wd.mqtt, "_connect", return_value=True):
             wd.mqtt.publish_status("doorbell", {"state": "online"})
             mock_client.publish.assert_called_once()
             topic = mock_client.publish.call_args[0][0]
@@ -516,8 +530,7 @@ class TestMqttPublishing(unittest.TestCase):
         config = _make_config(mqtt_broker="mqtt.local")
         state = BabysitterState()
         wd = _make_watchdog(config, state)
-        with patch.object(wd.mqtt, "_client") as mock_client, \
-             patch.object(wd.mqtt, "_connect", return_value=True):
+        with patch.object(wd.mqtt, "_client") as mock_client, patch.object(wd.mqtt, "_connect", return_value=True):
             wd.mqtt.publish_reboot_event("doorbell", {"outcome": "success"})
             mock_client.publish.assert_called_once()
             topic = mock_client.publish.call_args[0][0]
@@ -538,8 +551,10 @@ class TestMqttPublishing(unittest.TestCase):
         wd = _make_watchdog(config, state)
         mock_client = MagicMock()
         mock_client.publish.side_effect = RuntimeError("broker down")
-        with patch.object(wd.mqtt, "_ensure_client", return_value=mock_client), \
-             patch.object(wd.mqtt, "_connect", return_value=True):
+        with (
+            patch.object(wd.mqtt, "_ensure_client", return_value=mock_client),
+            patch.object(wd.mqtt, "_connect", return_value=True),
+        ):
             # Should not raise.
             wd.mqtt.publish_status("doorbell", {"state": "online"})
 
@@ -560,8 +575,7 @@ class TestBackgroundLoop(unittest.TestCase):
         config = _make_config(interval=1)
         state = BabysitterState()
         wd = _make_watchdog(config, state)
-        with patch.object(wd, "run_cycle") as mock_cycle, \
-             patch("babysitter.state.save_state"):
+        with patch.object(wd, "run_cycle") as mock_cycle, patch("babysitter.state.save_state"):
             wd.start_background(interval=1)
             time.sleep(0.3)
             wd.stop()

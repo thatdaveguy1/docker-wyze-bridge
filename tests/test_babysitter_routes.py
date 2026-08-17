@@ -10,16 +10,15 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from flask import Flask
 
 from babysitter.config import BabysitterConfig, CameraEntry, save_config
-from babysitter.state import BabysitterState, CameraState, RebootEvent, save_state
 from babysitter.routes import create_blueprint
-
+from babysitter.state import BabysitterState, CameraState, RebootEvent, save_state
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -92,10 +91,12 @@ class _BaseRouteTest(unittest.TestCase):
         # app/babysitter/templates) are found.
         from jinja2 import ChoiceLoader, FileSystemLoader
 
-        self.app.jinja_loader = ChoiceLoader([
-            self.app.jinja_loader,
-            FileSystemLoader(str(app_root / "babysitter" / "templates")),
-        ])
+        self.app.jinja_loader = ChoiceLoader(
+            [
+                self.app.jinja_loader,
+                FileSystemLoader(str(app_root / "babysitter" / "templates")),
+            ]
+        )
         self.bp = create_blueprint(
             config_path=self.config_path,
             state_path=self.state_path,
@@ -365,14 +366,16 @@ class TestHistoryEndpoint(_BaseRouteTest):
     def test_history_returns_list(self):
         # Add a history event to state.
         wd = self.bp.watchdog
-        wd.state.history.append(RebootEvent(
-            timestamp=time.time(),
-            camera="doorbell",
-            action="onvif",
-            reason="video_down",
-            outcome="success",
-            duration=12.5,
-        ))
+        wd.state.history.append(
+            RebootEvent(
+                timestamp=time.time(),
+                camera="doorbell",
+                action="onvif",
+                reason="video_down",
+                outcome="success",
+                duration=12.5,
+            )
+        )
         resp = self.client.get("/babysitter/api/history")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
@@ -414,33 +417,45 @@ class TestBlueprintNotLoaded(unittest.TestCase):
         # We can't easily test create_app() because it requires WyzeBridge,
         # but we can verify the env check logic directly.
         saved = os.environ.pop("ENABLE_BABYSITTER", None)
-        self.addCleanup(lambda: os.environ.__setitem__("ENABLE_BABYSITTER", saved) if saved else os.environ.pop("ENABLE_BABYSITTER", None))
-
-        enabled = (
-            os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
+        self.addCleanup(
+            lambda: (
+                os.environ.__setitem__("ENABLE_BABYSITTER", saved)
+                if saved
+                else os.environ.pop("ENABLE_BABYSITTER", None)
+            )
         )
+
+        enabled = os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
         self.assertFalse(enabled)
 
     def test_blueprint_not_loaded_with_false_env(self):
         """The blueprint should not be loaded when ENABLE_BABYSITTER=false."""
         saved = os.environ.get("ENABLE_BABYSITTER", None)
         os.environ["ENABLE_BABYSITTER"] = "false"
-        self.addCleanup(lambda: os.environ.__setitem__("ENABLE_BABYSITTER", saved) if saved else os.environ.pop("ENABLE_BABYSITTER", None))
-
-        enabled = (
-            os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
+        self.addCleanup(
+            lambda: (
+                os.environ.__setitem__("ENABLE_BABYSITTER", saved)
+                if saved
+                else os.environ.pop("ENABLE_BABYSITTER", None)
+            )
         )
+
+        enabled = os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
         self.assertFalse(enabled)
 
     def test_blueprint_loaded_with_true_env(self):
         """The blueprint should be loaded when ENABLE_BABYSITTER=true."""
         saved = os.environ.get("ENABLE_BABYSITTER", None)
         os.environ["ENABLE_BABYSITTER"] = "true"
-        self.addCleanup(lambda: os.environ.__setitem__("ENABLE_BABYSITTER", saved) if saved else os.environ.pop("ENABLE_BABYSITTER", None))
-
-        enabled = (
-            os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
+        self.addCleanup(
+            lambda: (
+                os.environ.__setitem__("ENABLE_BABYSITTER", saved)
+                if saved
+                else os.environ.pop("ENABLE_BABYSITTER", None)
+            )
         )
+
+        enabled = os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
         self.assertTrue(enabled)
 
 

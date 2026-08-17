@@ -45,11 +45,7 @@ def rtsp_sdp_has_h264_video(response: bytes | str) -> bool:
         return False
     if not any(line.lower().startswith("m=video ") for line in sdp.splitlines()):
         return False
-    return any(
-        "h264/90000" in line.lower()
-        for line in sdp.splitlines()
-        if line.lower().startswith("a=rtpmap:")
-    )
+    return any("h264/90000" in line.lower() for line in sdp.splitlines() if line.lower().startswith("a=rtpmap:"))
 
 
 def jpeg_is_decodable_candidate(payload: bytes, minimum_bytes: int = 2048) -> bool:

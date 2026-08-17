@@ -115,7 +115,7 @@ class ScryptedClient:
         body = resp.json()
         raw = body.get("authorization") or body.get("token") or ""
         if raw.startswith("Bearer "):
-            raw = raw[len("Bearer "):]
+            raw = raw[len("Bearer ") :]
         if not raw:
             raise ValueError("Scrypted login returned no token")
         self._token = raw
@@ -141,9 +141,7 @@ class ScryptedClient:
         resp.raise_for_status()
         return resp.content
 
-    def snapshot_probe(
-        self, device_id: str, timeout: float = 15.0
-    ) -> dict[str, Any]:
+    def snapshot_probe(self, device_id: str, timeout: float = 15.0) -> dict[str, Any]:
         """Probe a snapshot and return a dict with validation info."""
         try:
             data = self.snapshot(device_id, timeout=timeout)
@@ -164,9 +162,7 @@ class ScryptedClient:
                 "error": str(exc),
             }
 
-    def discover_cameras(
-        self, id_range: range = range(1, 301), timeout: float = 10.0
-    ) -> list[dict[str, Any]]:
+    def discover_cameras(self, id_range: range = range(1, 301), timeout: float = 10.0) -> list[dict[str, Any]]:
         """Probe a range of Scrypted device IDs for valid camera snapshots.
 
         Returns a list of dicts with device_id and snapshot proof.
@@ -261,9 +257,7 @@ def _onvif_wsse_header(username: str, password: str) -> str:
     nonce_bytes = secrets.token_bytes(16)
     nonce_b64 = base64.b64encode(nonce_bytes).decode()
     created = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    digest = base64.b64encode(
-        hashlib.sha1(nonce_bytes + created.encode() + password.encode()).digest()
-    ).decode()
+    digest = base64.b64encode(hashlib.sha1(nonce_bytes + created.encode() + password.encode()).digest()).decode()
     return (
         "<wsse:Security>"
         f"<wsse:UsernameToken>"
@@ -309,7 +303,7 @@ class OnvifRebootClient:
             '" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/'
             'oasis-200401-wss-wssecurity-utility-1.0.xsd">'
             f"<s:Header>{header}</s:Header>"
-            '<s:Body><tds:SystemReboot xmlns:tds='
+            "<s:Body><tds:SystemReboot xmlns:tds="
             '"http://www.onvif.org/ver10/device/wsdl"/></s:Body>'
             "</s:Envelope>"
         )
@@ -389,13 +383,15 @@ def run_discovery(
         scrypted_id = _match_scrypted_id(cam_name, scrypted_cameras, frigate_rtsp)
         if scrypted_id is None:
             scrypted_id = configured_scrypted_ids.get(cam_name)
-        camera_mapping.append({
-            "friendly_name": cam_name,
-            "scrypted_id": scrypted_id,
-            "frigate_name": cam_name,
-            "ip": ip,
-            "tcp_554_reachable": tcp_ok,
-        })
+        camera_mapping.append(
+            {
+                "friendly_name": cam_name,
+                "scrypted_id": scrypted_id,
+                "frigate_name": cam_name,
+                "ip": ip,
+                "tcp_554_reachable": tcp_ok,
+            }
+        )
 
     # Runtime reachability
     reachability: dict[str, Any] = {
@@ -410,18 +406,18 @@ def run_discovery(
     return {
         "scrypted": {
             "host": scrypted.host,
-            "cameras": [
-                {**cam, "sha256": cam.get("sha256", "")[:16] + "..."} for cam in scrypted_cameras
-            ],
+            "cameras": [{**cam, "sha256": cam.get("sha256", "")[:16] + "..."} for cam in scrypted_cameras],
         },
         "frigate": {
             "host": frigate.host,
             "cameras": {
-                name: {"fps": {
-                    "camera": float(stats.get("camera_fps", 0)),
-                    "process": float(stats.get("process_fps", 0)),
-                    "skipped": float(stats.get("skipped_fps", 0)),
-                }}
+                name: {
+                    "fps": {
+                        "camera": float(stats.get("camera_fps", 0)),
+                        "process": float(stats.get("process_fps", 0)),
+                        "skipped": float(stats.get("skipped_fps", 0)),
+                    }
+                }
                 for name, stats in frigate_stats.items()
                 if isinstance(stats, dict) and "camera_fps" in stats
             },

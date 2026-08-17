@@ -153,6 +153,7 @@ class TestRefreshPreviewProactiveRestart(unittest.TestCase):
 
     def setUp(self):
         import types
+
         # Stub requests for native_alias imports
         requests_stub = types.ModuleType("requests")
         requests_exceptions = types.ModuleType("requests.exceptions")
@@ -225,6 +226,7 @@ class TestRefreshPreviewProactiveRestart(unittest.TestCase):
 
         # Mock get_snapshot to fail first, then succeed after restart
         call_count = [0]
+
         def mock_get_snapshot(cam_name):
             call_count[0] += 1
             if call_count[0] <= 1:
@@ -296,6 +298,7 @@ class TestRefreshPreviewProactiveRestart(unittest.TestCase):
         manager.health.record_success("test-cam", "frozen-hash")
         # Force stale by manipulating the tracker
         import time as _time
+
         cam_health = manager.health.get("test-cam")
         cam_health.stale_hash_since = _time.time() - 700  # older than 600s window
         manager.health.record_success("test-cam", "frozen-hash")  # triggers stale state
@@ -307,6 +310,7 @@ class TestRefreshPreviewProactiveRestart(unittest.TestCase):
         manager.streams["test-cam"] = stream
 
         call_count = [0]
+
         def mock_get_snapshot(cam_name):
             call_count[0] += 1
             return {"ok": True, "source": "go2rtc"}

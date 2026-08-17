@@ -3,20 +3,17 @@
 
 from __future__ import annotations
 
-import json
 import pathlib
 import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "app"))
 
 from babysitter.state import (  # noqa: E402
     BabysitterState,
     CameraState,
-    RebootEvent,
     can_reboot,
     cooldown_remaining,
     daily_reboot_count,

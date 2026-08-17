@@ -278,7 +278,11 @@ class WyzeStream:
                 logger.info(f"🌬️ {self.camera.nickname} will cooldown for {COOLDOWN}s.")
         elif self.state == StreamStatus.STOPPED and self.options.reconnect and should_start:
             self.start()
-        elif self.state == StreamStatus.CONNECTING and self.start_time and time() - self.start_time > connect_watchdog_timeout():
+        elif (
+            self.state == StreamStatus.CONNECTING
+            and self.start_time
+            and time() - self.start_time > connect_watchdog_timeout()
+        ):
             logger.warning(f"⏰ Timed out connecting to {self.camera.nickname}.")
             self.stop()
 
