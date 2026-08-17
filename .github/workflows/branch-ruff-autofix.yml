@@ -1,0 +1,36 @@
+name: Branch Ruff autofix
+
+on:
+  push:
+    branches: [fix/rtsp-egress-health]
+
+permissions:
+  contents: write
+
+jobs:
+  autofix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/rtsp-egress-health
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install 'ruff>=0.12'
+      - name: Apply safe Ruff fixes and formatting
+        run: |
+          ruff check app/ tests/ --fix
+          ruff format app/ tests/
+      - name: Commit deterministic cleanup
+        run: |
+          if git diff --quiet; then
+            echo 'No Ruff changes needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app tests
+          git commit -m 'chore: apply deterministic Ruff cleanup'
+          git push origin HEAD:fix/rtsp-egress-health
