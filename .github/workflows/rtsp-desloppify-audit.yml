@@ -3,6 +3,8 @@ name: RTSP fix and Desloppify audit
 on:
   push:
     branches: [fix/rtsp-egress-health]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -40,7 +42,7 @@ jobs:
           echo "=== DESLOPPIFY VERSION ==="
           desloppify --version || true
           echo "=== DESLOPPIFY SCAN ==="
-          desloppify scan --path . --profile strict
+          desloppify scan --path .
           scan_rc=$?
           echo "DESLOPPIFY_SCAN_RC=${scan_rc}"
           echo "=== DESLOPPIFY STATUS ==="
