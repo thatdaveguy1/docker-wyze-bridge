@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,21 +37,19 @@ jobs:
           python -m pip install -r app/requirements.txt
           python -m pip install --upgrade "desloppify[full]"
 
-      - name: Run Desloppify strict audit
+      - name: Run scoped Desloppify CI scans
         shell: bash
         run: |
-          set +e
-          echo "=== DESLOPPIFY VERSION ==="
-          desloppify --version || true
-          echo "=== DESLOPPIFY SCAN ==="
-          desloppify scan --path .
-          scan_rc=$?
-          echo "DESLOPPIFY_SCAN_RC=${scan_rc}"
-          echo "=== DESLOPPIFY STATUS ==="
-          desloppify status || true
-          echo "=== DESLOPPIFY NEXT ==="
-          desloppify next || true
-          exit 0
+          set -eux
+          # Generated Home Assistant mirrors are build outputs of app/ and must
+          # not count as independent source debt.
+          desloppify exclude home_assistant
+          desloppify exclude .ha_live_addon
+          desloppify --lang python scan --path . --profile ci --no-badge
+          desloppify --lang python status --json
+          # whep_proxy is a separate Go program; scan it as its own project.
+          desloppify --lang go scan --path ./whep_proxy --profile ci --no-badge
+          desloppify --lang go status --json
 
       - name: Build check
         run: ./scripts/build.sh --check
