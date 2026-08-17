@@ -82,6 +82,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks scans the PR commit range; shallow history makes its base
+          # revision unavailable and produces a false CI failure.
+          fetch-depth: 0
 
       - name: Gitleaks scan
         uses: gitleaks/gitleaks-action@v2
