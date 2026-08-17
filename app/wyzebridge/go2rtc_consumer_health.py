@@ -2,8 +2,8 @@
 """Consumer-facing health checks for the native go2rtc sidecar.
 
 The existing sidecar monitor primarily observes producer state and receiver-byte
-progress.  Those signals can remain healthy while a new RTSP consumer cannot
-negotiate a usable H.264 stream.  This module probes both the RTSP SDP exposed
+progress. Those signals can remain healthy while a new RTSP consumer cannot
+negotiate a usable H.264 stream. This module probes both the RTSP SDP exposed
 to consumers and go2rtc's decoded-frame endpoint, then performs bounded recovery.
 """
 
@@ -43,10 +43,13 @@ def rtsp_sdp_has_h264_video(response: bytes | str) -> bool:
     first_line = header.splitlines()[0] if header else ""
     if " 200 " not in f" {first_line} ":
         return False
-    sdp_lower = sdp.lower()
     if not any(line.lower().startswith("m=video ") for line in sdp.splitlines()):
         return False
-    return any("h264/90000" in line.lower() for line in sdp_lower.splitlines() if line.lower().startswith("a=rtpmap:"))
+    return any(
+        "h264/90000" in line.lower()
+        for line in sdp.splitlines()
+        if line.lower().startswith("a=rtpmap:")
+    )
 
 
 def jpeg_is_decodable_candidate(payload: bytes, minimum_bytes: int = 2048) -> bool:
@@ -103,7 +106,7 @@ def probe_rtsp_sdp(alias: str, rtsp_port: int, timeout: float = 5.0) -> tuple[bo
 
 
 def _urlopen(request: urllib.request.Request | str, timeout: float = 5.0) -> bytes:
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - loopback service only
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
 
 
@@ -135,8 +138,7 @@ def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
 def restart_alias(alias: str, api_base: str, timeout: float = 5.0) -> None:
     """Recreate one go2rtc alias and immediately preload it."""
     restart_url = f"{api_base}/api/streams?{urllib.parse.urlencode({'src': '', 'dst': alias})}"
-    request = urllib.request.Request(restart_url, method="POST")
-    _urlopen(request, timeout=timeout)
+    _urlopen(urllib.request.Request(restart_url, method="POST"), timeout=timeout)
     time.sleep(2)
     preload_url = f"{api_base}/api/preload?{urllib.parse.urlencode({'src': alias})}"
     _urlopen(urllib.request.Request(preload_url, method="PUT"), timeout=timeout)
@@ -145,8 +147,7 @@ def restart_alias(alias: str, api_base: str, timeout: float = 5.0) -> None:
 def restart_go2rtc_child() -> int:
     """Signal go2rtc child processes; the sidecar wrapper restarts them cleanly."""
     killed = 0
-    proc = Path("/proc")
-    for entry in proc.iterdir():
+    for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
             continue
         try:
