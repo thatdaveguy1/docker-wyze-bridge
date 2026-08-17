@@ -38,6 +38,7 @@ _KEYFRAME_CONSUMER_PILEUP_THRESHOLD = 16
 _GO2RTC_API_REACHABLE_CACHE_TTL = 5.0
 _GO2RTC_API_REACHABLE_CACHE: dict[int, tuple[float, bool]] = {}
 
+
 # Per-camera recovery aliases tried when the primary and substream aliases fail.
 # The HD recovery lane is opt-in via GO2RTC_HD_RECOVERY_CAMERAS (comma-separated
 # camera/uri names, default empty = feature off) so no household camera is baked in.
@@ -46,6 +47,7 @@ def recovery_aliases(cam_name: str) -> list[str]:
     if cam_name in cameras:
         return [f"{cam_name}-v4-hd-recovery"]
     return []
+
 
 _VALIDATED_NATIVE_MODELS = {
     "HL_CAM3P": {

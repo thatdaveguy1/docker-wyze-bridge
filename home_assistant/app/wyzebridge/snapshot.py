@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from wyzebridge.config import IMG_PATH, IMG_TYPE, SNAPSHOT_TYPE
 from wyzebridge.ffmpeg import rtsp_snap_cmd, wait_for_purges
 from wyzebridge.logging import logger
-from wyzebridge.mqtt import update_preview
+from wyzebridge.mqtt import publish_topic, update_preview
 from wyzebridge.native_alias import (
     native_alias,
     preload_native_stream,
@@ -28,9 +28,6 @@ from wyzebridge.preview_validation import (
     record_preview_hash,
 )
 from wyzebridge.snapshot_health import (
-    STATE_ONLINE,
-    STATE_SNAPSHOT_DOWN,
-    STATE_STALE_SNAPSHOT,
     SnapshotHealthTracker,
 )
 

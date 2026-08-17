@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 STATE_ONLINE = "online"
 STATE_SNAPSHOT_DOWN = "snapshot_down"

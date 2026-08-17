@@ -104,12 +104,14 @@ def _parse_cameras(env_val: str) -> list[CameraEntry]:
     for entry in env_val.split(","):
         parts = entry.strip().split(":")
         if len(parts) >= 4:
-            cameras.append(CameraEntry(
-                friendly_name=parts[0],
-                scrypted_id=parts[1],
-                ip=parts[2],
-                frigate_name=parts[3],
-            ))
+            cameras.append(
+                CameraEntry(
+                    friendly_name=parts[0],
+                    scrypted_id=parts[1],
+                    ip=parts[2],
+                    frigate_name=parts[3],
+                )
+            )
     return cameras
 
 
@@ -165,10 +167,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> BabysitterConfig:
     valid_cam_keys = {f for f in CameraEntry.__dataclass_fields__}
     for key, value in data.items():
         if key == "cameras":
-            cfg.cameras = [
-                CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys})
-                for c in value
-            ]
+            cfg.cameras = [CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys}) for c in value]
         elif key == "approved_cameras":
             cfg.approved_cameras = set(value)
         elif key == "per_camera_dry_run":
@@ -189,9 +188,7 @@ def save_config(cfg: BabysitterConfig, path: Path = DEFAULT_CONFIG_PATH) -> None
     logger.debug("Saved config to %s", path)
 
 
-def update_config(
-    updates: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH
-) -> BabysitterConfig:
+def update_config(updates: dict[str, Any], path: Path = DEFAULT_CONFIG_PATH) -> BabysitterConfig:
     """Apply partial updates to the config file and return the new config.
 
     Passwords are only updated if the new value is not '****' (masked).
@@ -200,10 +197,7 @@ def update_config(
     valid_cam_keys = {f for f in CameraEntry.__dataclass_fields__}
     for key, value in updates.items():
         if key == "cameras":
-            cfg.cameras = [
-                CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys})
-                for c in value
-            ]
+            cfg.cameras = [CameraEntry(**{k: v for k, v in c.items() if k in valid_cam_keys}) for c in value]
         elif key == "approved_cameras":
             cfg.approved_cameras = set(value)
         elif key == "per_camera_dry_run":
