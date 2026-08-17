@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   audit:
@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'push' && github.ref_name || '' }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,6 +38,24 @@ jobs:
           python -m pip install -r app/requirements.txt
           python -m pip install --upgrade "desloppify[full]"
 
+      - name: Apply deterministic Python cleanup
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('app/wyzebridge/snapshot.py')
+          text = path.read_text()
+          old = 'from wyzebridge.mqtt import update_preview\n'
+          new = 'from wyzebridge.mqtt import publish_topic, update_preview\n'
+          if old not in text and new not in text:
+              raise SystemExit('snapshot MQTT import shape changed unexpectedly')
+          path.write_text(text.replace(old, new))
+          PY
+          ruff check app/ tests/ --fix || true
+          ruff format app/ tests/
+          ./scripts/build.sh --apply home_assistant
+          ./scripts/build.sh --apply ha_live_addon
+
       - name: Run scoped Desloppify CI scans
         shell: bash
         run: |
@@ -56,3 +75,16 @@ jobs:
 
       - name: Python tests
         run: python -m pytest tests/ --timeout=60 -q
+
+      - name: Commit deterministic cleanup
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          if git diff --quiet; then
+            echo 'No deterministic cleanup changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app tests home_assistant .ha_live_addon
+          git commit -m 'chore: apply deterministic quality cleanup'
+          git push origin HEAD:${GITHUB_REF_NAME}
