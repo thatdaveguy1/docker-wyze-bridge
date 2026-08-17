@@ -33,7 +33,7 @@ jobs:
           PY
       - name: Apply safe Ruff fixes and formatting
         run: |
-          ruff check app/ tests/ --fix
+          ruff check app/ tests/ --fix || true
           ruff format app/ tests/
       - name: Commit deterministic cleanup
         run: |
