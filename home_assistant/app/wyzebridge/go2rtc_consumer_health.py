@@ -521,10 +521,7 @@ def _producer_is_connected(producer: object) -> bool:
     """Distinguish a live producer from go2rtc's URL-only lazy placeholder."""
     if not isinstance(producer, dict):
         return False
-    return any(
-        bool(producer.get(field))
-        for field in ("format_name", "protocol", "remote_addr", "medias", "receivers")
-    )
+    return any(bool(producer.get(field)) for field in ("format_name", "protocol", "remote_addr", "medias", "receivers"))
 
 
 def consumer_probe_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
