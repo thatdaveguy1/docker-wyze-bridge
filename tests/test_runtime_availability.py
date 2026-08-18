@@ -1,5 +1,6 @@
 """Runtime-entrypoint regressions for bridge availability defaults."""
 
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -8,6 +9,19 @@ RUN_FILES = [
     ROOT / "home_assistant" / "app" / "run",
     ROOT / ".ha_live_addon" / "app" / "run",
 ]
+
+
+def test_runtime_entrypoints_have_valid_shell_syntax():
+    for run_path in RUN_FILES:
+        result = subprocess.run(
+            ["sh", "-n", str(run_path)],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout
 
 
 def test_runtime_entrypoints_validate_optional_env_before_sourcing():
