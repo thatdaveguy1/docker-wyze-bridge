@@ -189,17 +189,36 @@ except Exception:
 " 2>/dev/null
 }
 
+_go2rtc_stream_connected() {
+    # go2rtc keeps lazy/on-demand streams as URL-only producer placeholders.
+    # Treat a producer as connected only after runtime/media metadata appears.
+    printf '%s' "$2" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    details = data.get(sys.argv[1], {})
+    producers = details.get('producers') or []
+    fields = ('format_name', 'protocol', 'remote_addr', 'medias', 'receivers')
+    connected = any(isinstance(p, dict) and any(p.get(field) for field in fields) for p in producers)
+    print(1 if connected else 0)
+except Exception:
+    print(0)
+" "$1" 2>/dev/null
+}
+
 start_go2rtc_health_monitor() {
     # Monitor go2rtc streams every 15s. Three per-stream checks:
-    # 1. Producer check: if producers drop to 0 for >30s, force-restart the stream.
-    # 2. Bytes-stall check: if producers>0 but receiver bytes don't increase
-    #    for >45s, the stream is wedged (DTLS/RTSP connected but no video
-    #    flowing). go2rtc returns HTTP 200 with 0-byte snapshots → black frames.
+    # 1. Producer check: when consumer demand exists but no producer is connected
+    #    for >30s, force a reconnect. URL-only lazy placeholders with no consumers
+    #    are intentional on-demand idle state and are skipped.
+    # 2. Bytes-stall check: if a connected producer's receiver bytes don't increase
+    #    for >45s, the stream is wedged (DTLS/RTSP connected but no video flowing).
+    #    go2rtc can otherwise return HTTP 200 with 0-byte snapshots → black frames.
     #    Force-restart the stream to reconnect. (45s, not 30s, to avoid noise
     #    from low-motion cameras that naturally stall for one 15s check.)
     # 3. Keyframe consumer pileup: if >5 stuck keyframe consumers, force-restart.
-    # Full-process RTSP wedge check: probe ALL alive aliases with DESCRIBE.
-    #    Only restart the go2rtc process if DESCRIBE fails for EVERY alive
+    # Full-process RTSP wedge check: probe ALL connected aliases with DESCRIBE.
+    #    Only restart the go2rtc process if DESCRIBE fails for EVERY connected
     #    alias for >60s. A single camera dropping should NOT trigger a full
     #    restart that drops all connections.
     _STATE_DIR=/tmp/go2rtc_health_state
@@ -250,15 +269,14 @@ for line in open(path, encoding='utf-8'):
             fi
             now=$(date +%s)
             _process_restarted=0
+            alive_aliases=""
 
-            # Collect ALL aliases with active producers for the RTSP wedge probe.
-
+            # Collect only connected aliases for the RTSP wedge probe.
             for alias in ${aliases}; do
                 [ -n "${alias}" ] || continue
-                # Get producer count, keyframe consumer count, and receiver bytes
-                # in one pass. Receiver bytes = total bytes received from the
-                # camera by go2rtc. If this doesn't increase between checks, the
-                # stream is wedged (connected but no video flowing).
+                # Read consumer demand, keyframe consumers, and receiver bytes.
+                # A URL-only producer placeholder is not a connected producer.
+                connected_producer=$(_go2rtc_stream_connected "${alias}" "${streams_json}")
                 counts=$(printf '%s' "${streams_json}" | python3 -c "
 import json, sys
 try:
@@ -267,19 +285,19 @@ try:
     p = s.get('producers') or []
     c = s.get('consumers') or []
     kf = sum(1 for con in c if con.get('format_name') == 'keyframe')
-    # Sum bytes across all receivers of the first producer
     bytes_recv = 0
     if p:
         for r in (p[0].get('receivers') or []):
             bytes_recv += r.get('bytes', 0)
-    print(len(p), kf, bytes_recv)
+    print(len(c), kf, bytes_recv)
 except Exception:
     print(0, 0, 0)
 " 2>/dev/null || echo "0 0 0")
-                producer_count=$(echo "${counts}" | cut -d' ' -f1 | tr -cd '0-9')
+                consumer_count=$(echo "${counts}" | cut -d' ' -f1 | tr -cd '0-9')
                 keyframe_count=$(echo "${counts}" | cut -d' ' -f2 | tr -cd '0-9')
                 current_bytes=$(echo "${counts}" | cut -d' ' -f3 | tr -cd '0-9')
-                [ -z "${producer_count}" ] && producer_count=0
+                [ -z "${connected_producer}" ] && connected_producer=0
+                [ -z "${consumer_count}" ] && consumer_count=0
                 [ -z "${keyframe_count}" ] && keyframe_count=0
                 [ -z "${current_bytes}" ] && current_bytes=0
                 # State files: one per alias per metric. No string parsing.
@@ -288,16 +306,24 @@ except Exception:
                 _bytes_file="${_STATE_DIR}/bytes_${alias}"
                 _stall_state_file="${_STATE_DIR}/stall_state_${alias}.json"
                 _quarantine_file="${_QUARANTINE_DIR}/quarantine_${alias}.json"
-                if [ "${producer_count}" = "0" ]; then
-                    # Stream is dead — producer-level recovery
+
+                if [ "${connected_producer}" = "0" ] && [ "${consumer_count}" = "0" ]; then
+                    # Intentional on-demand idle state. Clear volatile failure
+                    # history so idle time can never escalate into a restart.
+                    rm -f "${_dead_file}" "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
+                    continue
+                fi
+
+                if [ "${connected_producer}" = "0" ]; then
+                    # There is consumer demand but no connected producer.
                     if [ ! -f "${_dead_file}" ]; then
-                        echo "[GO2RTC_HEALTH] ${alias}: producer dropped, monitoring for recovery" >&2
+                        echo "[GO2RTC_HEALTH] ${alias}: consumer demand without connected producer, monitoring for recovery" >&2
                         echo "${now}" > "${_dead_file}"
                     else
                         last=$(cat "${_dead_file}" 2>/dev/null | tr -cd '0-9')
                         [ -z "${last}" ] && last=0
                         if [ $((now - last)) -gt 30 ]; then
-                            echo "[GO2RTC_HEALTH] ${alias}: dead for >30s, forcing restart" >&2
+                            echo "[GO2RTC_HEALTH] ${alias}: demand unserved for >30s, forcing restart" >&2
                             restart_go2rtc_child "${alias}"
                             sleep 2
                             rm -f "${_dead_file}" "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
@@ -316,8 +342,8 @@ except Exception:
                     echo "[GO2RTC_HEALTH] ${alias}: restart triggered (pileup cleared)" >&2
                     alive_aliases="${alive_aliases} ${alias}"
                 else
-                    # Producer is alive — check for bytes stall via Python
-                    # escalation state machine.  The helper tracks per-alias
+                    # Producer is connected — check for bytes stall via Python
+                    # escalation state machine. The helper tracks per-alias
                     # stall/restart_count state and returns an action:
                     _stall_err_file="${_STATE_DIR}/stall_err_$$.tmp"
                     # Run the helper ONCE: stdout → action, stderr → log lines.
@@ -406,7 +432,7 @@ if q:
                 fi
             done
 
-            # RTSP wedge detection: probe ALL alive aliases. Only declare a wedge
+            # RTSP wedge detection: probe ALL connected aliases. Only declare a wedge
             # if DESCRIBE fails for every single one of them (a single camera
             # dropping should NOT trigger a full go2rtc restart).
             # Skip if we just restarted the go2rtc process for stall escalation —
@@ -441,6 +467,8 @@ if q:
                         echo "[GO2RTC_HEALTH] go2rtc process restarted" >&2
                     fi
                 fi
+            else
+                wedge_since=0
             fi
         done
     )&
@@ -469,8 +497,8 @@ except Exception:
 # ── Helper 1: Proactive TUTK session refresh ──────────────────────
 # Wyze TUTK/DTLS sessions degrade after a few hours of continuous use.
 # Instead of waiting for a bytes stall + 135s reactive outage, restart
-# each healthy alias on a planned schedule to get a fresh TUTK session.
-# Skips quarantined aliases.  Tracks last-refresh time per alias.
+# each healthy connected alias on a planned schedule to get a fresh TUTK
+# session. Idle on-demand aliases are left alone. Tracks last-refresh time.
 start_go2rtc_session_refresh_loop() {
     _REFRESH_INTERVAL="${GO2RTC_SESSION_REFRESH_INTERVAL:-7200}"  # 2 hours
     _REFRESH_STATE_DIR=/tmp/go2rtc_session_refresh
@@ -506,17 +534,7 @@ except Exception:
                         continue
                     fi
                 fi
-                # Check if this alias has an active producer
-                _has_producer=$(printf '%s' "${streams_json}" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    s = data.get('${alias}', {})
-    p = s.get('producers') or []
-    print(1 if p else 0)
-except Exception:
-    print(0)
-" 2>/dev/null || echo 0)
+                _has_producer=$(_go2rtc_stream_connected "${alias}" "${streams_json}")
                 [ "${_has_producer}" = "1" ] || continue
                 # Check last refresh time
                 _refresh_file="${_REFRESH_STATE_DIR}/last_refresh_${alias}"
@@ -539,9 +557,9 @@ except Exception:
 }
 
 # ── Helper 2: WiFi degradation early warning ──────────────────────
-# Ping each Wyze camera IP every 60s.  If latency spikes >3x baseline
-# or packet loss >5% for 2 consecutive samples, proactively restart
-# the alias before the TUTK session dies from packet reordering.
+# Ping each connected Wyze camera IP every 60s. If latency spikes >3x baseline
+# or packet loss >5% for 2 consecutive samples, proactively restart the alias.
+# Idle on-demand streams are skipped so WiFi monitoring cannot create demand.
 start_wifi_health_monitor() {
     _WIFI_STATE_DIR=/tmp/go2rtc_wifi_health
     mkdir -p "${_WIFI_STATE_DIR}"
@@ -580,6 +598,8 @@ except Exception:
                         continue
                     fi
                 fi
+                _has_producer=$(_go2rtc_stream_connected "${alias}" "${streams_json}")
+                [ "${_has_producer}" = "1" ] || continue
                 # Extract camera IP from go2rtc producer URL
                 cam_ip=$(_extract_cam_ip "${alias}" "${streams_json}")
                 [ -z "${cam_ip}" ] && continue
@@ -656,10 +676,10 @@ except Exception:
 }
 
 # ── Helper 4: Snapshot freshness canary ───────────────────────────
-# Every 5 minutes, fetch a frame.jpeg snapshot from go2rtc for each
-# healthy alias.  If the snapshot is <5KB or has the same SHA-256 hash
-# for 2 consecutive checks, the stream is silently stalled (bytes may
-# be flowing but video frames aren't decoding).  Trigger an alias restart.
+# Every 5 minutes, fetch a frame.jpeg snapshot from go2rtc for each connected
+# healthy alias. Idle on-demand aliases are skipped. If the snapshot is <5KB
+# or has the same SHA-256 hash for 2 consecutive checks, the stream is silently
+# stalled (bytes may be flowing but video frames aren't decoding).
 start_snapshot_canary() {
     _CANARY_STATE_DIR=/tmp/go2rtc_snapshot_canary
     mkdir -p "${_CANARY_STATE_DIR}"
@@ -694,17 +714,7 @@ except Exception:
                         continue
                     fi
                 fi
-                # Check if this alias has an active producer
-                _has_producer=$(printf '%s' "${streams_json}" | python3 -c "
-import json, sys
-try:
-    data = json.load(sys.stdin)
-    s = data.get('${alias}', {})
-    p = s.get('producers') or []
-    print(1 if p else 0)
-except Exception:
-    print(0)
-" 2>/dev/null || echo 0)
+                _has_producer=$(_go2rtc_stream_connected "${alias}" "${streams_json}")
                 [ "${_has_producer}" = "1" ] || continue
                 # Fetch snapshot from go2rtc frame.jpeg
                 _snap_file="${_CANARY_STATE_DIR}/snap_${alias}.jpg"
@@ -852,9 +862,9 @@ generate_initial_config(
         fi
 
         # Local streams (Wyze DTLS + Reolink RTSP) are static and don't need
-        # the Wyze cloud API.  Merge them immediately and start streaming.
+        # the Wyze cloud API. Merge them immediately and start streaming.
         # The Wyze cloud API is only needed for camera *discovery* (IP/MAC/ENR
-        # changes), which is handled by the bridge separately.  If the extra
+        # changes), which is handled by the bridge separately. If the extra
         # streams file is absent, fall back to the Wyze API discovery loop.
         if [ -f /config/go2rtc_extra_streams.yaml ]; then
             echo "[GO2RTC] Using local extra streams (Wyze API discovery skipped)" >&2

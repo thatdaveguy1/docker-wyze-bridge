@@ -505,7 +505,7 @@ def probe_decoded_frame(alias: str, api_base: str, timeout: float = 5.0) -> tupl
 
 
 def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
-    """Return aliases that currently have at least one producer."""
+    """Return aliases that currently have at least one producer entry."""
     payload = _http_get(f"{api_base}/api/streams", timeout=timeout)
     data = json.loads(payload)
     if not isinstance(data, dict):
@@ -515,6 +515,40 @@ def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
         for name, details in data.items()
         if isinstance(name, str) and isinstance(details, dict) and details.get("producers")
     )
+
+
+def _producer_is_connected(producer: object) -> bool:
+    """Distinguish a live producer from go2rtc's URL-only lazy placeholder."""
+    if not isinstance(producer, dict):
+        return False
+    return any(
+        bool(producer.get(field))
+        for field in ("format_name", "protocol", "remote_addr", "medias", "receivers")
+    )
+
+
+def consumer_probe_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
+    """Return connected aliases plus aliases with active consumer demand.
+
+    go2rtc keeps configured on-demand streams in the API as a producer object
+    containing only the source URL. Probing those placeholders would create
+    artificial demand and can make an intentionally idle stream look failed.
+    """
+    payload = _http_get(f"{api_base}/api/streams", timeout=timeout)
+    data = json.loads(payload)
+    if not isinstance(data, dict):
+        return []
+
+    aliases = []
+    for name, details in data.items():
+        if not isinstance(name, str) or not isinstance(details, dict):
+            continue
+        producers = details.get("producers") or []
+        connected = any(_producer_is_connected(producer) for producer in producers)
+        demanded = bool(details.get("consumers"))
+        if connected or demanded:
+            aliases.append(name)
+    return sorted(aliases)
 
 
 def restart_go2rtc_child(proc_root: Path = Path("/proc")) -> int:
@@ -593,7 +627,7 @@ def run() -> None:
 
     while True:
         try:
-            aliases = active_aliases(api_base)
+            aliases = consumer_probe_aliases(api_base)
         except (OSError, ValueError, requests.RequestException) as exc:
             _log(f"stream table unavailable: {type(exc).__name__}")
             time.sleep(interval)
