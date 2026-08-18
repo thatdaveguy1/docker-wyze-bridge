@@ -37,8 +37,211 @@ def _truthy(name: str, default: bool = True) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+class _BitReader:
+    """Minimal MSB-first reader for H.264 Exp-Golomb parameter-set syntax."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._bit_offset = 0
+
+    def read_bits(self, count: int) -> int:
+        if count < 0 or self._bit_offset + count > len(self._data) * 8:
+            raise ValueError("truncated H.264 bitstream")
+        value = 0
+        for _ in range(count):
+            byte = self._data[self._bit_offset // 8]
+            shift = 7 - (self._bit_offset % 8)
+            value = (value << 1) | ((byte >> shift) & 1)
+            self._bit_offset += 1
+        return value
+
+    def read_bit(self) -> int:
+        return self.read_bits(1)
+
+    def read_ue(self) -> int:
+        leading_zero_bits = 0
+        while self.read_bit() == 0:
+            leading_zero_bits += 1
+            if leading_zero_bits > 31:
+                raise ValueError("H.264 Exp-Golomb value too large")
+        suffix = self.read_bits(leading_zero_bits) if leading_zero_bits else 0
+        return (1 << leading_zero_bits) - 1 + suffix
+
+    def read_se(self) -> int:
+        code_num = self.read_ue()
+        magnitude = (code_num + 1) // 2
+        return magnitude if code_num % 2 else -magnitude
+
+
+def _ebsp_to_rbsp(payload: bytes) -> bytes:
+    rbsp = bytearray()
+    zero_count = 0
+    for byte in payload:
+        if zero_count >= 2 and byte == 0x03:
+            zero_count = 0
+            continue
+        rbsp.append(byte)
+        zero_count = zero_count + 1 if byte == 0 else 0
+    return bytes(rbsp)
+
+
+def _skip_scaling_list(reader: _BitReader, size: int) -> None:
+    last_scale = 8
+    next_scale = 8
+    for _ in range(size):
+        if next_scale != 0:
+            delta_scale = reader.read_se()
+            next_scale = (last_scale + delta_scale + 256) % 256
+        last_scale = next_scale if next_scale != 0 else last_scale
+
+
+def _parse_h264_sps(nal: bytes) -> tuple[int, int, int]:
+    """Parse an SPS far enough to prove core syntax and derive dimensions."""
+    if len(nal) < 5 or nal[0] & 0x80 or nal[0] & 0x1F != 7:
+        raise ValueError("invalid SPS NAL")
+
+    reader = _BitReader(_ebsp_to_rbsp(nal[1:]))
+    profile_idc = reader.read_bits(8)
+    constraints = reader.read_bits(8)
+    if constraints & 0x03:
+        raise ValueError("reserved SPS constraint bits are nonzero")
+    reader.read_bits(8)  # level_idc
+    sps_id = reader.read_ue()
+    if sps_id > 31:
+        raise ValueError("invalid SPS id")
+
+    chroma_format_idc = 1
+    separate_colour_plane_flag = 0
+    high_profiles = {44, 83, 86, 100, 110, 118, 122, 128, 134, 135, 138, 139, 244}
+    if profile_idc in high_profiles:
+        chroma_format_idc = reader.read_ue()
+        if chroma_format_idc > 3:
+            raise ValueError("invalid chroma_format_idc")
+        if chroma_format_idc == 3:
+            separate_colour_plane_flag = reader.read_bit()
+        if reader.read_ue() > 6 or reader.read_ue() > 6:
+            raise ValueError("invalid SPS bit depth")
+        reader.read_bit()  # qpprime_y_zero_transform_bypass_flag
+        if reader.read_bit():  # seq_scaling_matrix_present_flag
+            scaling_lists = 8 if chroma_format_idc != 3 else 12
+            for index in range(scaling_lists):
+                if reader.read_bit():
+                    _skip_scaling_list(reader, 16 if index < 6 else 64)
+
+    if reader.read_ue() > 12:  # log2_max_frame_num_minus4
+        raise ValueError("invalid frame_num range")
+    pic_order_cnt_type = reader.read_ue()
+    if pic_order_cnt_type == 0:
+        if reader.read_ue() > 12:
+            raise ValueError("invalid POC range")
+    elif pic_order_cnt_type == 1:
+        reader.read_bit()  # delta_pic_order_always_zero_flag
+        reader.read_se()  # offset_for_non_ref_pic
+        reader.read_se()  # offset_for_top_to_bottom_field
+        cycle_count = reader.read_ue()
+        if cycle_count > 255:
+            raise ValueError("invalid POC cycle count")
+        for _ in range(cycle_count):
+            reader.read_se()
+    elif pic_order_cnt_type != 2:
+        raise ValueError("invalid pic_order_cnt_type")
+
+    reader.read_ue()  # max_num_ref_frames
+    reader.read_bit()  # gaps_in_frame_num_value_allowed_flag
+    pic_width_in_mbs_minus1 = reader.read_ue()
+    pic_height_in_map_units_minus1 = reader.read_ue()
+    if pic_width_in_mbs_minus1 > 4095 or pic_height_in_map_units_minus1 > 4095:
+        raise ValueError("SPS dimensions are unreasonable")
+
+    frame_mbs_only_flag = reader.read_bit()
+    if not frame_mbs_only_flag:
+        reader.read_bit()  # mb_adaptive_frame_field_flag
+    reader.read_bit()  # direct_8x8_inference_flag
+
+    crop_left = crop_right = crop_top = crop_bottom = 0
+    if reader.read_bit():  # frame_cropping_flag
+        crop_left = reader.read_ue()
+        crop_right = reader.read_ue()
+        crop_top = reader.read_ue()
+        crop_bottom = reader.read_ue()
+
+    reader.read_bit()  # vui_parameters_present_flag; proves core SPS syntax is complete
+
+    width = (pic_width_in_mbs_minus1 + 1) * 16
+    height = (pic_height_in_map_units_minus1 + 1) * 16 * (2 - frame_mbs_only_flag)
+    chroma_array_type = 0 if separate_colour_plane_flag else chroma_format_idc
+    if chroma_array_type == 0:
+        crop_unit_x = 1
+        crop_unit_y = 2 - frame_mbs_only_flag
+    else:
+        sub_width_c = 1 if chroma_array_type == 3 else 2
+        sub_height_c = 2 if chroma_array_type == 1 else 1
+        crop_unit_x = sub_width_c
+        crop_unit_y = sub_height_c * (2 - frame_mbs_only_flag)
+    width -= (crop_left + crop_right) * crop_unit_x
+    height -= (crop_top + crop_bottom) * crop_unit_y
+    if width <= 0 or height <= 0 or width > 16384 or height > 16384:
+        raise ValueError("invalid decoded SPS dimensions")
+    return sps_id, width, height
+
+
+def _parse_h264_pps_sps_id(nal: bytes) -> int:
+    """Parse the required PPS syntax and return the referenced SPS id."""
+    if len(nal) < 2 or nal[0] & 0x80 or nal[0] & 0x1F != 8:
+        raise ValueError("invalid PPS NAL")
+
+    reader = _BitReader(_ebsp_to_rbsp(nal[1:]))
+    pps_id = reader.read_ue()
+    sps_id = reader.read_ue()
+    if pps_id > 255 or sps_id > 31:
+        raise ValueError("invalid PPS/SPS id")
+    reader.read_bit()  # entropy_coding_mode_flag
+    reader.read_bit()  # bottom_field_pic_order_in_frame_present_flag
+    num_slice_groups_minus1 = reader.read_ue()
+    if num_slice_groups_minus1 > 7:
+        raise ValueError("invalid slice group count")
+    if num_slice_groups_minus1:
+        slice_group_map_type = reader.read_ue()
+        if slice_group_map_type == 0:
+            for _ in range(num_slice_groups_minus1 + 1):
+                reader.read_ue()
+        elif slice_group_map_type == 2:
+            for _ in range(num_slice_groups_minus1):
+                reader.read_ue()
+                reader.read_ue()
+        elif slice_group_map_type in {3, 4, 5}:
+            reader.read_bit()
+            reader.read_ue()
+        elif slice_group_map_type == 6:
+            pic_size_in_map_units_minus1 = reader.read_ue()
+            if pic_size_in_map_units_minus1 > 65535:
+                raise ValueError("invalid slice-group map size")
+            group_count = num_slice_groups_minus1 + 1
+            bits_per_group = max(1, (group_count - 1).bit_length())
+            for _ in range(pic_size_in_map_units_minus1 + 1):
+                reader.read_bits(bits_per_group)
+        else:
+            raise ValueError("invalid slice_group_map_type")
+
+    if reader.read_ue() > 31 or reader.read_ue() > 31:
+        raise ValueError("invalid default reference-index count")
+    reader.read_bit()  # weighted_pred_flag
+    reader.read_bits(2)  # weighted_bipred_idc
+    pic_init_qp_minus26 = reader.read_se()
+    pic_init_qs_minus26 = reader.read_se()
+    chroma_qp_index_offset = reader.read_se()
+    if not -26 <= pic_init_qp_minus26 <= 25 or not -26 <= pic_init_qs_minus26 <= 25:
+        raise ValueError("invalid PPS initial QP")
+    if not -12 <= chroma_qp_index_offset <= 12:
+        raise ValueError("invalid PPS chroma QP offset")
+    reader.read_bit()  # deblocking_filter_control_present_flag
+    reader.read_bit()  # constrained_intra_pred_flag
+    reader.read_bit()  # redundant_pic_cnt_present_flag
+    return sps_id
+
+
 def _h264_sdp_has_parameter_sets(sdp: str) -> bool:
-    """Require a video H.264 payload with decodable SPS and PPS in its FMTP."""
+    """Require H.264 SPS/PPS that parse and describe positive video dimensions."""
     lines = [line.strip() for line in sdp.splitlines() if line.strip()]
     video_payloads: set[str] = set()
     for line in lines:
@@ -56,9 +259,6 @@ def _h264_sdp_has_parameter_sets(sdp: str) -> bool:
         if separator and payload in video_payloads and codec.strip().lower().startswith("h264/90000"):
             h264_payloads.add(payload)
 
-    if not h264_payloads:
-        return False
-
     for line in lines:
         if not line.lower().startswith("a=fmtp:"):
             continue
@@ -73,16 +273,32 @@ def _h264_sdp_has_parameter_sets(sdp: str) -> bool:
         encoded_sets = [item.strip() for item in parsed.get("sprop-parameter-sets", "").split(",") if item.strip()]
         if len(encoded_sets) < 2:
             continue
-        nal_types: set[int] = set()
         try:
-            for encoded in encoded_sets:
-                nal = base64.b64decode(encoded, validate=True)
-                if nal:
-                    nal_types.add(nal[0] & 0x1F)
+            nals = [base64.b64decode(encoded, validate=True) for encoded in encoded_sets]
         except (binascii.Error, ValueError):
             continue
-        if 7 in nal_types and 8 in nal_types:
-            return True
+
+        valid_sps: dict[int, tuple[int, int]] = {}
+        for nal in nals:
+            if not nal or nal[0] & 0x1F != 7:
+                continue
+            try:
+                sps_id, width, height = _parse_h264_sps(nal)
+            except ValueError:
+                continue
+            valid_sps[sps_id] = (width, height)
+        if not valid_sps:
+            continue
+
+        for nal in nals:
+            if not nal or nal[0] & 0x1F != 8:
+                continue
+            try:
+                referenced_sps = _parse_h264_pps_sps_id(nal)
+            except ValueError:
+                continue
+            if referenced_sps in valid_sps:
+                return True
     return False
 
 
