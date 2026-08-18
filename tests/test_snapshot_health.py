@@ -276,7 +276,7 @@ class TestRefreshPreviewProactiveRestart(unittest.TestCase):
 
         with (
             patch.object(SM, "get_snapshot", return_value={"ok": False, "source": "failed"}),
-            patch.object(SM, "_restart_stream_for_snapshot") as mock_restart,
+            patch.object(SM, "_restart_stream_for_snapshot"),
         ):
             result = manager.refresh_preview("test-cam")
 

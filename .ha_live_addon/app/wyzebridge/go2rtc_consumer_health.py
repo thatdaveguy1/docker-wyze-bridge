@@ -9,17 +9,21 @@ to consumers and go2rtc's decoded-frame endpoint, then performs bounded recovery
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import signal
 import socket
 import sys
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
+from io import BytesIO
 from pathlib import Path
+
+import requests
+from PIL import Image, UnidentifiedImageError
 
 
 def _log(message: str) -> None:
@@ -33,8 +37,57 @@ def _truthy(name: str, default: bool = True) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _h264_sdp_has_parameter_sets(sdp: str) -> bool:
+    """Require a video H.264 payload with decodable SPS and PPS in its FMTP."""
+    lines = [line.strip() for line in sdp.splitlines() if line.strip()]
+    video_payloads: set[str] = set()
+    for line in lines:
+        if not line.lower().startswith("m=video "):
+            continue
+        fields = line.split()
+        if len(fields) >= 4:
+            video_payloads.update(fields[3:])
+
+    h264_payloads: set[str] = set()
+    for line in lines:
+        if not line.lower().startswith("a=rtpmap:"):
+            continue
+        payload, separator, codec = line[len("a=rtpmap:") :].partition(" ")
+        if separator and payload in video_payloads and codec.strip().lower().startswith("h264/90000"):
+            h264_payloads.add(payload)
+
+    if not h264_payloads:
+        return False
+
+    for line in lines:
+        if not line.lower().startswith("a=fmtp:"):
+            continue
+        payload, separator, params = line[len("a=fmtp:") :].partition(" ")
+        if not separator or payload not in h264_payloads:
+            continue
+        parsed: dict[str, str] = {}
+        for token in params.split(";"):
+            key, equals, value = token.strip().partition("=")
+            if equals:
+                parsed[key.strip().lower()] = value.strip()
+        encoded_sets = [item.strip() for item in parsed.get("sprop-parameter-sets", "").split(",") if item.strip()]
+        if len(encoded_sets) < 2:
+            continue
+        nal_types: set[int] = set()
+        try:
+            for encoded in encoded_sets:
+                nal = base64.b64decode(encoded, validate=True)
+                if nal:
+                    nal_types.add(nal[0] & 0x1F)
+        except (binascii.Error, ValueError):
+            continue
+        if 7 in nal_types and 8 in nal_types:
+            return True
+    return False
+
+
 def rtsp_sdp_has_h264_video(response: bytes | str) -> bool:
-    """Return True when a DESCRIBE response advertises an H.264 video track."""
+    """Return True when DESCRIBE advertises H.264 with usable SPS/PPS metadata."""
     if isinstance(response, bytes):
         text = response.decode("utf-8", errors="replace")
     else:
@@ -43,14 +96,21 @@ def rtsp_sdp_has_h264_video(response: bytes | str) -> bool:
     first_line = header.splitlines()[0] if header else ""
     if " 200 " not in f" {first_line} ":
         return False
-    if not any(line.lower().startswith("m=video ") for line in sdp.splitlines()):
-        return False
-    return any("h264/90000" in line.lower() for line in sdp.splitlines() if line.lower().startswith("a=rtpmap:"))
+    return _h264_sdp_has_parameter_sets(sdp)
 
 
 def jpeg_is_decodable_candidate(payload: bytes, minimum_bytes: int = 2048) -> bool:
-    """Cheaply validate that go2rtc returned a non-trivial complete JPEG frame."""
-    return len(payload) >= minimum_bytes and payload.startswith(b"\xff\xd8") and payload.endswith(b"\xff\xd9")
+    """Decode a non-trivial JPEG and require positive dimensions."""
+    if len(payload) < minimum_bytes:
+        return False
+    try:
+        with Image.open(BytesIO(payload)) as image:
+            if image.format != "JPEG" or image.width <= 0 or image.height <= 0:
+                return False
+            image.load()
+    except (OSError, UnidentifiedImageError, ValueError):
+        return False
+    return True
 
 
 def _read_rtsp_response(sock: socket.socket) -> bytes:
@@ -81,7 +141,7 @@ def _read_rtsp_response(sock: socket.socket) -> bytes:
 
 
 def probe_rtsp_sdp(alias: str, rtsp_port: int, timeout: float = 5.0) -> tuple[bool, str]:
-    """DESCRIBE a local RTSP alias and require an advertised H.264 video track."""
+    """DESCRIBE a local RTSP alias and require usable H.264 SPS/PPS metadata."""
     request = (
         f"DESCRIBE rtsp://127.0.0.1:{rtsp_port}/{alias} RTSP/1.0\r\n"
         "CSeq: 1\r\n"
@@ -97,21 +157,22 @@ def probe_rtsp_sdp(alias: str, rtsp_port: int, timeout: float = 5.0) -> tuple[bo
         return False, f"rtsp_error={type(exc).__name__}"
     if not rtsp_sdp_has_h264_video(response):
         first_line = response.split(b"\r\n", 1)[0].decode("utf-8", errors="replace")
-        return False, f"rtsp_invalid_sdp={first_line or 'empty'}"
-    return True, "rtsp_h264_ok"
+        return False, f"rtsp_invalid_h264_metadata={first_line or 'empty'}"
+    return True, "rtsp_h264_sps_pps_ok"
 
 
-def _urlopen(request: urllib.request.Request | str, timeout: float = 5.0) -> bytes:
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+def _http_get(url: str, timeout: float = 5.0) -> bytes:
+    response = requests.get(url, timeout=timeout)
+    response.raise_for_status()
+    return response.content
 
 
 def probe_decoded_frame(alias: str, api_base: str, timeout: float = 5.0) -> tuple[bool, str]:
-    """Require a complete JPEG from go2rtc, proving the source can decode a frame."""
+    """Require a genuinely decodable JPEG from go2rtc's frame endpoint."""
     url = f"{api_base}/api/frame.jpeg?{urllib.parse.urlencode({'src': alias})}"
     try:
-        payload = _urlopen(url, timeout=timeout)
-    except (OSError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+        payload = _http_get(url, timeout=timeout)
+    except requests.RequestException as exc:
         return False, f"frame_error={type(exc).__name__}"
     if not jpeg_is_decodable_candidate(payload):
         return False, f"frame_invalid_bytes={len(payload)}"
@@ -120,7 +181,7 @@ def probe_decoded_frame(alias: str, api_base: str, timeout: float = 5.0) -> tupl
 
 def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
     """Return aliases that currently have at least one producer."""
-    payload = _urlopen(f"{api_base}/api/streams", timeout=timeout)
+    payload = _http_get(f"{api_base}/api/streams", timeout=timeout)
     data = json.loads(payload)
     if not isinstance(data, dict):
         return []
@@ -131,10 +192,14 @@ def active_aliases(api_base: str, timeout: float = 5.0) -> list[str]:
     )
 
 
-def restart_go2rtc_child() -> int:
-    """Signal go2rtc child processes; the sidecar wrapper restarts them cleanly."""
+def restart_go2rtc_child(proc_root: Path = Path("/proc")) -> int:
+    """Signal exact go2rtc children; the sidecar wrapper restarts them cleanly."""
     killed = 0
-    for entry in Path("/proc").iterdir():
+    try:
+        entries = proc_root.iterdir()
+    except OSError:
+        return 0
+    for entry in entries:
         if not entry.name.isdigit():
             continue
         try:
@@ -204,7 +269,7 @@ def run() -> None:
     while True:
         try:
             aliases = active_aliases(api_base)
-        except (OSError, ValueError, urllib.error.URLError, urllib.error.HTTPError) as exc:
+        except (OSError, ValueError, requests.RequestException) as exc:
             _log(f"stream table unavailable: {type(exc).__name__}")
             time.sleep(interval)
             continue

@@ -76,6 +76,38 @@ done
     printf '%s\n' "${GO2RTC_PID}" > "${GO2RTC_PID_FILE}"
 }
 
+restart_go2rtc_child() {
+    _recovery_alias="${1:-unknown}"
+    _cooldown_file=/tmp/go2rtc_recovery_last
+    _cooldown="${GO2RTC_RECOVERY_COOLDOWN:-30}"
+    _now=$(date +%s)
+    _last=$(cat "${_cooldown_file}" 2>/dev/null | tr -cd '0-9')
+    [ -z "${_last}" ] && _last=0
+    if [ $((_now - _last)) -lt "${_cooldown}" ] 2>/dev/null; then
+        echo "[GO2RTC_RECOVERY] ${_recovery_alias}: child restart throttled (cooldown=${_cooldown}s)" >&2
+        return 0
+    fi
+
+    _signalled=0
+    for _comm_file in /proc/[0-9]*/comm; do
+        [ -r "${_comm_file}" ] || continue
+        _comm=$(cat "${_comm_file}" 2>/dev/null || echo "")
+        [ "${_comm}" = "go2rtc" ] || continue
+        _pid=${_comm_file#/proc/}
+        _pid=${_pid%/comm}
+        if kill "${_pid}" 2>/dev/null; then
+            _signalled=$((_signalled + 1))
+        fi
+    done
+
+    if [ "${_signalled}" -gt 0 ]; then
+        echo "${_now}" > "${_cooldown_file}"
+        echo "[GO2RTC_RECOVERY] ${_recovery_alias}: signalled go2rtc child count=${_signalled}" >&2
+    else
+        echo "[GO2RTC_RECOVERY] ${_recovery_alias}: no exact go2rtc child found" >&2
+    fi
+}
+
 normalize_go2rtc_config() {
     if [ ! -f "${GO2RTC_CONFIG}" ]; then
         return
@@ -266,7 +298,7 @@ except Exception:
                         [ -z "${last}" ] && last=0
                         if [ $((now - last)) -gt 30 ]; then
                             echo "[GO2RTC_HEALTH] ${alias}: dead for >30s, forcing restart" >&2
-                            curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                            restart_go2rtc_child "${alias}"
                             sleep 2
                             rm -f "${_dead_file}" "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
                             echo "[GO2RTC_HEALTH] ${alias}: restart triggered" >&2
@@ -277,7 +309,7 @@ except Exception:
                     # go2rtc didn't clean up. Force-restart the stream to clear
                     # them before they prevent new snapshots from being served.
                     echo "[GO2RTC_HEALTH] ${alias}: keyframe consumer pileup (${keyframe_count}), forcing restart" >&2
-                    curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                    restart_go2rtc_child "${alias}"
                     sleep 2
                     curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                     rm -f "${_stall_file}" "${_bytes_file}" "${_stall_state_file}" 2>/dev/null
@@ -317,7 +349,7 @@ print(action)
                     rm -f "${_stall_err_file}" 2>/dev/null
 
                     if [ "${_stall_action}" = "restart_alias" ]; then
-                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        restart_go2rtc_child "${alias}"
                         sleep 2
                         curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                         echo "[GO2RTC_HEALTH] ${alias}: alias restart triggered" >&2
@@ -496,7 +528,7 @@ except Exception:
                 fi
                 # Refresh: restart alias + preload
                 echo "[GO2RTC_REFRESH] ${alias}: proactive TUTK session refresh (age=${_age}s)" >&2
-                curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                restart_go2rtc_child "${alias}"
                 sleep 2
                 curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                 echo "${now}" > "${_refresh_file}"
@@ -605,7 +637,7 @@ except Exception:
                     [ -z "${_first_degraded}" ] && _first_degraded=${now}
                     if [ $((now - _first_degraded)) -ge 60 ]; then
                         echo "[GO2RTC_WIFI] ${alias}: WiFi degraded for >60s, proactive alias restart (ip=${cam_ip} avg=${_avg}ms loss=${_loss}%)" >&2
-                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        restart_go2rtc_child "${alias}"
                         sleep 2
                         curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                         rm -f "${_degraded_file}" 2>/dev/null
@@ -693,7 +725,7 @@ except Exception:
                     echo "${_small_count}" > "${_small_file}"
                     if [ "${_small_count}" -ge 2 ]; then
                         echo "[GO2RTC_CANARY] ${alias}: 2 consecutive small snapshots, triggering alias restart" >&2
-                        curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                        restart_go2rtc_child "${alias}"
                         sleep 2
                         curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                         rm -f "${_small_file}" 2>/dev/null
@@ -712,7 +744,7 @@ except Exception:
                 rm -f "${_CANARY_STATE_DIR}/small_${alias}" 2>/dev/null
                 if [ -n "${_prev_hash}" ] && [ "${_snap_hash}" = "${_prev_hash}" ]; then
                     echo "[GO2RTC_CANARY] ${alias}: snapshot hash unchanged (stale frame), triggering alias restart" >&2
-                    curl -sf -X POST "${GO2RTC_API_BASE}/api/streams?src=&dst=${alias}" >/dev/null 2>&1 || true
+                    restart_go2rtc_child "${alias}"
                     sleep 2
                     curl -sf -X PUT "${GO2RTC_API_BASE}/api/preload?src=${alias}" >/dev/null 2>&1 || true
                     # Don't clear hash file — next check will compare against this hash

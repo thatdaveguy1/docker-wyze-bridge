@@ -450,8 +450,8 @@ class TestRecoveryWait(unittest.TestCase):
         )
         # Force time to advance past the deadline.
         with patch("babysitter.watchdog.time.time", side_effect=[1000.0, 1000.0, 2000.0, 2000.0]):
-            waited = wd._wait_for_recovery("doorbell", entry)
-        # Timeout reached; waited is based on poll intervals.
+            wd._wait_for_recovery("doorbell", entry)
+        # Timeout reached without reporting recovery.
 
 
 # ---------------------------------------------------------------------------
