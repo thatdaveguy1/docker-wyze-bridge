@@ -17,9 +17,7 @@ def test_shell_exports_preserves_shell_metacharacters_as_literal_data(tmp_path):
     marker = tmp_path / "must_not_exist"
     env_file = tmp_path / ".env"
     env_file.write_text(
-        "FOO=<example>\n"
-        f"BAR=$(touch {marker})\n"
-        'QUOTED="hello world"\n',
+        f'FOO=<example>\nBAR=$(touch {marker})\nQUOTED="hello world"\n',
         encoding="utf-8",
     )
 
