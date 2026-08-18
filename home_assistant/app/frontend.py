@@ -516,9 +516,7 @@ def create_app():
     # ------------------------------------------------------------------
     # Babysitter blueprint (feature-flagged via ENABLE_BABYSITTER)
     # ------------------------------------------------------------------
-    babysitter_enabled = (
-        os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
-    )
+    babysitter_enabled = os.environ.get("ENABLE_BABYSITTER", "").lower() in ("1", "true", "yes", "on")
     app.jinja_env.globals["babysitter_enabled"] = babysitter_enabled
     if babysitter_enabled:
         from babysitter.routes import create_blueprint as create_babysitter_bp

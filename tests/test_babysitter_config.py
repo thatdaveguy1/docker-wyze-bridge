@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import pathlib
 import sys
@@ -25,14 +24,26 @@ from babysitter.config import (  # noqa: E402
 class TestFromEnv(unittest.TestCase):
     def setUp(self):
         # Save and clear relevant env vars
-        self._saved = {k: os.environ.pop(k, None) for k in [
-            "SCRYPTED_HOST", "SCRYPTED_USERNAME", "SCRYPTED_PASSWORD",
-            "FRIGATE_HOST", "MQTT_BROKER", "MQTT_PORT",
-            "REOLINK_USERNAME", "REOLINK_PASSWORD",
-            "BABYSIT_DRY_RUN", "BABYSIT_COOLDOWN", "BABYSIT_MAX_DAILY",
-            "BABYSIT_VIDEO_DOWN_THRESHOLD", "BABYSIT_INTERVAL",
-            "BABYSIT_CAMERAS", "BABYSIT_APPROVED_CAMERAS",
-        ]}
+        self._saved = {
+            k: os.environ.pop(k, None)
+            for k in [
+                "SCRYPTED_HOST",
+                "SCRYPTED_USERNAME",
+                "SCRYPTED_PASSWORD",
+                "FRIGATE_HOST",
+                "MQTT_BROKER",
+                "MQTT_PORT",
+                "REOLINK_USERNAME",
+                "REOLINK_PASSWORD",
+                "BABYSIT_DRY_RUN",
+                "BABYSIT_COOLDOWN",
+                "BABYSIT_MAX_DAILY",
+                "BABYSIT_VIDEO_DOWN_THRESHOLD",
+                "BABYSIT_INTERVAL",
+                "BABYSIT_CAMERAS",
+                "BABYSIT_APPROVED_CAMERAS",
+            ]
+        }
 
     def tearDown(self):
         for k, v in self._saved.items():
@@ -152,11 +163,14 @@ class TestUpdateConfig(unittest.TestCase):
         self.assertEqual(cfg.scrypted_password, "newpass")
 
     def test_update_cameras(self):
-        cfg = update_config({
-            "cameras": [
-                {"friendly_name": "doorbell", "scrypted_id": "54", "ip": "192.168.1.69", "frigate_name": "doorbell"}
-            ]
-        }, self.config_path)
+        cfg = update_config(
+            {
+                "cameras": [
+                    {"friendly_name": "doorbell", "scrypted_id": "54", "ip": "192.168.1.69", "frigate_name": "doorbell"}
+                ]
+            },
+            self.config_path,
+        )
         self.assertEqual(len(cfg.cameras), 1)
         self.assertEqual(cfg.cameras[0].scrypted_id, "54")
 

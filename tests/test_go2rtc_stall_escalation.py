@@ -211,16 +211,16 @@ class TestBytesStallEscalation(unittest.TestCase):
         self.assertEqual(
             actions,
             [
-                "none",            # t=0
-                "none",            # t=15
-                "restart_alias",   # t=61  (1/3)
-                "none",            # t=76  (new stall window)
-                "restart_alias",   # t=122 (2/3)
-                "none",            # t=137 (new stall window)
-                "restart_alias",   # t=183 (3/3)
-                "none",            # t=198 (new stall window)
-                "restart_process", # t=244 (escalation)
-                "none",            # t=259 (recovery)
+                "none",  # t=0
+                "none",  # t=15
+                "restart_alias",  # t=61  (1/3)
+                "none",  # t=76  (new stall window)
+                "restart_alias",  # t=122 (2/3)
+                "none",  # t=137 (new stall window)
+                "restart_alias",  # t=183 (3/3)
+                "none",  # t=198 (new stall window)
+                "restart_process",  # t=244 (escalation)
+                "none",  # t=259 (recovery)
             ],
         )
 
@@ -241,7 +241,6 @@ class TestBytesStallEscalation(unittest.TestCase):
         state = {"prev_bytes": 1000, "stall_since": 100, "restart_count": 0}
         _, action, _ = check_bytes_stall("cam", 1000, 135, state, alias_timeout=30)
         self.assertEqual(action, "restart_alias")
-
 
 
 class TestQuarantineBackoff(unittest.TestCase):
@@ -320,8 +319,11 @@ class TestQuarantineBackoff(unittest.TestCase):
 
         # Second escalation: 600s quarantine
         state = {
-            "prev_bytes": 1000, "stall_since": 100, "restart_count": 3,
-            "quarantined_until": 0, "quarantine_count": 1,
+            "prev_bytes": 1000,
+            "stall_since": 100,
+            "restart_count": 3,
+            "quarantined_until": 0,
+            "quarantine_count": 1,
         }
         new_state, _, _ = check_bytes_stall("cam", 1000, 600, state)
         self.assertEqual(new_state["quarantined_until"], 600 + 600)
@@ -329,8 +331,11 @@ class TestQuarantineBackoff(unittest.TestCase):
 
         # Third escalation: 1200s quarantine
         state = {
-            "prev_bytes": 1000, "stall_since": 100, "restart_count": 3,
-            "quarantined_until": 0, "quarantine_count": 2,
+            "prev_bytes": 1000,
+            "stall_since": 100,
+            "restart_count": 3,
+            "quarantined_until": 0,
+            "quarantine_count": 2,
         }
         new_state, _, _ = check_bytes_stall("cam", 1000, 1200, state)
         self.assertEqual(new_state["quarantined_until"], 1200 + 1200)
@@ -338,8 +343,11 @@ class TestQuarantineBackoff(unittest.TestCase):
 
         # Fourth escalation: 2400s quarantine
         state = {
-            "prev_bytes": 1000, "stall_since": 100, "restart_count": 3,
-            "quarantined_until": 0, "quarantine_count": 3,
+            "prev_bytes": 1000,
+            "stall_since": 100,
+            "restart_count": 3,
+            "quarantined_until": 0,
+            "quarantine_count": 3,
         }
         new_state, _, _ = check_bytes_stall("cam", 1000, 2400, state)
         self.assertEqual(new_state["quarantined_until"], 2400 + 2400)
@@ -347,8 +355,11 @@ class TestQuarantineBackoff(unittest.TestCase):
 
         # Fifth escalation: capped at 3600s
         state = {
-            "prev_bytes": 1000, "stall_since": 100, "restart_count": 3,
-            "quarantined_until": 0, "quarantine_count": 4,
+            "prev_bytes": 1000,
+            "stall_since": 100,
+            "restart_count": 3,
+            "quarantined_until": 0,
+            "quarantine_count": 4,
         }
         new_state, _, _ = check_bytes_stall("cam", 1000, 5000, state)
         self.assertEqual(new_state["quarantined_until"], 5000 + 3600)
@@ -426,18 +437,18 @@ class TestQuarantineBackoff(unittest.TestCase):
         self.assertEqual(
             actions,
             [
-                "none",            # t=0
-                "none",            # t=15
-                "restart_alias",   # t=61  (1/3)
-                "none",            # t=76
-                "restart_alias",   # t=122 (2/3)
-                "none",            # t=137
-                "restart_alias",   # t=183 (3/3)
-                "none",            # t=198
-                "restart_process", # t=244 (escalation + quarantine)
-                "none",            # t=300 (quarantined)
-                "none",            # t=400 (quarantined)
-                "none",            # t=544 (quarantine expired, new stall)
+                "none",  # t=0
+                "none",  # t=15
+                "restart_alias",  # t=61  (1/3)
+                "none",  # t=76
+                "restart_alias",  # t=122 (2/3)
+                "none",  # t=137
+                "restart_alias",  # t=183 (3/3)
+                "none",  # t=198
+                "restart_process",  # t=244 (escalation + quarantine)
+                "none",  # t=300 (quarantined)
+                "none",  # t=400 (quarantined)
+                "none",  # t=544 (quarantine expired, new stall)
             ],
         )
 
@@ -461,8 +472,7 @@ class TestQuarantinePeer(unittest.TestCase):
 
     def test_peer_with_prior_quarantine_uses_backoff(self):
         """A peer that was previously quarantined gets exponential backoff."""
-        state = {"prev_bytes": 0, "stall_since": 100, "restart_count": 3,
-                 "quarantined_until": 0, "quarantine_count": 1}
+        state = {"prev_bytes": 0, "stall_since": 100, "restart_count": 3, "quarantined_until": 0, "quarantine_count": 1}
         result = quarantine_peer(state, 200)
         self.assertIsNotNone(result)
         self.assertEqual(result["quarantined_until"], 200 + 600)
@@ -491,6 +501,7 @@ class TestQuarantinePeer(unittest.TestCase):
         # Both dead peers quarantined for 300s
         self.assertEqual(results[0]["quarantined_until"], 200 + 300)
         self.assertEqual(results[1]["quarantined_until"], 200 + 300)
+
 
 if __name__ == "__main__":
     unittest.main()

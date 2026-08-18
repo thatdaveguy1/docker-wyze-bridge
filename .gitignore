@@ -34,6 +34,9 @@ lessons.md
 **/options_payload*.json
 **/*options-payload*.json
 
+# Desloppify local scan state
+.desloppify/
+
 # Local debugging and runtime artifacts
 .live_local_info.json
 .orig_addon_info.json

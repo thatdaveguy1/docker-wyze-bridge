@@ -128,7 +128,7 @@ class TestScryptedClient(unittest.TestCase):
         mock_post.return_value = MagicMock(
             status_code=200,
             json=lambda: {
-                "authorization": "Bearer abc123#{\"u\":\"scrypted\"}",
+                "authorization": 'Bearer abc123#{"u":"scrypted"}',
                 "username": "scrypted",
             },
         )

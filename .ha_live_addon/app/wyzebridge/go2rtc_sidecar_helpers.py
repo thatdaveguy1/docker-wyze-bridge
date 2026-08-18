@@ -19,12 +19,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+
 # NOTE: Do NOT import the stdlib `logging` module here. When PYTHONPATH includes
 # this directory, `import logging` resolves to the local wyzebridge/logging.py
 # which triggers a circular import (logging.py -> bridge_utils.py -> logging.getLogger
 # before the local logging module is fully initialized). Use _log() instead.
 def _log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
+
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
@@ -611,15 +613,15 @@ def seed_go2rtc_aliases() -> None:
 # exponential backoff so a permanently dead camera can't keep flapping
 # the entire bridge.  While quarantined the helper returns "none" and
 # the shell skips all restart logic for that alias.
-STALL_MAX_RESTARTS = 3      # alias restarts before escalating to process restart
-STALL_ALIAS_TIMEOUT = 45    # seconds of zero byte growth before alias restart
-QUARANTINE_BASE = 300       # initial quarantine seconds after process restart
-QUARANTINE_MAX = 3600       # cap at 1 hour
+STALL_MAX_RESTARTS = 3  # alias restarts before escalating to process restart
+STALL_ALIAS_TIMEOUT = 45  # seconds of zero byte growth before alias restart
+QUARANTINE_BASE = 300  # initial quarantine seconds after process restart
+QUARANTINE_MAX = 3600  # cap at 1 hour
 
 
 def _quarantine_duration(count: int) -> int:
     """Exponential backoff: 300, 600, 1200, 2400, 3600, 3600, ..."""
-    return min(QUARANTINE_BASE * (2 ** count), QUARANTINE_MAX)
+    return min(QUARANTINE_BASE * (2**count), QUARANTINE_MAX)
 
 
 def check_bytes_stall(

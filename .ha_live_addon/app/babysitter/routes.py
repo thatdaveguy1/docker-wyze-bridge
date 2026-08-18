@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request
 
@@ -19,7 +18,6 @@ _TEMPLATE_FOLDER = str(Path(__file__).resolve().parent / "templates")
 
 from babysitter.config import (
     DEFAULT_CONFIG_PATH,
-    BabysitterConfig,
     load_config,
     save_config,
     update_config,
@@ -34,7 +32,6 @@ from babysitter.state import (
     can_reboot,
     cooldown_remaining,
     daily_reboot_count,
-    is_in_cooldown,
     load_state,
     record_reboot,
     save_state,
@@ -114,9 +111,7 @@ def create_blueprint(
         except Exception as exc:  # noqa: BLE001
             logger.warning("poll_once failed: %s — returning cached status", exc)
             statuses = wd._last_status
-        return jsonify({
-            name: s.to_dict() for name, s in statuses.items()
-        })
+        return jsonify({name: s.to_dict() for name, s in statuses.items()})
 
     # ------------------------------------------------------------------
     # Config
@@ -153,9 +148,11 @@ def create_blueprint(
 
         # Check approval.
         if camera not in cfg.approved_cameras:
-            return jsonify({
-                "error": f"Camera '{camera}' is not approved for reboot",
-            }), 403
+            return jsonify(
+                {
+                    "error": f"Camera '{camera}' is not approved for reboot",
+                }
+            ), 403
 
         # Find the camera entry.
         entry = wd._camera_entry(camera)
@@ -166,28 +163,34 @@ def create_blueprint(
         cam_state = wd.state.get_camera(camera)
         ok, reason = can_reboot(cam_state, cfg.cooldown, cfg.max_daily)
         if not ok:
-            return jsonify({
-                "error": f"Reboot blocked: {reason}",
-                "cooldown_remaining": cooldown_remaining(cam_state, cfg.cooldown),
-                "reboots_today": daily_reboot_count(cam_state),
-                "max_daily": cfg.max_daily,
-            }), 429
+            return jsonify(
+                {
+                    "error": f"Reboot blocked: {reason}",
+                    "cooldown_remaining": cooldown_remaining(cam_state, cfg.cooldown),
+                    "reboots_today": daily_reboot_count(cam_state),
+                    "max_daily": cfg.max_daily,
+                }
+            ), 429
 
         # Dry-run guard (global or per-camera).
         is_dry = cfg.per_camera_dry_run.get(camera, False) or cfg.dry_run
         if is_dry:
-            return jsonify({
-                "dry_run": True,
-                "method": "onvif",
-                "message": f"Would reboot {camera} via ONVIF at {entry.ip}",
-            }), 200
+            return jsonify(
+                {
+                    "dry_run": True,
+                    "method": "onvif",
+                    "message": f"Would reboot {camera} via ONVIF at {entry.ip}",
+                }
+            ), 200
 
         # Perform the reboot via ONVIF.
         onvif = wd.onvif.get(camera)
         if not onvif:
-            return jsonify({
-                "error": f"No ONVIF reboot client for '{camera}'",
-            }), 500
+            return jsonify(
+                {
+                    "error": f"No ONVIF reboot client for '{camera}'",
+                }
+            ), 500
 
         action = "onvif"
         start = time.time()
@@ -196,33 +199,45 @@ def create_blueprint(
         except Exception as exc:  # noqa: BLE001
             logger.error("%s: manual ONVIF reboot failed: %s", camera, exc)
             record_reboot(
-                wd.state, camera, "onvif", "manual", "failed",
+                wd.state,
+                camera,
+                "onvif",
+                "manual",
+                "failed",
                 duration=time.time() - start,
             )
             save_state(wd.state, state_path)
-            return jsonify({
-                "camera": camera,
-                "action": "onvif",
-                "reason": "manual",
-                "outcome": "failed",
-                "error": str(exc),
-            }), 500
+            return jsonify(
+                {
+                    "camera": camera,
+                    "action": "onvif",
+                    "reason": "manual",
+                    "outcome": "failed",
+                    "error": str(exc),
+                }
+            ), 500
 
         duration = time.time() - start
         outcome = "success" if success else "failed"
         record_reboot(
-            wd.state, camera, action, "manual", outcome,
+            wd.state,
+            camera,
+            action,
+            "manual",
+            outcome,
             duration=duration,
         )
         save_state(wd.state, state_path)
 
-        return jsonify({
-            "camera": camera,
-            "action": action,
-            "reason": "manual",
-            "outcome": outcome,
-            "duration": round(duration, 2),
-        })
+        return jsonify(
+            {
+                "camera": camera,
+                "action": action,
+                "reason": "manual",
+                "outcome": outcome,
+                "duration": round(duration, 2),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Approve / disapprove
@@ -240,11 +255,13 @@ def create_blueprint(
             approved = True
         save_config(cfg, config_path)
         _reload_watchdog()
-        return jsonify({
-            "camera": camera,
-            "approved": approved,
-            "approved_cameras": sorted(cfg.approved_cameras),
-        })
+        return jsonify(
+            {
+                "camera": camera,
+                "approved": approved,
+                "approved_cameras": sorted(cfg.approved_cameras),
+            }
+        )
 
     # ------------------------------------------------------------------
     # Dry-run toggles
@@ -257,10 +274,12 @@ def create_blueprint(
         cfg.dry_run = not cfg.dry_run
         save_config(cfg, config_path)
         _reload_watchdog()
-        return jsonify({
-            "dry_run": cfg.dry_run,
-            "message": "Dry-run mode enabled" if cfg.dry_run else "Dry-run mode disabled (LIVE)",
-        })
+        return jsonify(
+            {
+                "dry_run": cfg.dry_run,
+                "message": "Dry-run mode enabled" if cfg.dry_run else "Dry-run mode disabled (LIVE)",
+            }
+        )
 
     @bp.route("/api/dryrun/<camera>", methods=["POST"])
     def api_dryrun_camera(camera: str):
@@ -270,12 +289,15 @@ def create_blueprint(
         cfg.per_camera_dry_run[camera] = not current
         save_config(cfg, config_path)
         _reload_watchdog()
-        return jsonify({
-            "camera": camera,
-            "dry_run": cfg.per_camera_dry_run[camera],
-            "message": f"Dry-run override for {camera} enabled" if cfg.per_camera_dry_run[camera]
-                       else f"Dry-run override for {camera} disabled",
-        })
+        return jsonify(
+            {
+                "camera": camera,
+                "dry_run": cfg.per_camera_dry_run[camera],
+                "message": f"Dry-run override for {camera} enabled"
+                if cfg.per_camera_dry_run[camera]
+                else f"Dry-run override for {camera} disabled",
+            }
+        )
 
     # ------------------------------------------------------------------
     # Discovery
@@ -315,6 +337,7 @@ def create_blueprint(
         """Return reboot history from state."""
         wd = get_watchdog()
         from dataclasses import asdict
+
         return jsonify([asdict(e) for e in wd.state.history])
 
     # ------------------------------------------------------------------

@@ -143,8 +143,7 @@ class MqttPublisher:
             self._connected = True
             return True
         except Exception as exc:  # noqa: BLE001 - never crash on MQTT
-            logger.warning("MQTT connect to %s:%s failed: %s",
-                           self.config.mqtt_broker, self.config.mqtt_port, exc)
+            logger.warning("MQTT connect to %s:%s failed: %s", self.config.mqtt_broker, self.config.mqtt_port, exc)
             self._connected = False
             return False
 
@@ -161,11 +160,13 @@ class MqttPublisher:
 
     def publish_status(self, camera_name: str, status_dict: dict[str, Any]) -> None:
         import json
+
         topic = f"babysitter/{camera_name}/status"
         self.publish(topic, json.dumps(status_dict, default=str))
 
     def publish_reboot_event(self, camera_name: str, event_dict: dict[str, Any]) -> None:
         import json
+
         topic = f"babysitter/{camera_name}/reboot"
         self.publish(topic, json.dumps(event_dict, default=str))
 
@@ -232,6 +233,7 @@ class Watchdog:
         """Check if a go2rtc stream has an active producer (for non-RTSP cameras)."""
         try:
             import requests
+
             host = os.environ.get("GO2RTC_API_BASE", "http://127.0.0.1:11984")
             resp = requests.get(f"{host}/api/streams?src={alias}", timeout=5)
             data = resp.json()
@@ -243,14 +245,13 @@ class Watchdog:
     def _go2rtc_snapshot(self, alias: str) -> bytes:
         """Fetch a JPEG snapshot from go2rtc for non-Scrypted cameras."""
         import requests
+
         host = os.environ.get("GO2RTC_API_BASE", "http://127.0.0.1:11984")
         # Use cache=30s to get instant cached keyframe responses. Without
         # cache, go2rtc waits for the next keyframe (up to 2-4s). If the
         # client times out, go2rtc leaves a stuck "keyframe" consumer that
         # accumulates and eventually chokes the stream.
-        resp = requests.get(
-            f"{host}/api/frame.jpeg?src={alias}&cache=30s", timeout=10
-        )
+        resp = requests.get(f"{host}/api/frame.jpeg?src={alias}&cache=30s", timeout=10)
         resp.raise_for_status()
         return resp.content
 
@@ -310,12 +311,17 @@ class Watchdog:
         if not tcp_ok:
             cam_state.current_state = STATE_WIFI_DOWN
             logger.warning(
-                "%s: TCP 554 unreachable — wifi_down, no action", entry.friendly_name,
+                "%s: TCP 554 unreachable — wifi_down, no action",
+                entry.friendly_name,
             )
             if self.mqtt:
-                self.mqtt.publish_status(entry.friendly_name, {
-                    "state": STATE_WIFI_DOWN, "tcp_reachable": False,
-                })
+                self.mqtt.publish_status(
+                    entry.friendly_name,
+                    {
+                        "state": STATE_WIFI_DOWN,
+                        "tcp_reachable": False,
+                    },
+                )
             return CameraStatus(
                 name=entry.friendly_name,
                 state=STATE_WIFI_DOWN,
@@ -388,9 +394,7 @@ class Watchdog:
         # 4. Determine state via convergence rules.
         fps_healthy = camera_fps > 0 and process_fps > 0 and skipped_fps == 0
         fps_all_zero = camera_fps == 0 and process_fps == 0
-        bad_snapshot_confirmed = (
-            cam_state.consecutive_bad_snapshots >= self.config.snapshot_samples
-        )
+        bad_snapshot_confirmed = cam_state.consecutive_bad_snapshots >= self.config.snapshot_samples
 
         new_state = STATE_ONLINE
         if has_frigate and fps_all_zero and skipped_fps == 0 and bad_snapshot_confirmed:
@@ -407,7 +411,9 @@ class Watchdog:
                     stream_ok = self._ffprobe_returns_stream(rtsp_url)
                     logger.info(
                         "%s: ffprobe on %s → stream_ok=%s",
-                        entry.friendly_name, redact_url(rtsp_url), stream_ok,
+                        entry.friendly_name,
+                        redact_url(rtsp_url),
+                        stream_ok,
                     )
                 if not stream_ok:
                     new_state = STATE_VIDEO_DOWN
@@ -434,20 +440,28 @@ class Watchdog:
         if new_state == STATE_SNAPSHOT_DOWN:
             logger.warning(
                 "%s: snapshot_down (FPS healthy=%s, bad_snapshots=%d) — no reboot",
-                entry.friendly_name, fps_healthy, cam_state.consecutive_bad_snapshots,
+                entry.friendly_name,
+                fps_healthy,
+                cam_state.consecutive_bad_snapshots,
             )
         if stale_hash_warning:
             logger.warning(
                 "%s: stale hash %s for >%ds — warning only",
-                entry.friendly_name, snapshot_hash[:12],
+                entry.friendly_name,
+                snapshot_hash[:12],
                 self.config.snapshot_stale_window,
             )
         if prev_state != new_state and self.mqtt:
-            self.mqtt.publish_status(entry.friendly_name, {
-                "state": new_state, "previous": prev_state,
-                "camera_fps": camera_fps, "process_fps": process_fps,
-                "skipped_fps": skipped_fps,
-            })
+            self.mqtt.publish_status(
+                entry.friendly_name,
+                {
+                    "state": new_state,
+                    "previous": prev_state,
+                    "camera_fps": camera_fps,
+                    "process_fps": process_fps,
+                    "skipped_fps": skipped_fps,
+                },
+            )
 
         return CameraStatus(
             name=entry.friendly_name,
@@ -519,13 +533,19 @@ class Watchdog:
         if dry_run:
             logger.info(
                 "%s: DRY-RUN — would reboot via ONVIF %s (reason=video_down)",
-                camera_name, entry.ip,
+                camera_name,
+                entry.ip,
             )
             if self.mqtt:
-                self.mqtt.publish_reboot_event(camera_name, {
-                    "action": "skipped", "reason": "dry_run",
-                    "camera": camera_name, "outcome": "skipped",
-                })
+                self.mqtt.publish_reboot_event(
+                    camera_name,
+                    {
+                        "action": "skipped",
+                        "reason": "dry_run",
+                        "camera": camera_name,
+                        "outcome": "skipped",
+                    },
+                )
             return None
 
         # Perform the reboot via ONVIF.
@@ -542,46 +562,74 @@ class Watchdog:
         except Exception as exc:  # noqa: BLE001
             logger.error("%s: ONVIF reboot failed: %s", camera_name, exc)
             record_reboot(
-                self.state, camera_name, "onvif", "video_down", "failed",
+                self.state,
+                camera_name,
+                "onvif",
+                "video_down",
+                "failed",
                 duration=time.time() - start,
             )
             if self.mqtt:
-                self.mqtt.publish_reboot_event(camera_name, {
-                    "action": "onvif", "reason": "video_down",
-                    "outcome": "failed", "error": str(exc),
-                })
+                self.mqtt.publish_reboot_event(
+                    camera_name,
+                    {
+                        "action": "onvif",
+                        "reason": "video_down",
+                        "outcome": "failed",
+                        "error": str(exc),
+                    },
+                )
             return self.state.history[0]
 
         if not success:
             logger.error("%s: reboot API returned failure", camera_name)
             record_reboot(
-                self.state, camera_name, action, "video_down", "failed",
+                self.state,
+                camera_name,
+                action,
+                "video_down",
+                "failed",
                 duration=time.time() - start,
             )
             if self.mqtt:
-                self.mqtt.publish_reboot_event(camera_name, {
-                    "action": action, "reason": "video_down",
-                    "outcome": "failed",
-                })
+                self.mqtt.publish_reboot_event(
+                    camera_name,
+                    {
+                        "action": action,
+                        "reason": "video_down",
+                        "outcome": "failed",
+                    },
+                )
             return self.state.history[0]
 
         # Record success.
         recovery_duration = self._wait_for_recovery(camera_name, entry)
         total_duration = time.time() - start
         record_reboot(
-            self.state, camera_name, action, "video_down", "success",
+            self.state,
+            camera_name,
+            action,
+            "video_down",
+            "success",
             duration=total_duration,
         )
         logger.info(
             "%s: reboot succeeded (%s), recovered in %.1fs",
-            camera_name, action, total_duration,
+            camera_name,
+            action,
+            total_duration,
         )
         if self.mqtt:
-            self.mqtt.publish_reboot_event(camera_name, {
-                "action": action, "reason": "video_down",
-                "outcome": "success", "duration": total_duration,
-                "recovery_wait": recovery_duration,
-            })
+            self.mqtt.publish_reboot_event(
+                camera_name,
+                {
+                    "action": action,
+                    "reason": "video_down",
+                    "outcome": "success",
+                    "duration": total_duration,
+                    "recovery_wait": recovery_duration,
+                },
+            )
         return self.state.history[0]
 
     def _wait_for_recovery(self, camera_name: str, entry: CameraEntry) -> float:
@@ -615,14 +663,17 @@ class Watchdog:
                 continue
             event = self.check_and_recover(name)
             if event is not None:
-                actions.append({
-                    "camera": name,
-                    "event": asdict(event),
-                })
+                actions.append(
+                    {
+                        "camera": name,
+                        "event": asdict(event),
+                    }
+                )
 
         # Save state after processing.
         try:
             from babysitter.state import save_state
+
             save_state(self.state)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to save state: %s", exc)

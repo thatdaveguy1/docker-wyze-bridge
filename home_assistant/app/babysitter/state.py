@@ -147,14 +147,17 @@ def record_reboot(
     if outcome == "success":
         cam.reboot_times.append(time.time())
         prune_old_reboots(cam)
-    state.history.insert(0, RebootEvent(
-        timestamp=time.time(),
-        camera=camera,
-        action=action,
-        reason=reason,
-        outcome=outcome,
-        duration=duration,
-    ))
+    state.history.insert(
+        0,
+        RebootEvent(
+            timestamp=time.time(),
+            camera=camera,
+            action=action,
+            reason=reason,
+            outcome=outcome,
+            duration=duration,
+        ),
+    )
     # Trim history to MAX_HISTORY
     state.history = state.history[:MAX_HISTORY]
 
@@ -188,7 +191,7 @@ def save_state(state: BabysitterState, path: Path = DEFAULT_STATE_PATH) -> None:
     try:
         tmp_path.write_text(json.dumps(state.to_dict(), indent=2))
         # fsync the temp file
-        with open(tmp_path, "r") as f:
+        with open(tmp_path) as f:
             os.fsync(f.fileno())
         tmp_path.rename(path)
         logger.debug("Saved state to %s", path)

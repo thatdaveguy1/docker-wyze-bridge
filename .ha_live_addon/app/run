@@ -1,10 +1,15 @@
 #!/bin/sh
 
 if [ -f /app/.env ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . /app/.env
-    set +a
+    # Treat .env as data, never as shell code. The helper validates assignment
+    # names and emits shell-quoted exports, so metacharacters stay literal.
+    _env_exports=$(PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}" python3 -m wyzebridge.env_loader /app/.env 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        eval "${_env_exports}"
+    else
+        echo "[RUN] WARNING: ignoring invalid /app/.env; continuing with runtime environment and add-on options" >&2
+    fi
+    unset _env_exports
 fi
 
 if [ "$BUILD" = "dev" ]; then
@@ -89,19 +94,85 @@ if [ -z "${WYZE_EMAIL:-}" ] && [ -f /config/wyze_credentials.json ]; then
 fi
 
 # Overlay: if updated sidecar/helpers exist in the persistent /config mount,
-# copy them over the baked-in /app versions (workaround for Supervisor rebuild
-# cache not picking up source changes).
+# validate them before replacing baked-in files. A malformed persistent shell
+# overlay must never make an otherwise-good add-on fail during `. sidecar.sh`.
 if [ -f /config/go2rtc_sidecar.sh ]; then
-    echo "[RUN] Overlay: applying updated sidecar/helpers from /config" >&2
-    cp /config/go2rtc_sidecar.sh /app/go2rtc_sidecar.sh
-    chmod +x /app/go2rtc_sidecar.sh
+    if sh -n /config/go2rtc_sidecar.sh 2>/tmp/go2rtc_sidecar_overlay_syntax.log; then
+        echo "[RUN] Overlay: applying validated sidecar from /config" >&2
+        cp /config/go2rtc_sidecar.sh /app/go2rtc_sidecar.sh
+        chmod +x /app/go2rtc_sidecar.sh
+    else
+        echo "[RUN] WARNING: rejected invalid /config/go2rtc_sidecar.sh; using baked-in sidecar" >&2
+        cat /tmp/go2rtc_sidecar_overlay_syntax.log >&2 2>/dev/null || true
+    fi
 fi
 if [ -f /config/go2rtc_sidecar_helpers.py ]; then
-    cp /config/go2rtc_sidecar_helpers.py /app/wyzebridge/go2rtc_sidecar_helpers.py
+    if python3 -m py_compile /config/go2rtc_sidecar_helpers.py 2>/tmp/go2rtc_helpers_overlay_syntax.log; then
+        cp /config/go2rtc_sidecar_helpers.py /app/wyzebridge/go2rtc_sidecar_helpers.py
+    else
+        echo "[RUN] WARNING: rejected invalid /config/go2rtc_sidecar_helpers.py; using baked-in helpers" >&2
+        cat /tmp/go2rtc_helpers_overlay_syntax.log >&2 2>/dev/null || true
+    fi
 fi
+
+if ! sh -n /app/go2rtc_sidecar.sh; then
+    echo "[RUN] FATAL: baked-in go2rtc_sidecar.sh failed shell syntax validation" >&2
+    exit 1
+fi
+
 . /app/go2rtc_sidecar.sh
+
+_run_truthy() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Availability policy: do not intentionally tear down a healthy stream just
+# because a timer expired. Legacy proactive TUTK refresh remains opt-in for
+# operators that explicitly set GO2RTC_PROACTIVE_TUTK_REFRESH=true or a
+# positive GO2RTC_SESSION_REFRESH_INTERVAL.
+_refresh_opt_in=0
+if _run_truthy "${GO2RTC_PROACTIVE_TUTK_REFRESH:-}"; then
+    _refresh_opt_in=1
+elif [ -n "${GO2RTC_SESSION_REFRESH_INTERVAL:-}" ] && [ "${GO2RTC_SESSION_REFRESH_INTERVAL}" -gt 0 ] 2>/dev/null; then
+    _refresh_opt_in=1
+fi
+if [ "${_refresh_opt_in}" != "1" ]; then
+    start_go2rtc_session_refresh_loop() {
+        echo "[GO2RTC_REFRESH] proactive TUTK refresh disabled by default; media health drives recovery" >&2
+    }
+fi
+unset _refresh_opt_in
+
+# Ping loss/latency is diagnostic, not proof that the media path is broken.
+# Keep the legacy restart-on-ping loop opt-in so transient Wi-Fi jitter cannot
+# drop an otherwise healthy RTSP consumer. RTSP/JPEG/bytes health remains the
+# default recovery signal.
+if ! _run_truthy "${GO2RTC_WIFI_RESTART:-}"; then
+    start_wifi_health_monitor() {
+        echo "[GO2RTC_WIFI] restart-on-ping disabled by default; media health drives recovery" >&2
+    }
+fi
+
+# The consumer watchdog already proves that fresh RTSP H.264 and a decoded JPEG
+# are usable. A same-hash or small-JPEG heuristic can false-positive on static
+# or dark scenes, so the legacy snapshot canary is opt-in rather than a default
+# source of bridge-created restarts.
+if ! _run_truthy "${GO2RTC_SNAPSHOT_CANARY:-}"; then
+    start_snapshot_canary() {
+        echo "[GO2RTC_CANARY] legacy snapshot-hash recovery disabled by default; decoded media health drives recovery" >&2
+    }
+fi
+
 start_go2rtc_sidecar
 
 export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
+
+# Producer bytes and an RTSP 200 response are not sufficient proof that a new
+# consumer can decode H.264. This watchdog validates RTSP SDP plus a decoded
+# JPEG frame and performs bounded alias/process recovery when that path fails.
+python3 -m wyzebridge.go2rtc_consumer_health &
 
 exec flask run --host=0.0.0.0 --port="${WB_APP_PORT:-5000}"
