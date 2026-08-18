@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 import shlex
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from dotenv import dotenv_values
 
