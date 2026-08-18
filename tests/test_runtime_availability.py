@@ -24,15 +24,15 @@ def test_runtime_entrypoints_have_valid_shell_syntax():
         assert result.returncode == 0, result.stdout
 
 
-def test_runtime_entrypoints_validate_optional_env_before_sourcing():
+def test_runtime_entrypoints_parse_env_as_data_not_shell_code():
     for run_path in RUN_FILES:
         text = run_path.read_text(encoding="utf-8")
-        validation = "if sh -n /app/.env 2>/dev/null; then"
-        source_env = ". /app/.env"
-        assert validation in text
-        assert source_env in text
-        assert text.index(validation) < text.index(source_env)
+        assert "from dotenv import dotenv_values" in text
+        assert "shlex.quote(value or '')" in text
+        assert 'name_pattern = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")' in text
+        assert 'eval "${_env_exports}"' in text
         assert "ignoring invalid /app/.env" in text
+        assert ". /app/.env" not in text
         assert "app_env_syntax.log" not in text
 
 

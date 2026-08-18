@@ -1,14 +1,40 @@
 #!/bin/sh
 
 if [ -f /app/.env ]; then
-    if sh -n /app/.env 2>/dev/null; then
-        set -a
-        # shellcheck disable=SC1091
-        . /app/.env
-        set +a
+    # Treat .env as data, never as shell code. Validate assignment names, parse
+    # dotenv quoting/interpolation, then emit shell-quoted exports. This keeps
+    # values such as <example> or $(...) literal instead of executing them.
+    _env_exports=$(python3 - <<'PY' 2>/dev/null
+import re
+import shlex
+from pathlib import Path
+
+from dotenv import dotenv_values
+
+path = Path("/app/.env")
+name_pattern = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+for raw_line in path.read_text(encoding="utf-8").splitlines():
+    stripped = raw_line.strip()
+    if not stripped or stripped.startswith("#"):
+        continue
+    candidate = stripped[7:].lstrip() if stripped.startswith("export ") else stripped
+    key, separator, _ = candidate.partition("=")
+    if not separator or not name_pattern.fullmatch(key.strip()):
+        raise SystemExit(2)
+
+values = dotenv_values(path)
+for key, value in values.items():
+    if not name_pattern.fullmatch(key):
+        raise SystemExit(2)
+    print(f"export {key}={shlex.quote(value or '')}")
+PY
+    )
+    if [ $? -eq 0 ]; then
+        eval "${_env_exports}"
     else
         echo "[RUN] WARNING: ignoring invalid /app/.env; continuing with runtime environment and add-on options" >&2
     fi
+    unset _env_exports
 fi
 
 if [ "$BUILD" = "dev" ]; then
