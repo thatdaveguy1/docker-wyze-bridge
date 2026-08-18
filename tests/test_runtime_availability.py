@@ -42,8 +42,11 @@ def test_runtime_entrypoints_do_not_restart_healthy_streams_by_default():
         assert "proactive TUTK refresh disabled by default; media health drives recovery" in text
         assert "GO2RTC_WIFI_RESTART" in text
         assert "restart-on-ping disabled by default; media health drives recovery" in text
+        assert "GO2RTC_SNAPSHOT_CANARY" in text
+        assert "legacy snapshot-hash recovery disabled by default; decoded media health drives recovery" in text
         assert "start_go2rtc_session_refresh_loop()" in text
         assert "start_wifi_health_monitor()" in text
+        assert "start_snapshot_canary()" in text
 
 
 def test_proactive_tutk_refresh_requires_explicit_opt_in():
@@ -56,3 +59,8 @@ def test_proactive_tutk_refresh_requires_explicit_opt_in():
 def test_wifi_restart_requires_explicit_opt_in():
     text = (ROOT / "app" / "run").read_text(encoding="utf-8")
     assert 'if ! _run_truthy "${GO2RTC_WIFI_RESTART:-}"; then' in text
+
+
+def test_snapshot_hash_recovery_requires_explicit_opt_in():
+    text = (ROOT / "app" / "run").read_text(encoding="utf-8")
+    assert 'if ! _run_truthy "${GO2RTC_SNAPSHOT_CANARY:-}"; then' in text

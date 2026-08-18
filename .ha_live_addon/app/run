@@ -156,6 +156,16 @@ if ! _run_truthy "${GO2RTC_WIFI_RESTART:-}"; then
     }
 fi
 
+# The consumer watchdog already proves that fresh RTSP H.264 and a decoded JPEG
+# are usable. A same-hash or small-JPEG heuristic can false-positive on static
+# or dark scenes, so the legacy snapshot canary is opt-in rather than a default
+# source of bridge-created restarts.
+if ! _run_truthy "${GO2RTC_SNAPSHOT_CANARY:-}"; then
+    start_snapshot_canary() {
+        echo "[GO2RTC_CANARY] legacy snapshot-hash recovery disabled by default; decoded media health drives recovery" >&2
+    }
+fi
+
 start_go2rtc_sidecar
 
 export PYTHONPATH="/app${PYTHONPATH:+:$PYTHONPATH}"
