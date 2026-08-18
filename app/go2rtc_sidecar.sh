@@ -206,6 +206,32 @@ except Exception:
 " "$1" 2>/dev/null
 }
 
+_go2rtc_stream_wyze_connected() {
+    # Proactive TUTK refresh is only valid for live Wyze producers. Generic
+    # RTSP/FFmpeg/Reolink producers must never be restarted by that policy.
+    printf '%s' "$2" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    details = data.get(sys.argv[1], {})
+    producers = details.get('producers') or []
+    fields = ('format_name', 'protocol', 'remote_addr', 'medias', 'receivers')
+    result = 0
+    for producer in producers:
+        if not isinstance(producer, dict) or not any(producer.get(field) for field in fields):
+            continue
+        format_name = str(producer.get('format_name') or '').lower()
+        protocol = str(producer.get('protocol') or '').lower()
+        source = str(producer.get('source') or producer.get('url') or '').lower()
+        if format_name == 'wyze' or protocol.startswith('wyze') or source.startswith('wyze://'):
+            result = 1
+            break
+    print(result)
+except Exception:
+    print(0)
+" "$1" 2>/dev/null
+}
+
 start_go2rtc_health_monitor() {
     # Monitor go2rtc streams every 15s. Three per-stream checks:
     # 1. Producer check: when consumer demand exists but no producer is connected
@@ -496,9 +522,9 @@ except Exception:
 
 # ── Helper 1: Proactive TUTK session refresh ──────────────────────
 # Wyze TUTK/DTLS sessions degrade after a few hours of continuous use.
-# Instead of waiting for a bytes stall + 135s reactive outage, restart
-# each healthy connected alias on a planned schedule to get a fresh TUTK
-# session. Idle on-demand aliases are left alone. Tracks last-refresh time.
+# Instead of waiting for a bytes stall + 135s reactive outage, restart only
+# healthy connected Wyze aliases on a planned schedule. The first observation
+# initializes the timer; idle and generic RTSP/FFmpeg/Reolink aliases are skipped.
 start_go2rtc_session_refresh_loop() {
     _REFRESH_INTERVAL="${GO2RTC_SESSION_REFRESH_INTERVAL:-7200}"  # 2 hours
     _REFRESH_STATE_DIR=/tmp/go2rtc_session_refresh
@@ -534,12 +560,16 @@ except Exception:
                         continue
                     fi
                 fi
-                _has_producer=$(_go2rtc_stream_connected "${alias}" "${streams_json}")
-                [ "${_has_producer}" = "1" ] || continue
-                # Check last refresh time
+                _has_wyze_producer=$(_go2rtc_stream_wyze_connected "${alias}" "${streams_json}")
+                [ "${_has_wyze_producer}" = "1" ] || continue
+                # Check last refresh time. Missing state means this is the first
+                # observation, not an overdue stream; start the interval now.
                 _refresh_file="${_REFRESH_STATE_DIR}/last_refresh_${alias}"
                 _last_refresh=$(cat "${_refresh_file}" 2>/dev/null | tr -cd '0-9')
-                [ -z "${_last_refresh}" ] && _last_refresh=0
+                if [ -z "${_last_refresh}" ]; then
+                    echo "${now}" > "${_refresh_file}"
+                    continue
+                fi
                 _age=$((now - _last_refresh))
                 if [ "${_age}" -lt "${_REFRESH_INTERVAL}" ]; then
                     continue

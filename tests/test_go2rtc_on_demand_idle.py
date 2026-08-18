@@ -53,6 +53,21 @@ def test_sidecar_keeps_idle_on_demand_streams_out_of_recovery_loops():
     assert 'alive_aliases=""' in sidecar
     assert 'if [ "${connected_producer}" = "0" ] && [ "${consumer_count}" = "0" ]; then' in sidecar
     assert "Intentional on-demand idle state" in sidecar
-    # Health, proactive refresh, WiFi monitor, and snapshot canary all use the
-    # same connected-vs-placeholder test instead of treating a URL object as live.
-    assert sidecar.count('_go2rtc_stream_connected "${alias}" "${streams_json}"') >= 4
+    # Health, WiFi monitoring, and snapshot canary use the connected-vs-placeholder
+    # test instead of treating a URL object as live. TUTK refresh has stricter
+    # Wyze-only classification below.
+    assert sidecar.count('_go2rtc_stream_connected "${alias}" "${streams_json}"') >= 3
+
+
+def test_tutk_refresh_is_wyze_only_and_initializes_its_timer():
+    sidecar = (ROOT / "app" / "go2rtc_sidecar.sh").read_text(encoding="utf-8")
+
+    assert "_go2rtc_stream_wyze_connected()" in sidecar
+    assert "format_name == 'wyze'" in sidecar
+    assert "protocol.startswith('wyze')" in sidecar
+    assert "source.startswith('wyze://')" in sidecar
+    assert '_has_wyze_producer=$(_go2rtc_stream_wyze_connected "${alias}" "${streams_json}")' in sidecar
+    assert '[ "${_has_wyze_producer}" = "1" ] || continue' in sidecar
+    assert 'if [ -z "${_last_refresh}" ]; then' in sidecar
+    assert 'echo "${now}" > "${_refresh_file}"' in sidecar
+    assert "Missing state means this is the first" in sidecar
