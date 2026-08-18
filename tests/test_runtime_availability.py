@@ -27,9 +27,7 @@ def test_runtime_entrypoints_have_valid_shell_syntax():
 def test_runtime_entrypoints_parse_env_as_data_not_shell_code():
     for run_path in RUN_FILES:
         text = run_path.read_text(encoding="utf-8")
-        assert "from dotenv import dotenv_values" in text
-        assert "shlex.quote(value or '')" in text
-        assert 'name_pattern = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")' in text
+        assert "python3 -m wyzebridge.env_loader /app/.env" in text
         assert 'eval "${_env_exports}"' in text
         assert "ignoring invalid /app/.env" in text
         assert ". /app/.env" not in text
