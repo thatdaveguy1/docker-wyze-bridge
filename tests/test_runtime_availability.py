@@ -13,12 +13,13 @@ RUN_FILES = [
 def test_runtime_entrypoints_validate_optional_env_before_sourcing():
     for run_path in RUN_FILES:
         text = run_path.read_text(encoding="utf-8")
-        with_env = "if sh -n /app/.env 2>/tmp/app_env_syntax.log; then"
+        validation = "if sh -n /app/.env 2>/dev/null; then"
         source_env = ". /app/.env"
-        assert with_env in text
+        assert validation in text
         assert source_env in text
-        assert text.index(with_env) < text.index(source_env)
+        assert text.index(validation) < text.index(source_env)
         assert "ignoring invalid /app/.env" in text
+        assert "app_env_syntax.log" not in text
 
 
 def test_runtime_entrypoints_do_not_restart_healthy_streams_by_default():

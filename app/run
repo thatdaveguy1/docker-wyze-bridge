@@ -1,14 +1,13 @@
 #!/bin/sh
 
 if [ -f /app/.env ]; then
-    if sh -n /app/.env 2>/tmp/app_env_syntax.log; then
+    if sh -n /app/.env 2>/dev/null; then
         set -a
         # shellcheck disable=SC1091
         . /app/.env
         set +a
     else
         echo "[RUN] WARNING: ignoring invalid /app/.env; continuing with runtime environment and add-on options" >&2
-        cat /tmp/app_env_syntax.log >&2 2>/dev/null || true
     fi
 fi
 
